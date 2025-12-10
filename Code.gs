@@ -35,12 +35,12 @@ function fechaATexto(dateObj) {
   return Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "dd/MM/yyyy");
 }
 
-// Convierte YYYY-MM-DD a Objeto Date (Hora 12:00)
+// Convierte YYYY-MM-DD a Objeto Date (Hora 12:00) - GLOBAL
 function textoAFecha(txt) {
   if (!txt) return null;
-  var parts = String(txt).split('-');
-  if (parts.length !== 3) return null;
-  return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10), 12, 0, 0);
+  var partes = String(txt).split('-'); // USO "partes"
+  if (partes.length !== 3) return null;
+  return new Date(parseInt(partes[0], 10), parseInt(partes[1], 10) - 1, parseInt(partes[2], 10), 12, 0, 0);
 }
 
 // ==========================================
@@ -110,9 +110,19 @@ function getGlobalMaintenance() {
   const planes = getSheetData('PLAN_MANTENIMIENTO');
   const activos = getSheetData('ACTIVOS');
   const edificios = getSheetData('EDIFICIOS');
-  
-  const mapActivos = {}; activos.slice(1).forEach(r => mapActivos[r[0]] = { nombre: r[3], idEdif: r[1] });
-  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = r[2]);
+  const campus = getSheetData('CAMPUS'); 
+
+  const mapCampus = {}; campus.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
+  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
+  const mapActivos = {}; 
+  activos.slice(1).forEach(r => {
+    const edificioInfo = mapEdificios[r[1]] || {};
+    mapActivos[r[0]] = { 
+      nombre: r[3], 
+      idEdif: r[1],
+      idCampus: edificioInfo.idCampus || null
+    }; 
+  });
   
   const result = [];
   const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -121,7 +131,7 @@ function getGlobalMaintenance() {
     const idActivo = planes[i][1];
     const activoInfo = mapActivos[idActivo];
     if(activoInfo) {
-       const nombreEdificio = mapEdificios[activoInfo.idEdif] || "-";
+       const nombreEdificio = mapEdificios[activoInfo.idEdif] ? mapEdificios[activoInfo.idEdif].nombre : "-";
        let f = planes[i][4];
        let color = 'gris'; let fechaStr = "-"; let dias = 9999; let fechaISO = "";
 
@@ -132,20 +142,33 @@ function getGlobalMaintenance() {
          fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
          fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
        }
-       result.push({ id: planes[i][0], activo: activoInfo.nombre, edificio: nombreEdificio, tipo: planes[i][2], fecha: fechaStr, fechaISO: fechaISO, color: color, dias: dias });
+       result.push({ 
+           id: planes[i][0], 
+           idActivo: idActivo, 
+           activo: activoInfo.nombre, 
+           edificio: nombreEdificio, 
+           tipo: planes[i][2], 
+           fecha: fechaStr, 
+           fechaISO: fechaISO, 
+           color: color, 
+           dias: dias,
+           edificioId: activoInfo.idEdif, 
+           campusId: activoInfo.idCampus 
+       });
     }
   }
   return result.sort((a,b) => a.dias - b.dias);
 }
 
-// CREAR REVISIÓN
+// CREAR REVISIÓN (CON NOMBRES DE VARIABLE CORREGIDOS)
 function crearRevision(d) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
   
   try {
+    // Usamos la función global textoAFecha que ya está corregida
     let fechaActual = textoAFecha(d.fechaProx);
-    if (!fechaActual) return { success: false, error: "Fecha inválida" };
+    if (!fechaActual) throw new Error("Fecha inválida");
 
     var esRepetitiva = (String(d.esRecursiva) === "true"); 
     var frecuencia = parseInt(d.diasFreq) || 0;
@@ -187,7 +210,7 @@ function updateRevision(d) {
         } 
     } 
     
-    // Crear nuevas repeticiones (Lógica igual a crearRevision)
+    // Crear nuevas repeticiones
     var esRepetitiva = (String(d.esRecursiva) === "true"); 
     var frecuencia = parseInt(d.diasFreq) || 0;
     var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null;
@@ -202,7 +225,6 @@ function updateRevision(d) {
             contador++;
          }
     }
-    
     return { success: true }; 
 }
 
@@ -212,46 +234,27 @@ function eliminarRevision(idPlan) { const ss = SpreadsheetApp.openById(PROPS.get
 // 5. CONTRATOS (VISTA LOCAL Y GLOBAL)
 // ==========================================
 function obtenerContratos(idEntidad) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); if (!sheet || sheet.getLastRow() < 2) return []; 
-  const data = sheet.getRange(1, 1, sheet.getLastRow(), 8).getValues(); 
-  const contratos = []; 
-  const hoy = new Date(); 
-  
-  for(let i=1; i<data.length; i++) { 
-    if(String(data[i][2]) === String(idEntidad)) { 
-      const fFin = data[i][6] instanceof Date ? data[i][6] : null; 
-      const fIni = data[i][5] instanceof Date ? data[i][5] : null; 
-      let estadoDB = (data[i].length > 7) ? data[i][7] : 'ACTIVO'; 
-      let estadoCalc = 'VIGENTE'; let color = 'verde'; 
-      
-      if (estadoDB === 'INACTIVO') { estadoCalc = 'INACTIVO'; color = 'gris'; } 
-      else if (fFin) { 
-        const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / (86400000)); 
-        if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; } 
-        else if (diff <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } 
-      } else { estadoCalc = 'SIN FECHA'; color = 'gris'; } 
-      
-      contratos.push({ 
-        id: data[i][0], 
-        proveedor: data[i][3], 
-        ref: data[i][4], 
-        inicio: fIni?Utilities.formatDate(fIni,Session.getScriptTimeZone(),"yyyy-MM-dd"):"", 
-        fin: fFin?Utilities.formatDate(fFin,Session.getScriptTimeZone(),"yyyy-MM-dd"):"", 
-        estado: estadoCalc, color: color, estadoDB: estadoDB 
-      }); 
-    } 
-  } 
-  return contratos.sort((a, b) => a.fin.localeCompare(b.fin));
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); if (!sheet || sheet.getLastRow() < 2) return []; const data = sheet.getRange(1, 1, sheet.getLastRow(), 8).getValues(); const contratos = []; const hoy = new Date(); for(let i=1; i<data.length; i++) { if(String(data[i][2]) === String(idEntidad)) { const fFin = data[i][6] instanceof Date ? data[i][6] : null; const fIni = data[i][5] instanceof Date ? data[i][5] : null; let estadoDB = (data[i].length > 7) ? data[i][7] : 'ACTIVO'; let estadoCalc = 'VIGENTE'; let color = 'verde'; if (estadoDB === 'INACTIVO') { estadoCalc = 'INACTIVO'; color = 'gris'; } else if (fFin) { const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / (86400000)); if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; } else if (diff <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } } else { estadoCalc = 'SIN FECHA'; color = 'gris'; } contratos.push({ id: data[i][0], proveedor: data[i][3], ref: data[i][4], inicio: fIni?fechaATexto(fIni):"-", fin: fFin?fechaATexto(fFin):"-", estado: estadoCalc, color: color, estadoDB: estadoDB }); } } return contratos.sort((a, b) => a.fin.localeCompare(b.fin));
 }
 
-// *** NUEVA FUNCIÓN: OBTENER CONTRATOS GLOBAL ***
+// *** CONTRATOS GLOBAL (Asegurada su existencia) ***
 function obtenerContratosGlobal() {
   const contratos = getSheetData('CONTRATOS');
   const activos = getSheetData('ACTIVOS');
   const edificios = getSheetData('EDIFICIOS');
+  const campus = getSheetData('CAMPUS'); 
   
-  const mapActivos = {}; activos.slice(1).forEach(r => mapActivos[r[0]] = { nombre: r[3], idEdif: r[1] });
-  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = r[2]);
+  const mapCampus = {}; campus.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
+  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
+  const mapActivos = {}; 
+  activos.slice(1).forEach(r => {
+    const edificioInfo = mapEdificios[r[1]] || {};
+    mapActivos[r[0]] = { 
+      nombre: r[3], 
+      idEdif: r[1],
+      idCampus: edificioInfo.idCampus || null
+    }; 
+  });
   
   const result = [];
   const hoy = new Date();
@@ -262,12 +265,20 @@ function obtenerContratosGlobal() {
     const tipoEntidad = r[1];
     
     let nombreEntidad = "N/A";
-    
+    let edificioId = null;
+    let campusId = null;
+
     if (tipoEntidad === 'ACTIVO' && mapActivos[idEntidad]) {
       const info = mapActivos[idEntidad];
-      nombreEntidad = info.nombre + " (" + mapEdificios[info.idEdif] + ")";
+      nombreEntidad = info.nombre + " (" + (mapEdificios[info.idEdif] ? mapEdificios[info.idEdif].nombre : 'Sin Edif.') + ")";
+      edificioId = info.idEdif;
+      campusId = info.idCampus;
+      
     } else if (tipoEntidad === 'EDIFICIO' && mapEdificios[idEntidad]) {
-      nombreEntidad = mapEdificios[idEntidad];
+      const info = mapEdificios[idEntidad];
+      nombreEntidad = info.nombre;
+      edificioId = idEntidad;
+      campusId = info.idCampus;
     }
     
     const fFin = (r[6] instanceof Date) ? r[6] : null;
@@ -278,26 +289,19 @@ function obtenerContratosGlobal() {
     else if (fFin) {
        const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / 86400000);
        if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; }
-       else if (diff <= 90) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } // Usamos 90 días para el filtro global
-       
+       else if (diff <= 90) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; }
     } else { estadoCalc = 'SIN FECHA'; color = 'gris'; }
     
     result.push({
       id: r[0], nombreEntidad: nombreEntidad, proveedor: r[3], ref: r[4],
-      inicio: r[5] ? Utilities.formatDate(r[5], Session.getScriptTimeZone(), "yyyy-MM-dd") : "-",
-      fin: fFin ? Utilities.formatDate(fFin, Session.getScriptTimeZone(), "yyyy-MM-dd") : "-",
-      estado: estadoCalc, color: color, estadoDB: estadoDB
+      inicio: r[5] ? fechaATexto(r[5]) : "-",
+      fin: fFin ? fechaATexto(fFin) : "-",
+      estado: estadoCalc, color: color, estadoDB: estadoDB,
+      edificioId: edificioId, campusId: campusId
     });
   }
-  
-  return result.sort((a, b) => {
-      if (a.fin === "-") return 1;
-      if (b.fin === "-") return -1;
-      return a.fin.localeCompare(b.fin);
-  });
+  return result.sort((a, b) => { if (a.fin === "-") return 1; if (b.fin === "-") return -1; return a.fin.localeCompare(b.fin); });
 }
-// FIN NUEVA FUNCIÓN
-
 
 function crearContrato(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, textoAFecha(d.fechaIni), textoAFecha(d.fechaFin), d.estado]); return { success: true }; }
 function updateContrato(datos) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(datos.id)) { sheet.getRange(i+1, 4).setValue(datos.proveedor); sheet.getRange(i+1, 5).setValue(datos.ref); sheet.getRange(i+1, 6).setValue(textoAFecha(datos.fechaIni)); sheet.getRange(i+1, 7).setValue(textoAFecha(datos.fechaFin)); sheet.getRange(i+1, 8).setValue(datos.estado); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
