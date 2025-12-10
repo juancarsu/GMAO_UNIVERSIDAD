@@ -56,6 +56,30 @@
       <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Activo</th><th>Tipo</th><th>Marca</th><th class="text-end pe-4">Acción</th></tr></thead><tbody id="tableActivos"><tr><td colspan="4" class="text-center py-5 text-muted">Selecciona un edificio</td></tr></tbody></table></div></div>
     </div>
 
+    <div id="view-mantenimiento" class="view-section d-none">
+      <div class="page-header"><h1 class="page-title">Plan de Mantenimiento Global</h1></div>
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <div class="mb-2" id="filterGroupColor">
+            <span class="text-muted small fw-bold me-2">ESTADO:</span>
+            <button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('color', 'all', this)">Todas</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="setMaintFilter('color', 'rojo', this)">Vencidas</button>
+            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setMaintFilter('color', 'amarillo', this)">Próximas</button>
+            <button class="btn btn-sm btn-outline-success" onclick="setMaintFilter('color', 'verde', this)">Al día</button>
+          </div>
+          <div id="filterGroupType">
+            <span class="text-muted small fw-bold me-2">TIPO:</span>
+            <button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('type', 'all', this)">Todos</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Legal', this)">Legal</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Periódica', this)">Periódica</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Reparación', this)">Reparación</button>
+            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Extraordinaria', this)">Extraordinaria</button>
+          </div>
+        </div>
+      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4 text-center" style="width:50px;">#</th><th>Edificio</th><th>Activo</th><th>Tipo Revisión</th><th>Fecha Límite</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalMaint"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
+    </div>
+
     <div id="view-asset-detail" class="view-section d-none">
       <div class="d-flex align-items-center mb-4">
         <button class="btn btn-light border me-3" onclick="closeAssetDetail()"><i class="bi bi-arrow-left"></i> Volver</button>
@@ -100,41 +124,16 @@
             </div>
           </div>
         </div>
-        <div class="tab-pane fade" id="tab-docs">
-          <div class="card p-3 mb-3 bg-light border-0">
-            <div class="d-flex gap-2">
-              <input type="file" class="form-control" id="fileInput">
-              <button class="btn btn-success text-nowrap" onclick="uploadFile()"><i class="bi bi-upload"></i> Subir</button>
-            </div>
-            <small class="text-muted mt-1" id="uploadStatus"></small>
-          </div>
-          <table class="table table-striped bg-white shadow-sm rounded"><thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Versión</th><th>Fecha</th><th></th></tr></thead><tbody id="docsTableBody"></tbody></table>
-        </div>
-        <div class="tab-pane fade" id="tab-maint">
-          <div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalRevision()">+ Programar Revisión</button></div>
-          <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th class="text-center" style="width:50px;">Estado</th><th>Tipo</th><th>Próxima</th><th></th></tr></thead><tbody id="maintTableBody"></tbody></table>
-          <div class="mt-2 small text-muted"><span class="dot bg-verde"></span> OK | <span class="dot bg-amarillo"></span> Próximo | <span class="dot bg-rojo"></span> Vencido</div>
-        </div>
-        <div class="tab-pane fade" id="tab-contracts">
-          <div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div>
-          <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table>
-        </div>
+        <div class="tab-pane fade" id="tab-docs"><div class="card p-3 mb-3 bg-light border-0"><div class="d-flex gap-2"><input type="file" class="form-control" id="fileInput"><button class="btn btn-success text-nowrap" onclick="uploadFile()"><i class="bi bi-upload"></i> Subir</button></div><small class="text-muted mt-1" id="uploadStatus"></small></div><table class="table table-striped bg-white shadow-sm rounded"><thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Versión</th><th>Fecha</th><th></th></tr></thead><tbody id="docsTableBody"></tbody></table></div>
+        <div class="tab-pane fade" id="tab-maint"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalRevision()">+ Programar Revisión</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th class="text-center" style="width:50px;">Estado</th><th>Tipo</th><th>Próxima</th><th></th></tr></thead><tbody id="maintTableBody"></tbody></table></div>
+        <div class="tab-pane fade" id="tab-contracts"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table></div>
       </div>
     </div>
 
-    <div id="view-mantenimiento" class="view-section d-none"><div class="alert alert-info">🚧 Módulo global en construcción</div></div>
     <div id="view-contratos" class="view-section d-none"><div class="alert alert-info">🚧 Módulo global en construcción</div></div>
   </main>
 
-  <div class="modal fade" id="createModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div>
-        <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div>
-      </div>
-    </div>
-  </div>
+  <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
   
   <div class="modal fade" id="maintModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -142,31 +141,70 @@
         <div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
           <input type="hidden" id="revId">
-          <div class="mb-3"><label>Tipo</label><input type="text" class="form-control" id="revTipo"></div>
-          <div class="mb-3"><label>Fecha</label><input type="date" class="form-control" id="revFecha"></div>
+          
+          <div id="assetSelector" class="mb-3 d-none">
+              <label class="form-label fw-bold">Activo</label>
+              <div class="row g-2">
+                  <div class="col-4">
+                      <select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)">
+                          <option value="">- Campus -</option>
+                      </select>
+                  </div>
+                  <div class="col-4">
+                      <select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)">
+                          <option value="">- Edificio -</option>
+                      </select>
+                  </div>
+                  <div class="col-4">
+                      <select class="form-select form-select-sm" id="maintActivo" disabled>
+                          <option value="">- Activo -</option>
+                      </select>
+                  </div>
+              </div>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label">Tipo de Revisión</label>
+            <select class="form-select" id="revTipo">
+                <option value="Legal">Legal</option>
+                <option value="Periódica">Periódica</option>
+                <option value="Reparación">Reparación</option>
+                <option value="Extraordinaria">Extraordinaria</option>
+            </select>
+          </div>
+
+          <div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded">
+             <label class="small text-muted">Normativa / Reglamento</label>
+             <select class="form-select form-select-sm" id="revNorma">
+                <option value="">Seleccione norma...</option>
+             </select>
+          </div>
+
+          <div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div>
+
+          <div id="secRecur" class="d-none">
+             <div class="form-check mb-2">
+               <input class="form-check-input" type="checkbox" id="revRecur">
+               <label class="form-check-label" for="revRecur">Repetir esta revisión</label>
+             </div>
+             <div id="secRecurOptions" class="d-none ms-3 border-start ps-3">
+               <div class="mb-2">
+                 <label class="small">Cada (días)</label>
+                 <input type="number" class="form-control form-control-sm" id="revFreq" value="365">
+               </div>
+               <div class="mb-2">
+                 <label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd">
+               </div>
+             </div>
+          </div>
+
         </div>
         <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div>
       </div>
     </div>
   </div>
   
-  <div class="modal fade" id="contractModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body">
-          <input type="hidden" id="contId">
-          <div class="row">
-             <div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div>
-             <div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div>
-          </div>
-          <div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div>
-          <div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div>
-        </div>
-        <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div>
-      </div>
-    </div>
-  </div>
+  <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <?!= include('js'); ?>
