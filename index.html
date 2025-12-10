@@ -120,7 +120,7 @@
 
         <div class="tab-pane fade" id="tab-contracts">
           <div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div>
-          <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th></tr></thead><tbody id="contractsTableBody"></tbody></table>
+          <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table>
         </div>
       </div>
     </div>
@@ -130,8 +130,36 @@
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitCreate()">Guardar</button></div></div></div></div>
-  <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Tipo</label><input type="text" class="form-control" id="revTipo"></div><div class="mb-3"><label>Fecha</label><input type="date" class="form-control" id="revFecha"></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitRevision()">Guardar</button></div></div></div></div>
-  <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitContract()">Guardar</button></div></div></div></div>
+  
+  <div class="modal fade" id="maintModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <input type="hidden" id="revId"> <div class="mb-3"><label>Tipo</label><input type="text" class="form-control" id="revTipo"></div>
+          <div class="mb-3"><label>Fecha</label><input type="date" class="form-control" id="revFecha"></div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitRevision()">Guardar</button></div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="modal fade" id="contractModal" tabindex="-1">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <input type="hidden" id="contId"> <div class="mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div>
+          <div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div>
+          <div class="row">
+            <div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div>
+            <div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitContract()">Guardar</button></div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <?!= include('js'); ?>
