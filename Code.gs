@@ -4,11 +4,9 @@
 const PROPS = PropertiesService.getScriptProperties();
 
 function doGet(e) {
-  const dbId = PROPS.getProperty('DB_SS_ID');
-  if (!dbId) {
-    return HtmlService.createTemplateFromFile('Setup').evaluate().setTitle('Instalación GMAO').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  }
-  return HtmlService.createTemplateFromFile('Index').evaluate().setTitle('GMAO Universidad').addMetaTag('viewport', 'width=device-width, initial-scale=1').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  return HtmlService.createTemplateFromFile('Index')
+      .evaluate().setTitle('GMAO Universidad').addMetaTag('viewport', 'width=device-width, initial-scale=1')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
@@ -20,6 +18,7 @@ function getSheetData(sheetName) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet || sheet.getLastRow() < 2) return [];
+  // Leemos todo el rango de datos
   return sheet.getDataRange().getValues();
 }
 
@@ -63,21 +62,7 @@ function updateAsset(datos) {
 }
 
 // ==========================================
-// 4. API PARA TABLAS COMPLETAS
-// ==========================================
-function getTableData(tipo) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  if (tipo === 'CAMPUS') { const data = getSheetData('CAMPUS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1], provincia: r[2], direccion: r[3] })); }
-  if (tipo === 'EDIFICIOS') {
-    const data = getSheetData('EDIFICIOS'); const dataC = getSheetData('CAMPUS'); const mapCampus = {};
-    dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
-    return data.slice(1).map(r => ({ id: r[0], campus: mapCampus[r[1]] || '-', nombre: r[2], contacto: r[3] }));
-  }
-  return [];
-}
-
-// ==========================================
-// 5. FUNCIONES DE NEGOCIO
+// 4. FUNCIONES DE NEGOCIO
 // ==========================================
 function subirArchivo(base64, nombre, mime, idEntidad, tipoEntidad) {
   const lock = LockService.getScriptLock();
@@ -124,12 +109,56 @@ function eliminarDocumento(idDoc) {
   return { success: false, error: "Documento no encontrado" };
 }
 
+// *** MANTENIMIENTO BLINDADO ***
+// *** MANTENIMIENTO (SÚPER ROBUSTO) ***
 function obtenerPlanMantenimiento(idActivo) {
-  const data = getSheetData('PLAN_MANTENIMIENTO'); const planes = [];
+  const data = getSheetData('PLAN_MANTENIMIENTO'); 
+  const planes = [];
+  const hoy = new Date();
+  
+  // Normalizamos "hoy" para comparar solo fechas (sin horas)
+  hoy.setHours(0,0,0,0);
+  
   for(let i=1; i<data.length; i++) {
     if(String(data[i][1]) === String(idActivo)) {
-      let f = data[i][4]; let fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
-      planes.push({ id: data[i][0], tipo: data[i][2], fechaProxima: fechaStr });
+      const rawDate = data[i][4]; // Columna E (Fecha Próxima)
+      let fechaObj = null;
+      let color = 'gris'; // Color por defecto si falla
+      let fechaStr = "--/--/----";
+
+      // 1. INTENTO DE INTERPRETACIÓN DE FECHA
+      if (rawDate instanceof Date) {
+        // Es un objeto fecha de Google Sheets
+        fechaObj = new Date(rawDate);
+      } else if (typeof rawDate === 'string' && rawDate.includes('/')) {
+        // Es texto tipo "19/12/2025" -> Lo convertimos a mano
+        const partes = rawDate.split('/'); // [19, 12, 2025]
+        // new Date(año, mes-1, dia)
+        if(partes.length === 3) fechaObj = new Date(partes[2], partes[1]-1, partes[0]);
+      }
+
+      // 2. CÁLCULO DE SEMÁFORO
+      if (fechaObj && !isNaN(fechaObj.getTime())) {
+         fechaObj.setHours(0,0,0,0); // Quitamos horas para comparar
+         
+         // Diferencia en milisegundos
+         const diffTime = fechaObj.getTime() - hoy.getTime();
+         // Diferencia en días
+         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+         
+         if (diffDays < 0) color = 'rojo';        // Vencida
+         else if (diffDays <= 30) color = 'amarillo'; // Próxima (30 días)
+         else color = 'verde';                    // Lejana
+         
+         fechaStr = Utilities.formatDate(fechaObj, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      }
+      
+      planes.push({ 
+          id: data[i][0], 
+          tipo: data[i][2], 
+          fechaProxima: fechaStr,
+          color: color 
+      });
     }
   }
   return planes;
@@ -139,42 +168,46 @@ function crearRevision(datos) { const ss = SpreadsheetApp.openById(PROPS.getProp
 function updateRevision(datos) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(datos.idPlan)) { sheet.getRange(i+1, 3).setValue(datos.tipo); sheet.getRange(i+1, 5).setValue(new Date(datos.fechaProx)); return { success: true }; } } return { success: false, error: "Plan no encontrado" }; }
 function eliminarRevision(idPlan) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(idPlan)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Plan no encontrado" }; }
 
-// *** CONTRATOS (CORREGIDO) ***
+// *** CONTRATOS BLINDADO (Lectura segura de columnas) ***
 function obtenerContratos(idEntidad) {
-  const data = getSheetData('CONTRATOS');
+  // Forzamos leer hasta la columna H (8 columnas)
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CONTRATOS');
+  // Si no hay datos, devolver vacío
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  
+  // Obtenemos rango específico para asegurar ancho
+  const data = sheet.getRange(1, 1, sheet.getLastRow(), 8).getValues();
+  
   const contratos = [];
   const hoy = new Date();
   
-  // [0]ID, [1]Tipo, [2]EntID, [3]Prov, [4]Ref, [5]Ini, [6]Fin, [7]Estado
   for(let i=1; i<data.length; i++) {
     if(String(data[i][2]) === String(idEntidad)) {
+      const fFin = data[i][6] instanceof Date ? data[i][6] : null;
+      const fIni = data[i][5] instanceof Date ? data[i][5] : null;
       
-      // Lectura segura de fechas
-      let fFin = new Date(data[i][6]);
-      let fIni = new Date(data[i][5]);
+      // Acceso seguro a la columna 7 (Estado)
+      let estadoDB = (data[i].length > 7) ? data[i][7] : 'ACTIVO';
+      if(!estadoDB) estadoDB = 'ACTIVO'; // Si está vacía, asumimos activo
       
-      // Si la fecha no es válida, la forzamos a hoy para evitar errores
-      if (isNaN(fFin.getTime())) fFin = new Date();
-      if (isNaN(fIni.getTime())) fIni = new Date();
-
-      let estadoCalc = 'VIGENTE';
+      let estadoCalc = 'VIGENTE'; 
       let color = 'verde';
       
-      // Calculamos días restantes
-      const diffTime = fFin.getTime() - hoy.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays < 0) { 
-          estadoCalc = 'CADUCADO'; 
-          color = 'rojo'; 
-      } else if (diffDays <= 30) { 
-          estadoCalc = 'PRÓXIMO'; 
-          color = 'amarillo'; 
+      if (estadoDB === 'INACTIVO') {
+         estadoCalc = 'INACTIVO'; 
+         color = 'gris';
+      } else if (fFin) {
+         const diffTime = fFin.getTime() - hoy.getTime();
+         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+         if (diffDays < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; }
+         else if (diffDays <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; }
+      } else {
+         estadoCalc = 'SIN FECHA'; color = 'gris';
       }
       
-      // Formateo de fechas para visualizar
-      const iniStr = Utilities.formatDate(fIni, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      const finStr = Utilities.formatDate(fFin, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      const iniStr = fIni ? Utilities.formatDate(fIni, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
+      const finStr = fFin ? Utilities.formatDate(fFin, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
 
       contratos.push({
         id: data[i][0], 
@@ -183,86 +216,31 @@ function obtenerContratos(idEntidad) {
         inicio: iniStr,
         fin: finStr,
         estado: estadoCalc, 
-        color: color
+        color: color,
+        estadoDB: estadoDB
       });
     }
   }
   return contratos;
 }
 
-function crearContrato(d) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  // [0]ID, [1]Tipo, [2]EntID, [3]Prov, [4]Ref, [5]Ini, [6]Fin, [7]Estado
-  ss.getSheetByName('CONTRATOS').appendRow([
-    Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, 
-    new Date(d.fechaIni), new Date(d.fechaFin), "ACTIVO"
-  ]);
-  return { success: true };
-}
-
-function updateContrato(datos) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues();
-  for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(datos.id)) {
-       sheet.getRange(i+1, 4).setValue(datos.proveedor); sheet.getRange(i+1, 5).setValue(datos.ref);
-       sheet.getRange(i+1, 6).setValue(new Date(datos.fechaIni)); sheet.getRange(i+1, 7).setValue(new Date(datos.fechaFin));
-       return { success: true };
-    }
-  }
-  return { success: false, error: "Contrato no encontrado" };
-}
-
-function eliminarContrato(id) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues();
-  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" };
-}
+function crearContrato(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, new Date(d.fechaIni), new Date(d.fechaFin), d.estado]); return { success: true }; }
+function updateContrato(datos) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(datos.id)) { sheet.getRange(i+1, 4).setValue(datos.proveedor); sheet.getRange(i+1, 5).setValue(datos.ref); sheet.getRange(i+1, 6).setValue(new Date(datos.fechaIni)); sheet.getRange(i+1, 7).setValue(new Date(datos.fechaFin)); sheet.getRange(i+1, 8).setValue(datos.estado); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
+function eliminarContrato(id) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
 
 // ==========================================
 // 6. DASHBOARD & CREACIÓN
 // ==========================================
 function getDatosDashboard() {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const hoy = new Date();
-  const cAct = (ss.getSheetByName('ACTIVOS').getLastRow() - 1) || 0;
-  const cEdif = (ss.getSheetByName('EDIFICIOS').getLastRow() - 1) || 0;
-  const dataMant = getSheetData('PLAN_MANTENIMIENTO');
-  let revPend = 0, revVenc = 0, revOk = 0;
-  for(let i=1; i<dataMant.length; i++) {
-    const diff = Math.ceil((new Date(dataMant[i][4]) - hoy) / 86400000);
-    if(diff < 0) revVenc++; else if(diff <= 30) revPend++; else revOk++;
-  }
-  const dataCont = getSheetData('CONTRATOS');
-  let contCad = 0;
-  for(let i=1; i<dataCont.length; i++) if(new Date(dataCont[i][6]) < hoy) contCad++;
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const hoy = new Date();
+  const cAct = (ss.getSheetByName('ACTIVOS').getLastRow() - 1) || 0; const cEdif = (ss.getSheetByName('EDIFICIOS').getLastRow() - 1) || 0;
+  const dataMant = getSheetData('PLAN_MANTENIMIENTO'); let revPend = 0, revVenc = 0, revOk = 0;
+  for(let i=1; i<dataMant.length; i++) { const f = dataMant[i][4]; if(f instanceof Date) { const diff = Math.ceil((f - hoy) / 86400000); if(diff < 0) revVenc++; else if(diff <= 30) revPend++; else revOk++; } }
+  const dataCont = getSheetData('CONTRATOS'); let contCad = 0;
+  for(let i=1; i<dataCont.length; i++) if(dataCont[i][6] instanceof Date && dataCont[i][6] < hoy) contCad++;
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratosCaducados: contCad };
 }
-
-function crearCampus(d) { 
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId());
-  ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]);
-  return {success:true};
-}
-function crearEdificio(d) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const cData = getSheetData('CAMPUS');
-  let pId; for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4];
-  const fId = crearCarpeta(d.nombre, pId); const aId = crearCarpeta("Activos", fId);
-  ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId]);
-  return {success:true};
-}
-function crearActivo(d) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const eData = getSheetData('EDIFICIOS');
-  let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5];
-  const fId = crearCarpeta(d.nombre, pId); const id = Utilities.getUuid();
-  const cats = getSheetData('CAT_INSTALACIONES'); let nombreTipo = d.tipo; 
-  for(let i=1; i<cats.length; i++) { if(String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; } }
-  ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]);
-  return {success:true};
-}
+function crearCampus(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); return {success:true}; }
+function crearEdificio(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const cData = getSheetData('CAMPUS'); let pId; for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4]; const fId = crearCarpeta(d.nombre, pId); const aId = crearCarpeta("Activos", fId); ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId]); return {success:true}; }
+function crearActivo(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const eData = getSheetData('EDIFICIOS'); let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5]; const fId = crearCarpeta(d.nombre, pId); const id = Utilities.getUuid(); const cats = getSheetData('CAT_INSTALACIONES'); let nombreTipo = d.tipo; for(let i=1; i<cats.length; i++) { if(String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; } } ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]); return {success:true}; }
 function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
-
-function reparacionManual() {
-  // Función auxiliar por si quieres forzar cabeceras
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const s = ss.getSheetByName('CONTRATOS');
-  if(s) s.getRange('A1:H1').setValues([['ID_Contrato', 'Tipo_Entidad', 'ID_Entidad', 'Proveedor', 'Num_Ref', 'Fecha_Inicio', 'Fecha_Fin', 'Estado']]);
-}
