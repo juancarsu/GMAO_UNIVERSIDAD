@@ -12,7 +12,17 @@
 
   <aside id="sidebar">
     <div class="sidebar-header"><i class="bi bi-building-check me-2"></i> GMAO Universidad</div>
-    <ul class="sidebar-menu">
+
+    <div class="px-3 mb-3">
+      <div class="input-group">
+        <input type="text" class="form-control form-control-sm" id="globalSearchInput" placeholder="Buscar activo, edificio..." onkeyup="handleGlobalSearch(event)">
+        <button class="btn btn-outline-light btn-sm bg-white text-dark" type="button" onclick="executeGlobalSearch()"><i class="bi bi-search"></i></button>
+      </div>
+      <div id="globalSearchResults" class="list-group position-absolute shadow-sm d-none" style="z-index: 1050; width: 230px; max-height: 300px; overflow-y: auto;">
+      </div>
+    </div>
+
+  <ul class="sidebar-menu">
       <li class="menu-item"><a href="#" class="menu-link active" onclick="navTo('dashboard', this, event)"><i class="bi bi-grid-1x2 menu-icon"></i> Dashboard</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('campus', this, event)"><i class="bi bi-bank menu-icon"></i> Campus</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('edificios', this, event)"><i class="bi bi-building menu-icon"></i> Edificios</a></li>
