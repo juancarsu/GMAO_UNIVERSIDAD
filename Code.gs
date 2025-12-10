@@ -312,3 +312,46 @@ function crearEdificio(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty
 function crearActivo(d) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const eData = getSheetData('EDIFICIOS'); let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5]; const fId = crearCarpeta(d.nombre, pId); const id = Utilities.getUuid(); const cats = getSheetData('CAT_INSTALACIONES'); let nombreTipo = d.tipo; for(let i=1; i<cats.length; i++) { if(String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; } } ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]); return {success:true}; }
 function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
 function getTableData(tipo) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); if (tipo === 'CAMPUS') { const data = getSheetData('CAMPUS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1], provincia: r[2], direccion: r[3] })); } if (tipo === 'EDIFICIOS') { const data = getSheetData('EDIFICIOS'); const dataC = getSheetData('CAMPUS'); const mapCampus = {}; dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]); return data.slice(1).map(r => ({ id: r[0], campus: mapCampus[r[1]] || '-', nombre: r[2], contacto: r[3] })); } return []; }
+
+// BUSCADOR GLOBAL
+function buscarGlobal(texto) {
+  if (!texto || texto.length < 3) return []; // Mínimo 3 caracteres
+  texto = texto.toLowerCase();
+  
+  const resultados = [];
+  
+  // 1. Buscar en ACTIVOS
+  const activos = getSheetData('ACTIVOS');
+  // Indices: 0=ID, 1=IdEdif, 2=Tipo, 3=Nombre, 4=Marca
+  for(let i=1; i<activos.length; i++) {
+    const r = activos[i];
+    // Buscamos en Nombre, Tipo o Marca
+    if (String(r[3]).toLowerCase().includes(texto) || 
+        String(r[2]).toLowerCase().includes(texto) || 
+        String(r[4]).toLowerCase().includes(texto)) {
+      resultados.push({
+        id: r[0],
+        tipo: 'ACTIVO',
+        texto: r[3], // Nombre del activo
+        subtexto: r[2] + (r[4] ? " - " + r[4] : "") // Tipo - Marca
+      });
+    }
+  }
+  
+  // 2. Buscar en EDIFICIOS
+  const edificios = getSheetData('EDIFICIOS');
+  // Indices: 0=ID, 2=Nombre, 3=Contacto
+  for(let i=1; i<edificios.length; i++) {
+    const r = edificios[i];
+    if (String(r[2]).toLowerCase().includes(texto)) {
+      resultados.push({
+        id: r[0],
+        tipo: 'EDIFICIO',
+        texto: r[2], // Nombre del edificio
+        subtexto: 'Edificio'
+      });
+    }
+  }
+  
+  return resultados.slice(0, 10); // Limitar a 10 resultados
+}
