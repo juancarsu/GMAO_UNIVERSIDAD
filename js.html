@@ -19,7 +19,6 @@
     }
   }
 
-  // --- LOGICA DE FICHA DETALLE ---
   function openAssetDetail(id) {
     currentAssetId = id; 
     document.getElementById('view-activos').classList.add('d-none');
@@ -124,6 +123,40 @@
     const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file);
   }
 
+  // --- MANTENIMIENTO ---
+  const maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+
+  function mostrarModalRevision() { 
+    document.getElementById('maintModalTitle').innerText = 'Programar Nueva Revisión';
+    document.getElementById('revId').value = ''; 
+    document.getElementById('revTipo').value = ''; 
+    document.getElementById('revFecha').value = ''; 
+    maintModal.show(); 
+  }
+
+  function editRevision(id, tipo, fecha) {
+    document.getElementById('maintModalTitle').innerText = 'Editar Revisión';
+    document.getElementById('revId').value = id; 
+    document.getElementById('revTipo').value = tipo;
+    document.getElementById('revFecha').value = fecha; 
+    maintModal.show();
+  }
+
+  function submitRevision() {
+    const id = document.getElementById('revId').value;
+    const tipo = document.getElementById('revTipo').value;
+    const fecha = document.getElementById('revFecha').value;
+    if(!tipo || !fecha) return alert("Rellena todos los campos");
+    
+    const afterSave = () => { maintModal.hide(); loadMaint(); };
+
+    if (id) {
+      google.script.run.withSuccessHandler(afterSave).updateRevision({ idPlan: id, tipo: tipo, fechaProx: fecha });
+    } else {
+      google.script.run.withSuccessHandler(afterSave).crearRevision({ idActivo: currentAssetId, tipo: tipo, fechaProx: fecha });
+    }
+  }
+
   function loadMaint() {
     if(!currentAssetId) return;
     const tbody = document.getElementById('maintTableBody'); tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
@@ -132,29 +165,95 @@
       planes.forEach(p => {
         const diff = Math.ceil((new Date(p.fechaProxima) - new Date())/86400000);
         let c = (diff < 0) ? 'bg-rojo' : (diff <= 30) ? 'bg-amarillo' : 'bg-verde';
-        html += `<tr><td class="text-center"><span class="dot ${c}"></span></td><td>${p.tipo}</td><td>${p.fechaProxima}</td><td><button class="btn btn-sm btn-light">Editar</button></td></tr>`;
+        html += `<tr><td class="text-center"><span class="dot ${c}"></span></td><td>${p.tipo}</td><td>${p.fechaProxima}</td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editRevision('${p.id}', '${p.tipo}', '${p.fechaProxima}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteMaint('${p.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`;
       });
       tbody.innerHTML = html;
     }).obtenerPlanMantenimiento(currentAssetId);
   }
 
+  function deleteMaint(id) {
+    if(!confirm("¿Borrar esta revisión?")) return;
+    google.script.run.withSuccessHandler(() => loadMaint()).eliminarRevision(id);
+  }
+
+  // --- CONTRATOS ---
+  const contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
+  
+  function mostrarModalContrato() { 
+    document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+    document.getElementById('contId').value = '';
+    ['contProv','contRef','contIni','contFin'].forEach(id=>document.getElementById(id).value=''); 
+    contractModal.show(); 
+  }
+
+  function editContract(id, prov, ref, ini, fin) {
+    document.getElementById('contModalTitle').innerText = 'Editar Contrato';
+    document.getElementById('contId').value = id;
+    document.getElementById('contProv').value = prov;
+    document.getElementById('contRef').value = ref;
+    document.getElementById('contIni').value = ini;
+    document.getElementById('contFin').value = fin;
+    contractModal.show();
+  }
+
+  function submitContract() { 
+    const id = document.getElementById('contId').value;
+    const datos = {
+        id: id,
+        idEntidad: currentAssetId, 
+        tipoEntidad: 'ACTIVO', 
+        proveedor: document.getElementById('contProv').value, 
+        ref: document.getElementById('contRef').value, 
+        fechaIni: document.getElementById('contIni').value, 
+        fechaFin: document.getElementById('contFin').value
+    };
+    
+    if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return alert("Campos incompletos");
+
+    const cb = () => { contractModal.hide(); loadContracts(); };
+
+    if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos);
+    else google.script.run.withSuccessHandler(cb).crearContrato(datos);
+  }
+
   function loadContracts() {
     if(!currentAssetId) return;
-    const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="4">Cargando...</td></tr>';
+    const tbody = document.getElementById('contractsTableBody'); 
+    tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>';
+    
     google.script.run.withSuccessHandler(list => {
-      let html = list.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin contratos</td></tr>';
-      list.forEach(c => html += `<tr><td><span class="badge badge-${c.color}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.fin}</small></td></tr>`);
+      console.log("Contratos recibidos:", list); // <--- MIRA LA CONSOLA DEL NAVEGADOR
+      
+      let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>';
+      
+      list.forEach(c => {
+        // Mapeo de colores de Bootstrap para asegurar que se vea
+        let badgeClass = 'bg-success'; // Verde por defecto
+        if (c.color === 'rojo') badgeClass = 'bg-danger';
+        if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark';
+        
+        html += `
+          <tr>
+            <td><span class="badge ${badgeClass}">${c.estado}</span></td>
+            <td>${c.proveedor}</td>
+            <td>${c.ref}</td>
+            <td><small>${c.inicio} - ${c.fin}</small></td>
+            <td class="text-end">
+              <div class="btn-group">
+                <button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}')"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button>
+              </div>
+            </td>
+          </tr>`;
+      });
       tbody.innerHTML = html;
     }).obtenerContratos(currentAssetId);
   }
 
-  const maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
-  function mostrarModalRevision() { document.getElementById('revTipo').value=''; document.getElementById('revFecha').value=''; maintModal.show(); }
-  function submitRevision() { google.script.run.withSuccessHandler(()=>{maintModal.hide(); loadMaint();}).crearRevision({idActivo:currentAssetId, tipo:document.getElementById('revTipo').value, fechaProx:document.getElementById('revFecha').value}); }
-
-  const contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
-  function mostrarModalContrato() { ['contProv','contRef','contIni','contFin'].forEach(id=>document.getElementById(id).value=''); contractModal.show(); }
-  function submitContract() { google.script.run.withSuccessHandler(()=>{contractModal.hide(); loadContracts();}).crearContrato({idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value}); }
+  function deleteContract(id) {
+    if(!confirm("¿Borrar contrato?")) return;
+    google.script.run.withSuccessHandler(() => loadContracts()).eliminarContrato(id);
+  }
 
   function loadCampusList() {
     google.script.run.withSuccessHandler(data => {
@@ -169,16 +268,18 @@
     }).getTableData('EDIFICIOS');
   }
   function initFilters() { google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);document.getElementById('filterCampus').innerHTML=h;}).getListaCampus(); }
-  
   function loadEdificios(id) {
     const sel=document.getElementById('filterEdificio'); sel.disabled=true; sel.innerHTML='<option>Cargando...</option>';
     if(!id) return;
     google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);sel.innerHTML=h; sel.disabled=false;}).getEdificiosPorCampus(id);
   }
-  
+  function loadEdificiosModal(id) {
+    const sel=document.getElementById('fEdificioModal'); sel.disabled=true; sel.innerHTML='<option>Cargando...</option>';
+    if(!id) return;
+    google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);sel.innerHTML=h; sel.disabled=false;}).getEdificiosPorCampus(id);
+  }
   function loadActivos(id) {
-    const search = document.getElementById('filterSearch');
-    search.disabled=false; search.value=''; // Limpiar búsqueda
+    document.getElementById('filterSearch').disabled=false; const search = document.getElementById('filterSearch'); search.value='';
     const tbody=document.getElementById('tableActivos'); tbody.innerHTML='<tr><td colspan="4" class="text-center py-5">Cargando...</td></tr>';
     google.script.run.withSuccessHandler(l=>{
       if(!l.length){tbody.innerHTML='<tr><td colspan="4" class="text-center py-5">Vacío</td></tr>';return;}
@@ -186,18 +287,14 @@
       tbody.innerHTML=h;
     }).getActivosPorEdificio(id);
   }
-
   function filterAssets() {
-    const input = document.getElementById('filterSearch');
-    const filter = input.value.toLowerCase();
-    const tbody = document.getElementById('tableActivos');
-    const rows = tbody.getElementsByTagName('tr');
+    const input = document.getElementById('filterSearch'); const filter = input.value.toLowerCase();
+    const rows = document.getElementById('tableActivos').getElementsByTagName('tr');
     for (let i = 0; i < rows.length; i++) {
       const text = rows[i].textContent || rows[i].innerText;
-      if (text.toLowerCase().indexOf(filter) > -1) { rows[i].style.display = ""; } else { rows[i].style.display = "none"; }
+      rows[i].style.display = (text.toLowerCase().indexOf(filter) > -1) ? "" : "none";
     }
   }
-
   function loadDashboard() {
     google.script.run.withSuccessHandler(d => {
       document.getElementById('d-activos').innerText=d.activos; document.getElementById('d-vencidas').innerText=d.vencidas; document.getElementById('d-pendientes').innerText=d.pendientes; document.getElementById('d-edificios').innerText=d.edificios;
@@ -205,14 +302,17 @@
       myChart = new Chart(ctx, {type:'line', data:{labels:['Ene','Feb','Mar','Abr'], datasets:[{label:'Actividad', data:[5,10,8,12], borderColor:'#0d6efd', tension:0.4}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}}});
     }).getDatosDashboard();
   }
-
   const myModal = new bootstrap.Modal(document.getElementById('createModal'));
   function mostrarModalCrear(t) {
     document.getElementById('createForm').reset(); document.getElementById('modalType').value=t; document.getElementById('modalTitle').innerText='Crear '+t;
     const ex=document.getElementById('extraFields'); ex.innerHTML='';
     if(t==='CAMPUS') ex.innerHTML=`<div class="mb-2"><label>Provincia</label><input id="fProv" class="form-control"></div><div class="mb-2"><label>Dirección</label><input id="fDir" class="form-control"></div>`;
     else if(t==='EDIFICIO') { ex.innerHTML=`<div class="mb-2"><label>Campus</label><select id="fCampus" class="form-select"><option>Cargando...</option></select></div><div class="mb-2"><label>Contacto</label><input id="fCont" class="form-control"></div>`; google.script.run.withSuccessHandler(l=>{let h='';l.forEach(i=>{h+=`<option value="${i.id}">${i.nombre}</option>`});document.getElementById('fCampus').innerHTML=h;}).getListaCampus(); }
-    else if(t==='ACTIVO') ex.innerHTML=`<div class="alert alert-info small">Usa el botón en la vista Activos</div>`;
+    else if(t==='ACTIVO') {
+       ex.innerHTML=`<div class="mb-2"><label>1. Campus</label><select id="fCampusModal" class="form-select" onchange="loadEdificiosModal(this.value)"><option value="">Cargando...</option></select></div><div class="mb-2"><label>2. Edificio</label><select id="fEdificioModal" class="form-select" disabled><option value="">- Seleccione Campus -</option></select></div><div class="mb-2"><label>Tipo Instalación</label><select id="fTipo" class="form-select" disabled><option>Cargando...</option></select></div><div class="mb-2"><label>Marca</label><input id="fMarca" class="form-control"></div>`;
+       google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>{h+=`<option value="${i.id}">${i.nombre}</option>`});document.getElementById('fCampusModal').innerHTML=h;}).getListaCampus();
+       google.script.run.withSuccessHandler(ts=>{let o='<option value="">- Seleccione -</option>';ts.forEach(t=>{o+=`<option value="${t.id}">${t.nombre}</option>`});document.getElementById('fTipo').innerHTML=o;document.getElementById('fTipo').disabled=false;}).getCatalogoInstalaciones();
+    }
     myModal.show();
   }
   function submitCreate() {
@@ -220,5 +320,10 @@
     btn.disabled=true; const cb=(r)=>{btn.disabled=false;if(r.success){myModal.hide(); navTo(t.toLowerCase()=='activo'?'activos':t.toLowerCase()=='edificio'?'edificios':'campus',null,null);}else alert("Error");};
     if(t==='CAMPUS') google.script.run.withSuccessHandler(cb).crearCampus({nombre:n, provincia:document.getElementById('fProv').value, direccion:document.getElementById('fDir').value});
     else if(t==='EDIFICIO') google.script.run.withSuccessHandler(cb).crearEdificio({nombre:n, idCampus:document.getElementById('fCampus').value, contacto:document.getElementById('fCont').value});
+    else if(t==='ACTIVO') {
+        const idEd = document.getElementById('fEdificioModal').value; const tipo = document.getElementById('fTipo').value;
+        if(!idEd || !tipo) { alert("Completa todos los campos"); btn.disabled=false; return; }
+        google.script.run.withSuccessHandler(cb).crearActivo({nombre:n, idEdificio: idEd, tipo: tipo, marca: document.getElementById('fMarca').value});
+    }
   }
 </script>
