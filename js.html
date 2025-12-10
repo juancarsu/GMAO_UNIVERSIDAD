@@ -1,10 +1,13 @@
 <script>
   let myChart, currentAssetId = null;
   let campusLoaded = false;
+  let globalMaintData = [];
+  let globalContractData = []; // Variable para cachear los contratos globales
 
   window.onload = function() { 
       loadDashboard(); 
       initFilters(); 
+      
       // Cargar normas
       google.script.run.withSuccessHandler(list => {
           const sel = document.getElementById('revNorma');
@@ -67,11 +70,11 @@
     if(viewId==='campus') loadCampusList();
     if(viewId==='edificios') loadEdificiosList();
     if(viewId==='mantenimiento') loadGlobalMaint();
+    if(viewId==='contratos') loadGlobalContracts(); // Carga la vista global de contratos
     if(viewId==='activos') { const sel = document.getElementById('filterCampus'); if(!sel || sel.options.length <= 1) initFilters(); }
   }
 
   // --- MANTENIMIENTO GLOBAL ---
-  let globalMaintData = [];
   let filterState = { color: 'all', type: 'all' };
 
   function loadGlobalMaint() {
@@ -111,6 +114,113 @@
     tbody.innerHTML = html;
   }
   function deleteGlobalMaint(id) { if(!confirm("¿Borrar esta revisión?")) return; google.script.run.withSuccessHandler(() => loadGlobalMaint()).eliminarRevision(id); }
+
+  // --- CONTRATOS GLOBAL (NUEVA LÓGICA) ---
+
+  function loadGlobalContracts() {
+    const viewContratos = document.getElementById('view-contratos');
+    viewContratos.innerHTML = `
+      <div class="page-header">
+        <h1 class="page-title">Gestión de Contratos</h1>
+        <button class="btn btn-primary" onclick="mostrarModalContrato()">+ Nuevo Contrato</button>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <div class="mb-2" id="contractFilterGroup">
+            <span class="text-muted small fw-bold me-2">ESTADO:</span>
+            <button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button>
+            <button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button>
+            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th class="ps-4">Estado</th>
+                <th>Activo/Edificio</th>
+                <th>Proveedor</th>
+                <th>Referencia</th>
+                <th>Vigencia</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableGlobalContracts">
+              <tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando contratos...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+
+    // Iniciar carga de datos
+    google.script.run.withSuccessHandler(data => { 
+        globalContractData = data; 
+        renderGlobalContracts(data);
+    }).obtenerContratosGlobal();
+  }
+
+  function renderGlobalContracts(data) {
+    const tbody = document.getElementById('tableGlobalContracts');
+    if (!tbody) return; // Salir si el cuerpo de la tabla no está cargado
+    
+    if (!data || data.length === 0) { 
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">No hay contratos registrados.</td></tr>'; 
+        return; 
+    }
+    
+    let html = '';
+    data.forEach(c => {
+        let badgeClass = c.color === 'verde' ? 'bg-success' : c.color === 'amarillo' ? 'bg-warning text-dark' : c.color === 'rojo' ? 'bg-danger' : 'bg-secondary';
+        
+        html += `<tr class="align-middle">
+            <td class="ps-4"><span class="badge ${badgeClass}">${c.estado}</span></td>
+            <td>${c.nombreEntidad || 'N/A'}</td> 
+            <td>${c.proveedor}</td>
+            <td>${c.ref}</td>
+            <td>${c.inicio} - ${c.fin}</td>
+            <td class="text-end pe-4">
+                <button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}')"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+  }
+
+  function setContractFilter(estado, btn) {
+      document.querySelectorAll('#contractFilterGroup button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+
+      if (estado === 'all') {
+          renderGlobalContracts(globalContractData);
+      } else {
+          const filtered = globalContractData.filter(c => c.estado === estado);
+          renderGlobalContracts(filtered);
+      }
+  }
+
+  function editContractGlobal(id) {
+      const contrato = globalContractData.find(c => c.id === id);
+      if (contrato) {
+          // Si estamos en la vista global, abrimos el modal de edición
+          document.getElementById('contModalTitle').innerText = 'Editar Contrato';
+          document.getElementById('contId').value = contrato.id;
+          document.getElementById('contProv').value = contrato.proveedor;
+          document.getElementById('contRef').value = contrato.ref;
+          document.getElementById('contIni').value = contrato.inicio;
+          document.getElementById('contFin').value = contrato.fin;
+          document.getElementById('contEstado').value = contrato.estadoDB;
+          contractModal.show();
+      }
+  }
+
 
   // --- FICHA ACTIVO ---
   function openAssetDetail(id) {
