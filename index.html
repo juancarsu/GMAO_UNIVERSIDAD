@@ -60,6 +60,21 @@
       <div class="page-header"><h1 class="page-title">Plan de Mantenimiento Global</h1></div>
       <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
+          <div class="row mb-3">
+              <div class="col-md-3">
+                  <label class="form-label small text-muted">Campus</label>
+                  <select id="maintFilterCampus" class="form-select" onchange="loadEdificiosMaintFilter(this.value)">
+                      <option value="">Todos los Campus</option>
+                  </select>
+              </div>
+              <div class="col-md-3">
+                  <label class="form-label small text-muted">Edificio</label>
+                  <select id="maintFilterEdificio" class="form-select" onchange="setMaintFilter('edificio', this.value)">
+                      <option value="">Todos los Edificios</option>
+                  </select>
+              </div>
+          </div>
+          
           <div class="mb-2" id="filterGroupColor">
             <span class="text-muted small fw-bold me-2">ESTADO:</span>
             <button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('color', 'all', this)">Todas</button>
@@ -77,7 +92,26 @@
           </div>
         </div>
       </div>
-      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4 text-center" style="width:50px;">#</th><th>Edificio</th><th>Activo</th><th>Tipo Revisión</th><th>Fecha Límite</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalMaint"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
+      
+      <div class="card border-0 shadow-sm">
+        <div style="max-height: 500px; overflow-y: auto;">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light sticky-top">
+              <tr>
+                <th class="ps-4 text-center" style="width:50px;">#</th>
+                <th>Edificio</th>
+                <th>Activo</th>
+                <th>Tipo Revisión</th>
+                <th>Fecha Límite</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableGlobalMaint">
+              <tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div id="view-asset-detail" class="view-section d-none">
@@ -130,7 +164,60 @@
       </div>
     </div>
 
-    <div id="view-contratos" class="view-section d-none"><div class="alert alert-info">🚧 Módulo global en construcción</div></div>
+    <div id="view-contratos" class="view-section d-none">
+      <div class="page-header">
+        <h1 class="page-title">Gestión de Contratos</h1>
+        <button class="btn btn-primary" onclick="mostrarModalContrato()">+ Nuevo Contrato</button>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+          <div class="row mb-3">
+              <div class="col-md-3">
+                  <label class="form-label small text-muted">Campus</label>
+                  <select id="contractFilterCampus" class="form-select" onchange="loadEdificiosContractFilter(this.value)">
+                      <option value="">Todos los Campus</option>
+                  </select>
+              </div>
+              <div class="col-md-3">
+                  <label class="form-label small text-muted">Edificio</label>
+                  <select id="contractFilterEdificio" class="form-select" onchange="setContractFilter('edificio', this.value)">
+                      <option value="">Todos los Edificios</option>
+                  </select>
+              </div>
+          </div>
+
+          <div class="mb-2" id="contractFilterGroup">
+            <span class="text-muted small fw-bold me-2">ESTADO:</span>
+            <button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button>
+            <button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button>
+            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card border-0 shadow-sm">
+        <div style="max-height: 500px; overflow-y: auto;">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light sticky-top">
+              <tr>
+                <th class="ps-4">Estado</th>
+                <th>Activo/Edificio</th>
+                <th>Proveedor</th>
+                <th>Referencia</th>
+                <th>Vigencia</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableGlobalContracts">
+              <tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
