@@ -14,167 +14,116 @@ function doGet(e) {
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
-// *** NUEVA FUNCIÓN IMPORTANTE ***
 function include(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
 // ==========================================
-// 2. INSTALACIÓN (SETUP)
+// 2. HELPERS DE BASE DE DATOS
 // ==========================================
-function instalarSistema(urlSheet) {
-  try {
-    let ss;
-    try { ss = SpreadsheetApp.openByUrl(urlSheet); } 
-    catch(e) { ss = SpreadsheetApp.openById(urlSheet); }
-    const ssId = ss.getId();
-    
-    const tabs = {
-      'CONFIG': ['Clave', 'Valor', 'Descripcion'],
-      'CAMPUS': ['ID', 'Nombre', 'Provincia', 'Direccion', 'ID_Carpeta_Drive'],
-      'EDIFICIOS': ['ID', 'ID_Campus', 'Nombre', 'Contacto', 'ID_Carpeta_Drive', 'ID_Carpeta_Activos'],
-      'CAT_INSTALACIONES': ['ID', 'Nombre', 'Normativa_Ref', 'Periodicidad_Dias'],
-      'ACTIVOS': ['ID', 'ID_Edificio', 'Tipo', 'Nombre', 'Marca', 'Fecha_Alta', 'ID_Carpeta_Drive'],
-      'DOCS_HISTORICO': ['ID_Doc', 'Tipo_Entidad', 'ID_Entidad', 'Nombre_Archivo', 'URL', 'Version', 'Fecha', 'Usuario', 'ID_Archivo_Drive'],
-      'PLAN_MANTENIMIENTO': ['ID_Plan', 'ID_Activo', 'Tipo_Revision', 'Fecha_Ultima', 'Fecha_Proxima', 'Periodicidad_Dias', 'Estado'],
-      'CONTRATOS': ['ID_Contrato', 'Tipo_Entidad', 'ID_Entidad', 'Proveedor', 'Num_Ref', 'Fecha_Inicio', 'Fecha_Fin']
-    };
-
-    const sheets = ss.getSheets().map(s => s.getName());
-    for (const [name, headers] of Object.entries(tabs)) {
-      let sheet = sheets.includes(name) ? ss.getSheetByName(name) : ss.insertSheet(name);
-      if (sheet.getLastRow() === 0) {
-        sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold').setBackground('#ddd');
-      }
-    }
-
-    const sheetConfig = ss.getSheetByName('CONFIG');
-    const dataConfig = sheetConfig.getDataRange().getValues();
-    let rootId = null;
-    for(let row of dataConfig) { if(row[0] === 'ROOT_FOLDER_ID') rootId = row[1]; }
-
-    if(!rootId) {
-      const rootFolder = DriveApp.createFolder("GMAO UNIVERSIDAD - GESTIÓN DOCUMENTAL");
-      rootId = rootFolder.getId();
-      sheetConfig.appendRow(['ROOT_FOLDER_ID', rootId, 'Raíz del sistema']);
-    }
-    
-    const emailAdmin = Session.getActiveUser().getEmail();
-    sheetConfig.appendRow(['EMAIL_AVISOS', emailAdmin, 'Email para alertas semanales']);
-
-    PROPS.setProperty('DB_SS_ID', ssId);
-    return { success: true };
-  } catch (e) {
-    return { success: false, error: e.toString() };
-  }
+function getSheetData(sheetName) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getDataRange().getValues();
 }
 
-// ==========================================
-// 3. LÓGICA DE DRIVE
-// ==========================================
 function getRootFolderId() {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const data = ss.getSheetByName('CONFIG').getDataRange().getValues();
   for(let row of data) { if(row[0] === 'ROOT_FOLDER_ID') return row[1]; }
   return null;
 }
+function crearCarpeta(nombre, idPadre) { return DriveApp.getFolderById(idPadre).createFolder(nombre).getId(); }
 
-function crearCarpeta(nombre, idPadre) {
-  return DriveApp.getFolderById(idPadre).createFolder(nombre).getId();
+// ==========================================
+// 3. API PARA VISTAS (Listas y Detalles)
+// ==========================================
+function getListaCampus() {
+  const data = getSheetData('CAMPUS');
+  return data.slice(1).map(r => ({ id: r[0], nombre: r[1] }));
 }
 
-// ==========================================
-// 4. CATÁLOGO Y NORMATIVA
-// ==========================================
-function getCatalogoInstalaciones() {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('CAT_INSTALACIONES');
-  
-  if (sheet.getLastRow() < 2) {
-    sheet.appendRow([Utilities.getUuid(), 'Baja Tensión (REBT)', 'RD 842/2002', 1825]);
-    sheet.appendRow([Utilities.getUuid(), 'Ascensores', 'ITC AEM 1', 30]);
-    sheet.appendRow([Utilities.getUuid(), 'Instalaciones Térmicas (RITE)', 'RD 1027/2007', 365]);
-    sheet.appendRow([Utilities.getUuid(), 'Protección Incendios (PCI)', 'RIPCI', 90]);
-  }
-  
-  const data = sheet.getDataRange().getValues();
-  const catalogo = [];
+function getEdificiosPorCampus(idCampus) {
+  const data = getSheetData('EDIFICIOS');
+  return data.slice(1)
+    .filter(r => String(r[1]) === String(idCampus))
+    .map(r => ({ id: r[0], nombre: r[2] }));
+}
+
+function getActivosPorEdificio(idEdificio) {
+  const data = getSheetData('ACTIVOS');
+  return data.slice(1)
+    .filter(r => String(r[1]) === String(idEdificio))
+    .map(r => ({ id: r[0], nombre: r[3], tipo: r[2], marca: r[4] }));
+}
+
+function getAssetInfo(idActivo) {
+  const data = getSheetData('ACTIVOS');
   for(let i=1; i<data.length; i++){
-    catalogo.push({ id: data[i][0], nombre: data[i][1], norma: data[i][2], dias: data[i][3] });
-  }
-  return catalogo;
-}
-
-// ==========================================
-// 5. CREACIÓN DE ENTIDADES
-// ==========================================
-function crearCampus(datos) { 
-  const rootId = getRootFolderId();
-  const folderId = crearCarpeta(datos.nombre, rootId);
-  const id = Utilities.getUuid();
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  ss.getSheetByName('CAMPUS').appendRow([id, datos.nombre, datos.provincia, datos.direccion, folderId]);
-  return { success: true };
-}
-
-function crearEdificio(datos) { 
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const campData = ss.getSheetByName('CAMPUS').getDataRange().getValues();
-  let parentFolderId = null;
-  for(let i=1; i<campData.length; i++){
-    if(String(campData[i][0]) === String(datos.idCampus)) { parentFolderId = campData[i][4]; break; }
-  }
-  if(!parentFolderId) return { success: false, error: "Campus no encontrado" };
-  
-  const edifFolderId = crearCarpeta(datos.nombre, parentFolderId);
-  const activosFolderId = crearCarpeta("Activos", edifFolderId);
-  const id = Utilities.getUuid();
-  ss.getSheetByName('EDIFICIOS').appendRow([id, datos.idCampus, datos.nombre, datos.contacto, edifFolderId, activosFolderId]);
-  return { success: true };
-}
-
-function crearActivo(datos) { 
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const edifData = ss.getSheetByName('EDIFICIOS').getDataRange().getValues();
-  let parentFolderId = null;
-  for(let i=1; i<edifData.length; i++){
-    if(String(edifData[i][0]) === String(datos.idEdificio)) { parentFolderId = edifData[i][5]; break; } 
-  }
-  const assetFolderId = crearCarpeta(datos.nombre, parentFolderId);
-  const idActivo = Utilities.getUuid();
-  
-  const sheetCat = ss.getSheetByName('CAT_INSTALACIONES');
-  const catData = sheetCat.getDataRange().getValues();
-  let diasRevision = 365;
-  let nombreTipo = datos.tipo; 
-
-  for(let i=1; i<catData.length; i++){
-    if(String(catData[i][0]) === String(datos.tipo)) {
-       nombreTipo = catData[i][1];
-       diasRevision = catData[i][3];
-       break;
+    if(String(data[i][0]) === String(idActivo)){
+      let fechaStr = '-';
+      if (data[i][5] && data[i][5] instanceof Date) {
+        fechaStr = Utilities.formatDate(data[i][5], Session.getScriptTimeZone(), "dd/MM/yyyy");
+      }
+      return {
+        id: data[i][0],
+        nombre: data[i][3],
+        tipo: data[i][2],
+        marca: data[i][4],
+        fechaAlta: fechaStr
+      };
     }
   }
+  throw new Error("Activo no encontrado.");
+}
 
-  ss.getSheetByName('ACTIVOS').appendRow([idActivo, datos.idEdificio, nombreTipo, datos.nombre, datos.marca, new Date(), assetFolderId]);
+// EDITAR ACTIVO
+function updateAsset(datos) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('ACTIVOS');
+  const data = sheet.getDataRange().getValues();
   
-  const sheetPlan = ss.getSheetByName('PLAN_MANTENIMIENTO');
-  const fechaAlta = new Date();
-  const fechaProx = new Date(fechaAlta.getTime() + (diasRevision * 24 * 60 * 60 * 1000));
-  
-  sheetPlan.appendRow([Utilities.getUuid(), idActivo, `Mantenimiento Legal (${nombreTipo})`, "", fechaProx, diasRevision, "ACTIVO"]);
-  return { success: true };
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(datos.id)) {
+      sheet.getRange(i+1, 3).setValue(datos.tipo);   
+      sheet.getRange(i+1, 4).setValue(datos.nombre); 
+      sheet.getRange(i+1, 5).setValue(datos.marca);  
+      return { success: true };
+    }
+  }
+  return { success: false, error: "ID no encontrado" };
 }
 
 // ==========================================
-// 6. GESTIÓN DOCUMENTAL
+// 4. API PARA TABLAS COMPLETAS
 // ==========================================
+function getTableData(tipo) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  if (tipo === 'CAMPUS') {
+    const data = getSheetData('CAMPUS');
+    return data.slice(1).map(r => ({ id: r[0], nombre: r[1], provincia: r[2], direccion: r[3] }));
+  }
+  if (tipo === 'EDIFICIOS') {
+    const data = getSheetData('EDIFICIOS');
+    const dataC = getSheetData('CAMPUS');
+    const mapCampus = {};
+    dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
+    return data.slice(1).map(r => ({ id: r[0], campus: mapCampus[r[1]] || '-', nombre: r[2], contacto: r[3] }));
+  }
+  return [];
+}
+
+// ==========================================
+// 5. FUNCIONES DE NEGOCIO
+// ==========================================
+
+// --- DOCUMENTOS ---
 function subirArchivo(base64, nombre, mime, idEntidad, tipoEntidad) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000);
     const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-    
     let targetFolderId = null;
     let sheetName = (tipoEntidad === 'EDIFICIO') ? 'EDIFICIOS' : 'ACTIVOS';
     let colIndex = (tipoEntidad === 'EDIFICIO') ? 4 : 6;
@@ -182,8 +131,7 @@ function subirArchivo(base64, nombre, mime, idEntidad, tipoEntidad) {
     for(let i=1; i<entityData.length; i++){
       if(String(entityData[i][0]) === String(idEntidad)) { targetFolderId = entityData[i][colIndex]; break; }
     }
-    
-    if(!targetFolderId) throw new Error("Carpeta no encontrada");
+    if(!targetFolderId) throw new Error("Carpeta no encontrada.");
     const sheetDocs = ss.getSheetByName('DOCS_HISTORICO');
     const docsData = sheetDocs.getDataRange().getValues();
     let maxVer = 0;
@@ -193,51 +141,60 @@ function subirArchivo(base64, nombre, mime, idEntidad, tipoEntidad) {
       }
     }
     const newVer = maxVer + 1;
-    
     const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime, `[v${newVer}] ${nombre}`);
     const file = DriveApp.getFolderById(targetFolderId).createFile(blob);
-    
     sheetDocs.appendRow([Utilities.getUuid(), tipoEntidad, idEntidad, nombre, file.getUrl(), newVer, new Date(), Session.getActiveUser().getEmail(), file.getId()]);
-    
     return { success: true, version: newVer };
   } catch(e) { return { success: false, error: e.toString() }; } finally { lock.releaseLock(); }
 }
 
 function obtenerDocs(idEntidad) {
-  try {
-    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-    const sheet = ss.getSheetByName('DOCS_HISTORICO');
-    if (sheet.getLastRow() < 2) return [];
-    
-    const data = sheet.getDataRange().getValues();
-    const res = [];
-    for(let i = data.length - 1; i >= 1; i--){
-      if(String(data[i][2]) === String(idEntidad)) {
-        let fechaFormateada = "";
-        try {
-          let fechaRaw = data[i][6];
-          fechaFormateada = (fechaRaw instanceof Date) ? Utilities.formatDate(fechaRaw, Session.getScriptTimeZone(), "dd/MM/yyyy") : String(fechaRaw);
-        } catch(e) { fechaFormateada = "--"; }
-        res.push({ nombre: data[i][3], url: data[i][4], version: data[i][5], fecha: fechaFormateada });
-      }
+  const data = getSheetData('DOCS_HISTORICO');
+  const res = [];
+  for(let i = data.length - 1; i >= 1; i--){
+    if(String(data[i][2]) === String(idEntidad)) {
+      let fecha = data[i][6] instanceof Date ? Utilities.formatDate(data[i][6], Session.getScriptTimeZone(), "dd/MM/yyyy") : String(data[i][6]);
+      res.push({ 
+        id: data[i][0], // <--- ID del documento para poder borrarlo
+        nombre: data[i][3], 
+        url: data[i][4], 
+        version: data[i][5], 
+        fecha: fecha 
+      });
     }
-    return res;
-  } catch (e) { throw new Error(e.toString()); }
+  }
+  return res;
 }
 
-// ==========================================
-// 7. GESTIÓN MANTENIMIENTO
-// ==========================================
-function obtenerPlanMantenimiento(idActivo) {
+// *** NUEVO: ELIMINAR DOCUMENTO ***
+function eliminarDocumento(idDoc) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
-  if(!sheet || sheet.getLastRow() < 2) return [];
+  const sheet = ss.getSheetByName('DOCS_HISTORICO');
   const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(idDoc)) {
+      // Borrar de Drive si es posible
+      const idDrive = data[i][8]; 
+      if (idDrive) {
+        try { DriveApp.getFileById(idDrive).setTrashed(true); } catch(e) { console.warn("No se pudo borrar de Drive: " + e); }
+      }
+      // Borrar fila (i+1 porque es base 1)
+      sheet.deleteRow(i + 1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Documento no encontrado" };
+}
+
+// --- MANTENIMIENTO ---
+function obtenerPlanMantenimiento(idActivo) {
+  const data = getSheetData('PLAN_MANTENIMIENTO');
   const planes = [];
   for(let i=1; i<data.length; i++) {
     if(String(data[i][1]) === String(idActivo)) {
-      let fProx = data[i][4];
-      let fechaStr = (fProx instanceof Date) ? Utilities.formatDate(fProx, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
+      let f = data[i][4];
+      let fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd") : "";
       planes.push({ id: data[i][0], tipo: data[i][2], fechaProxima: fechaStr });
     }
   }
@@ -246,29 +203,24 @@ function obtenerPlanMantenimiento(idActivo) {
 
 function crearRevision(datos) { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
-  sheet.appendRow([Utilities.getUuid(), datos.idActivo, datos.tipo, "", new Date(datos.fechaProx), 365, "ACTIVO"]);
+  ss.getSheetByName('PLAN_MANTENIMIENTO').appendRow([Utilities.getUuid(), datos.idActivo, datos.tipo, "", new Date(datos.fechaProx), 365, "ACTIVO"]);
   return { success: true };
 }
 
-// ==========================================
-// 8. GESTIÓN CONTRATOS
-// ==========================================
+// --- CONTRATOS ---
 function obtenerContratos(idEntidad) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('CONTRATOS');
-  if(!sheet || sheet.getLastRow() < 2) return [];
-  const data = sheet.getDataRange().getValues();
+  const data = getSheetData('CONTRATOS');
   const contratos = [];
   const hoy = new Date();
   for(let i=1; i<data.length; i++) {
     if(String(data[i][2]) === String(idEntidad)) {
-      const fFin = data[i][6] instanceof Date ? data[i][6] : new Date(data[i][6]);
-      const fIni = data[i][5] instanceof Date ? data[i][5] : new Date(data[i][5]);
+      const fFin = new Date(data[i][6]);
+      const fIni = new Date(data[i][5]);
       let estado = 'VIGENTE'; let color = 'verde';
-      const diffDays = Math.ceil((fFin - hoy) / (1000 * 60 * 60 * 24));
+      const diffDays = Math.ceil((fFin - hoy) / 86400000);
       if (diffDays < 0) { estado = 'CADUCADO'; color = 'rojo'; }
       else if (diffDays <= 30) { estado = 'PRÓXIMO'; color = 'amarillo'; }
+      
       contratos.push({
         id: data[i][0], proveedor: data[i][3], ref: data[i][4],
         inicio: Utilities.formatDate(fIni, Session.getScriptTimeZone(), "dd/MM/yyyy"),
@@ -280,100 +232,54 @@ function obtenerContratos(idEntidad) {
   return contratos;
 }
 
-function crearContrato(datos) {
+function crearContrato(d) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('CONTRATOS');
-  sheet.appendRow([Utilities.getUuid(), datos.tipoEntidad, datos.idEntidad, datos.proveedor, datos.ref, new Date(datos.fechaIni), new Date(datos.fechaFin)]);
+  ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, new Date(d.fechaIni), new Date(d.fechaFin)]);
   return { success: true };
 }
 
 // ==========================================
-// 9. AUTOMATIZACIÓN DE AVISOS Y DASHBOARD
+// 6. DASHBOARD & CREACIÓN
 // ==========================================
 function getDatosDashboard() {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const hoy = new Date();
-  const sheetAct = ss.getSheetByName('ACTIVOS');
-  const totalActivos = sheetAct.getLastRow() - 1; 
-
-  const sheetMant = ss.getSheetByName('PLAN_MANTENIMIENTO');
-  const dataMant = sheetMant.getDataRange().getValues();
-  let revPendientes = 0, revOk = 0, revVencidas = 0;
+  const cAct = (ss.getSheetByName('ACTIVOS').getLastRow() - 1) || 0;
+  const cEdif = (ss.getSheetByName('EDIFICIOS').getLastRow() - 1) || 0;
+  const dataMant = getSheetData('PLAN_MANTENIMIENTO');
+  let revPend = 0, revVenc = 0, revOk = 0;
   for(let i=1; i<dataMant.length; i++) {
-    const fecha = dataMant[i][4] instanceof Date ? dataMant[i][4] : new Date(dataMant[i][4]);
-    const diffDays = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
-    if (diffDays < 0) revVencidas++; else if (diffDays <= 30) revPendientes++; else revOk++;
+    const diff = Math.ceil((new Date(dataMant[i][4]) - hoy) / 86400000);
+    if(diff < 0) revVenc++; else if(diff <= 30) revPend++; else revOk++;
   }
-
-  const sheetCont = ss.getSheetByName('CONTRATOS');
-  let contCaducados = 0;
-  if(sheetCont && sheetCont.getLastRow() > 1) {
-    const dataCont = sheetCont.getDataRange().getValues();
-    for(let i=1; i<dataCont.length; i++) {
-      const fecha = dataCont[i][6] instanceof Date ? dataCont[i][6] : new Date(dataCont[i][6]);
-      if (fecha < hoy) contCaducados++;
-    }
-  }
-
-  return { activos: totalActivos > 0 ? totalActivos : 0, pendientes: revPendientes, vencidas: revVencidas, ok: revOk, contratosCaducados: contCaducados };
+  const dataCont = getSheetData('CONTRATOS');
+  let contCad = 0;
+  for(let i=1; i<dataCont.length; i++) if(new Date(dataCont[i][6]) < hoy) contCad++;
+  return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratosCaducados: contCad };
 }
 
-function enviarResumenSemanal() {
+function crearCampus(d) { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheetConfig = ss.getSheetByName('CONFIG');
-  const dataConfig = sheetConfig.getDataRange().getValues();
-  let emailDestino = "";
-  for(let row of dataConfig) { if(row[0] === 'EMAIL_AVISOS') emailDestino = row[1]; }
-  if(!emailDestino) emailDestino = Session.getActiveUser().getEmail();
-
-  const hoy = new Date();
-  let alertas = [];
-  const sheetMant = ss.getSheetByName('PLAN_MANTENIMIENTO');
-  const dataMant = sheetMant.getDataRange().getValues();
-  const mapActivos = {};
-  const dataAct = ss.getSheetByName('ACTIVOS').getDataRange().getValues();
-  for(let i=1; i<dataAct.length; i++) { mapActivos[dataAct[i][0]] = dataAct[i][3]; } 
-
-  for(let i=1; i<dataMant.length; i++) {
-    const fecha = new Date(dataMant[i][4]);
-    const diffDays = Math.ceil((fecha - hoy) / (1000 * 60 * 60 * 24));
-    if(diffDays <= 30) {
-      const nombreActivo = mapActivos[dataMant[i][1]] || "Desconocido";
-      const estado = diffDays < 0 ? "🔴 VENCIDO" : "🟡 PRÓXIMO";
-      alertas.push(`<li><strong>${estado}</strong>: ${nombreActivo} - ${dataMant[i][2]} (${Utilities.formatDate(fecha, Session.getScriptTimeZone(), "dd/MM/yyyy")})</li>`);
-    }
-  }
-  const sheetCont = ss.getSheetByName('CONTRATOS');
-  if(sheetCont) {
-    const dataCont = sheetCont.getDataRange().getValues();
-    for(let i=1; i<dataCont.length; i++) {
-      const fecha = new Date(dataCont[i][6]);
-      if(fecha < hoy) alertas.push(`<li><strong>🔴 CONTRATO CADUCADO</strong>: Proveedor ${dataCont[i][3]} (Ref: ${dataCont[i][4]})</li>`);
-    }
-  }
-
-  if(alertas.length > 0) {
-    const htmlBody = `<h3>Resumen Semanal GMAO</h3><ul>${alertas.join('')}</ul>`;
-    MailApp.sendEmail({ to: emailDestino, subject: "⚠️ Alerta GMAO: Vencimientos", htmlBody: htmlBody });
-  }
+  const fId = crearCarpeta(d.nombre, getRootFolderId());
+  ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]);
+  return {success:true};
 }
-
-// ==========================================
-// 10. ÁRBOL UI
-// ==========================================
-function getArbolDatos() {
+function crearEdificio(d) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const campus = ss.getSheetByName('CAMPUS').getDataRange().getValues().slice(1);
-  const edificios = ss.getSheetByName('EDIFICIOS').getDataRange().getValues().slice(1);
-  const activos = ss.getSheetByName('ACTIVOS').getDataRange().getValues().slice(1);
-  
-  return campus.map(c => ({
-    id: c[0], nombre: c[1], type: 'CAMPUS',
-    hijos: edificios.filter(e => String(e[1]) === String(c[0])).map(e => ({
-      id: e[0], nombre: e[2], type: 'EDIFICIO',
-      hijos: activos.filter(a => String(a[1]) === String(e[0])).map(a => ({
-        id: a[0], nombre: a[3], type: 'ACTIVO'
-      }))
-    }))
-  }));
+  const cData = getSheetData('CAMPUS');
+  let pId; for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4];
+  const fId = crearCarpeta(d.nombre, pId);
+  const aId = crearCarpeta("Activos", fId);
+  ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId]);
+  return {success:true};
 }
+function crearActivo(d) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const eData = getSheetData('EDIFICIOS');
+  let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5];
+  const fId = crearCarpeta(d.nombre, pId);
+  const id = Utilities.getUuid();
+  ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, d.tipo, d.nombre, d.marca, new Date(), fId]);
+  return {success:true};
+}
+function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
