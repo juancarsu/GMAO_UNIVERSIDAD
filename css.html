@@ -131,8 +131,8 @@
   /* MODALES MODERNOS */
   .modal-content {
     border: none;
-    border-radius: 1rem; /* Bordes más redondeados */
-    box-shadow: 0 10px 40px rgba(0,0,0,0.1); /* Sombra suave y profunda */
+    border-radius: 1rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
   }
   .modal-header {
     border-bottom: 1px solid #f3f4f6;
@@ -147,11 +147,32 @@
   .modal-footer {
     border-top: 1px solid #f3f4f6;
     padding: 1.25rem;
-    background-color: #f9fafb; /* Gris muy suave */
+    background-color: #f9fafb;
     border-radius: 0 0 1rem 1rem;
   }
   .modal-title {
     font-weight: 600;
     color: var(--text-color);
   }
+
+  /* =========================================
+     SEMÁFOROS Y BADGES (AQUÍ ESTÁN)
+     ========================================= */
+  .dot { 
+    height: 12px; 
+    width: 12px; 
+    border-radius: 50%; 
+    display: inline-block; 
+    margin-right: 6px; 
+  }
+  
+  .bg-verde { background-color: #198754; } 
+  .bg-amarillo { background-color: #ffc107; } 
+  .bg-rojo { background-color: #dc3545; }
+  .bg-gris { background-color: #6c757d; } /* El gris para estados desconocidos/vacíos */
+
+  /* Badges para tablas */
+  .badge-verde { background-color: #d1e7dd; color: #0f5132; }
+  .badge-amarillo { background-color: #fff3cd; color: #664d03; }
+  .badge-rojo { background-color: #f8d7da; color: #842029; }
 </style>
