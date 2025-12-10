@@ -100,7 +100,6 @@
             </div>
           </div>
         </div>
-
         <div class="tab-pane fade" id="tab-docs">
           <div class="card p-3 mb-3 bg-light border-0">
             <div class="d-flex gap-2">
@@ -111,13 +110,11 @@
           </div>
           <table class="table table-striped bg-white shadow-sm rounded"><thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Versión</th><th>Fecha</th><th></th></tr></thead><tbody id="docsTableBody"></tbody></table>
         </div>
-
         <div class="tab-pane fade" id="tab-maint">
           <div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalRevision()">+ Programar Revisión</button></div>
           <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th class="text-center" style="width:50px;">Estado</th><th>Tipo</th><th>Próxima</th><th></th></tr></thead><tbody id="maintTableBody"></tbody></table>
           <div class="mt-2 small text-muted"><span class="dot bg-verde"></span> OK | <span class="dot bg-amarillo"></span> Próximo | <span class="dot bg-rojo"></span> Vencido</div>
         </div>
-
         <div class="tab-pane fade" id="tab-contracts">
           <div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div>
           <table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table>
@@ -129,34 +126,44 @@
     <div id="view-contratos" class="view-section d-none"><div class="alert alert-info">🚧 Módulo global en construcción</div></div>
   </main>
 
-  <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitCreate()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div>
+      </div>
+    </div>
+  </div>
   
   <div class="modal fade" id="maintModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <input type="hidden" id="revId"> <div class="mb-3"><label>Tipo</label><input type="text" class="form-control" id="revTipo"></div>
+          <input type="hidden" id="revId">
+          <div class="mb-3"><label>Tipo</label><input type="text" class="form-control" id="revTipo"></div>
           <div class="mb-3"><label>Fecha</label><input type="date" class="form-control" id="revFecha"></div>
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitRevision()">Guardar</button></div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div>
       </div>
     </div>
   </div>
   
   <div class="modal fade" id="contractModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
         <div class="modal-body">
-          <input type="hidden" id="contId"> <div class="mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div>
-          <div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div>
+          <input type="hidden" id="contId">
           <div class="row">
-            <div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div>
-            <div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div>
+             <div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div>
+             <div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div>
           </div>
+          <div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div>
+          <div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div>
         </div>
-        <div class="modal-footer"><button type="button" class="btn btn-primary" onclick="submitContract()">Guardar</button></div>
+        <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div>
       </div>
     </div>
   </div>
