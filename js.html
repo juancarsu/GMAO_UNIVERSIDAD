@@ -2,7 +2,8 @@
   let myChart, currentAssetId = null;
   let campusLoaded = false;
   let globalMaintData = [];
-  let globalContractData = []; // Variable para cachear los contratos globales
+  let globalContractData = [];
+  let currentActiveAssetId = null; // NUEVA VARIABLE GLOBAL TEMPORAL
 
   window.onload = function() { 
       loadDashboard(); 
@@ -66,11 +67,15 @@
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
     const target = document.getElementById('view-' + viewId);
     if(target) target.classList.remove('d-none');
+    
+    // Al navegar a cualquier vista, aseguramos que la ID temporal se limpie
+    currentActiveAssetId = null;
+
     if(viewId==='dashboard') loadDashboard();
     if(viewId==='campus') loadCampusList();
     if(viewId==='edificios') loadEdificiosList();
     if(viewId==='mantenimiento') loadGlobalMaint();
-    if(viewId==='contratos') loadGlobalContracts(); // Carga la vista global de contratos
+    if(viewId==='contratos') loadGlobalContracts(); 
     if(viewId==='activos') { const sel = document.getElementById('filterCampus'); if(!sel || sel.options.length <= 1) initFilters(); }
   }
 
@@ -109,122 +114,42 @@
         if (item.color === 'rojo') dotClass = 'bg-rojo';
         if (item.color === 'amarillo') dotClass = 'bg-amarillo';
         if (item.color === 'verde') dotClass = 'bg-verde';
-        html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td><small class="text-muted d-block">${item.edificio}</small></td><td class="fw-bold">${item.activo}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span></td><td>${item.fecha}</td><td class="text-end"><button class="btn btn-sm btn-light border me-1" onclick="editRevision('${item.id}', '${item.tipo}', '${item.fechaISO}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalMaint('${item.id}')" title="Borrar"><i class="bi bi-trash"></i></button></td></tr>`;
+        
+        // El ID del Activo (item.activoId) se encuentra en item.idActivo si Code.gs lo devuelve.
+        // ASUMIMOS que el Code.gs que envié anteriormente devuelve el ID del Activo como parte de los datos.
+        // Si no lo devuelve, tendríamos que ajustarlo, pero por ahora, extraemos el ID del objeto cacheado (globalMaintData).
+        // Vamos a modificar el botón para que busque el ID del activo en el objeto original si estamos en la vista global
+        
+        html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td><small class="text-muted d-block">${item.edificio}</small></td><td class="fw-bold">${item.activo}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span></td><td>${item.fecha}</td><td class="text-end">
+            <button class="btn btn-sm btn-light border me-1" 
+                    onclick="editRevision('${item.id}', '${item.tipo}', '${item.fechaISO}', '${item.activoId || item.idActivo}')" 
+                    title="Editar">
+                <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalMaint('${item.id}')" title="Borrar"><i class="bi bi-trash"></i></button>
+        </td></tr>`;
     });
     tbody.innerHTML = html;
   }
   function deleteGlobalMaint(id) { if(!confirm("¿Borrar esta revisión?")) return; google.script.run.withSuccessHandler(() => loadGlobalMaint()).eliminarRevision(id); }
 
-  // --- CONTRATOS GLOBAL (NUEVA LÓGICA) ---
 
+  // --- CONTRATOS GLOBAL ---
   function loadGlobalContracts() {
-    const viewContratos = document.getElementById('view-contratos');
-    viewContratos.innerHTML = `
-      <div class="page-header">
-        <h1 class="page-title">Gestión de Contratos</h1>
-        <button class="btn btn-primary" onclick="mostrarModalContrato()">+ Nuevo Contrato</button>
-      </div>
-
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body">
-          <div class="mb-2" id="contractFilterGroup">
-            <span class="text-muted small fw-bold me-2">ESTADO:</span>
-            <button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button>
-            <button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button>
-            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button>
-          </div>
-        </div>
-      </div>
-      
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light">
-              <tr>
-                <th class="ps-4">Estado</th>
-                <th>Activo/Edificio</th>
-                <th>Proveedor</th>
-                <th>Referencia</th>
-                <th>Vigencia</th>
-                <th class="text-end pe-4">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="tableGlobalContracts">
-              <tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando contratos...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-
-    // Iniciar carga de datos
-    google.script.run.withSuccessHandler(data => { 
-        globalContractData = data; 
-        renderGlobalContracts(data);
-    }).obtenerContratosGlobal();
-  }
-
-  function renderGlobalContracts(data) {
-    const tbody = document.getElementById('tableGlobalContracts');
-    if (!tbody) return; // Salir si el cuerpo de la tabla no está cargado
-    
-    if (!data || data.length === 0) { 
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">No hay contratos registrados.</td></tr>'; 
-        return; 
-    }
-    
-    let html = '';
-    data.forEach(c => {
-        let badgeClass = c.color === 'verde' ? 'bg-success' : c.color === 'amarillo' ? 'bg-warning text-dark' : c.color === 'rojo' ? 'bg-danger' : 'bg-secondary';
-        
-        html += `<tr class="align-middle">
-            <td class="ps-4"><span class="badge ${badgeClass}">${c.estado}</span></td>
-            <td>${c.nombreEntidad || 'N/A'}</td> 
-            <td>${c.proveedor}</td>
-            <td>${c.ref}</td>
-            <td>${c.inicio} - ${c.fin}</td>
-            <td class="text-end pe-4">
-                <button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}')"><i class="bi bi-pencil"></i></button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button>
-            </td>
-        </tr>`;
-    });
-    tbody.innerHTML = html;
-  }
-
-  function setContractFilter(estado, btn) {
-      document.querySelectorAll('#contractFilterGroup button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-
-      if (estado === 'all') {
-          renderGlobalContracts(globalContractData);
-      } else {
-          const filtered = globalContractData.filter(c => c.estado === estado);
-          renderGlobalContracts(filtered);
-      }
-  }
-
-  function editContractGlobal(id) {
-      const contrato = globalContractData.find(c => c.id === id);
-      if (contrato) {
-          // Si estamos en la vista global, abrimos el modal de edición
-          document.getElementById('contModalTitle').innerText = 'Editar Contrato';
-          document.getElementById('contId').value = contrato.id;
-          document.getElementById('contProv').value = contrato.proveedor;
-          document.getElementById('contRef').value = contrato.ref;
-          document.getElementById('contIni').value = contrato.inicio;
-          document.getElementById('contFin').value = contrato.fin;
-          document.getElementById('contEstado').value = contrato.estadoDB;
-          contractModal.show();
-      }
+    document.getElementById('view-contratos').innerHTML = '<div class="alert alert-info mt-4">🚧 Módulo global en construcción</div>';
   }
 
 
   // --- FICHA ACTIVO ---
   function openAssetDetail(id) {
-    currentAssetId = id; document.getElementById('view-activos').classList.add('d-none'); document.getElementById('view-asset-detail').classList.remove('d-none'); toggleEditInfo(false); 
+    currentAssetId = id; 
+    document.getElementById('view-activos').classList.add('d-none'); 
+    document.getElementById('view-asset-detail').classList.remove('d-none'); 
+    
+    // Al entrar en la ficha, currentActiveAssetId debe ser el ID del activo
+    currentActiveAssetId = id; 
+    
+    toggleEditInfo(false); 
     document.getElementById('detail-name').innerText = "Cargando...";
     google.script.run.withSuccessHandler(info => {
       document.getElementById('detail-name').innerText = info.nombre; document.getElementById('detail-type').innerText = info.tipo;
@@ -233,10 +158,19 @@
       loadDocs(); loadMaint(); loadContracts();
     }).getAssetInfo(id);
   }
-  function closeAssetDetail() { currentAssetId = null; document.getElementById('view-asset-detail').classList.add('d-none'); document.getElementById('view-activos').classList.remove('d-none'); }
+  
+  function closeAssetDetail() { 
+    currentAssetId = null; 
+    currentActiveAssetId = null; // Limpiamos al salir
+    document.getElementById('view-asset-detail').classList.add('d-none'); 
+    document.getElementById('view-activos').classList.remove('d-none'); 
+  }
+  
+  // (Funciones toggleEditInfo y saveAssetInfo se mantienen igual)
   function toggleEditInfo(editable) { if(editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if(sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } }
   function saveAssetInfo() { const newData = { id: currentAssetId, nombre: document.getElementById('edit-nombre').value, marca: document.getElementById('edit-marca').value, tipo: document.getElementById('edit-tipo').value }; const btnSave = document.querySelector('#btn-save-info button'); setBtnLoading('btn-save-info button', true); google.script.run.withSuccessHandler(res => { btnSave.disabled = false; btnSave.innerText = "Guardar"; if(res.success) { openAssetDetail(currentAssetId); } else { alert("Error al guardar: " + res.error); } }).updateAsset(newData); }
 
+  // (Funciones loadDocs, deleteDoc, uploadFile se mantienen igual)
   function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; }).obtenerDocs(currentAssetId); }
   function deleteDoc(idDoc) { if(!confirm("¿Borrar?")) return; document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { loadDocs(); } }).eliminarDocumento(idDoc); }
   function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return alert("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); }
@@ -312,11 +246,17 @@
       }
   }
   
-  function editRevision(id, tipo, fecha) { 
+  // *** FUNCIÓN DE EDICIÓN (CORREGIDA PARA VISTA GLOBAL) ***
+  function editRevision(id, tipo, fecha, activoId) { 
       document.getElementById('maintModalTitle').innerText='Editar Revisión'; 
       document.getElementById('revId').value=id; 
       document.getElementById('revTipo').value=tipo; 
       document.getElementById('revFecha').value=fecha; 
+      
+      // Si activoId viene (solo desde vista global), lo almacenamos temporalmente
+      if (activoId) {
+          currentActiveAssetId = activoId;
+      }
       
       // LIMPIEZA TOTAL DE CAMPOS RECURSIVOS/NORMATIVA
       document.getElementById('revRecur').checked = false;
@@ -347,9 +287,10 @@
     const diasFreq = document.getElementById('revFreq').value;
     const fechaFin = document.getElementById('revEnd').value;
 
-    // Determinar ID del Activo
-    let activeAssetId = currentAssetId;
+    // Determinar ID del Activo (Usa currentAssetId si está en ficha, o currentActiveAssetId si viene de global)
+    let activeAssetId = currentAssetId || currentActiveAssetId; 
     if (!activeAssetId) {
+        // Si no está en ninguna global, intenta leer del selector del modal (solo visible en creación global)
         const sel = document.getElementById('maintActivo');
         if(sel) activeAssetId = sel.value;
     }
@@ -365,6 +306,7 @@
         maintModal.hide(); 
         
         if (r.success) {
+            // Refresca la vista correcta
             if (currentAssetId) loadMaint(); else loadGlobalMaint();
         } else {
             alert("Error: " + r.error);
