@@ -358,7 +358,42 @@
   function loadEdificiosModal(id) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!id)return; google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
   function loadActivos(id) { document.getElementById('filterSearch').disabled=false; document.getElementById('filterSearch').value=''; const tb=document.getElementById('tableActivos'); tb.innerHTML='<tr><td colspan="4" class="text-center py-5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(l=>{if(!l.length){tb.innerHTML='<tr><td colspan="4" class="text-center py-5">Vacío</td></tr>';return;}let h='';l.forEach(i=>h+=`<tr><td class="fw-bold"><i class="bi bi-box-seam text-primary me-2"></i>${i.nombre}</td><td><span class="badge bg-light text-dark border">${i.tipo}</span></td><td>${i.marca}</td><td class="text-end pe-4"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${i.id}')">Ver Ficha</button></td></tr>`);tb.innerHTML=h;}).getActivosPorEdificio(id); }
   function filterAssets() { const f=document.getElementById('filterSearch').value.toLowerCase(); const rows=document.getElementById('tableActivos').getElementsByTagName('tr'); for(let i=0;i<rows.length;i++){ rows[i].style.display = (rows[i].innerText.toLowerCase().indexOf(f)>-1) ? "" : "none"; } }
-  function loadDashboard() { google.script.run.withSuccessHandler(d=>{document.getElementById('d-activos').innerText=d.activos;document.getElementById('d-vencidas').innerText=d.vencidas;document.getElementById('d-pendientes').innerText=d.pendientes;document.getElementById('d-edificios').innerText=d.edificios;const ctx=document.getElementById('mainChart').getContext('2d');if(myChart)myChart.destroy();myChart=new Chart(ctx,{type:'line',data:{labels:['Ene','Feb','Mar','Abr'],datasets:[{label:'Actividad',data:[5,10,8,12],borderColor:'#0d6efd',tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});}).getDatosDashboard(); }
+  function loadDashboard() { 
+      google.script.run.withSuccessHandler(d => {
+          document.getElementById('d-activos').innerText = d.activos;
+          document.getElementById('d-vencidas').innerText = d.vencidas;
+          document.getElementById('d-pendientes').innerText = d.pendientes;
+          document.getElementById('d-edificios').innerText = d.edificios;
+          
+          const ctx = document.getElementById('mainChart').getContext('2d');
+          if (myChart) myChart.destroy();
+          
+          myChart = new Chart(ctx, {
+              type: 'line',
+              data: {
+                  labels: d.chartLabels, // ETIQUETAS REALES DEL BACKEND
+                  datasets: [{
+                      label: 'Próximas Revisiones',
+                      data: d.chartData, // DATOS REALES DEL BACKEND
+                      borderColor: '#0d6efd',
+                      backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                      tension: 0.3,
+                      fill: true
+                  }]
+              },
+              options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                      legend: { display: false }
+                  },
+                  scales: {
+                      y: { beginAtZero: true, ticks: { precision: 0 } } // Eje Y enteros
+                  }
+              }
+          });
+      }).getDatosDashboard(); 
+  }
   
   function mostrarModalCrear(t) { 
       if(myModal) {
