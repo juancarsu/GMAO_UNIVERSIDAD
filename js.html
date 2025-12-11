@@ -125,10 +125,12 @@
         document.getElementById('d-contratos').innerText = d.contratos;
         document.getElementById('d-campus').innerText = d.campus;
 
+        // 1. Gráfico Lineal
         const ctx = document.getElementById('mainChart').getContext('2d'); 
         if (myChart) myChart.destroy(); 
         myChart = new Chart(ctx, { type: 'line', data: { labels: d.chartLabels, datasets: [{ label: 'Revisiones', data: d.chartData, borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', tension: 0.3, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } }); 
         
+        // 2. Gráfico Circular
         const ctxPie = document.getElementById('pieChart').getContext('2d');
         if (myPieChart) myPieChart.destroy();
         myPieChart = new Chart(ctxPie, {
@@ -137,18 +139,37 @@
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
         });
 
+        // 3. CALENDARIO (Configuración mejorada)
         const calendarEl = document.getElementById('calendar');
-        calendarEl.innerHTML = ''; 
+        calendarEl.innerHTML = ''; // Limpiar previo
+        
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'es',
             height: 550,
             headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
             events: d.calendarEvents,
-            dateClick: function(info) { mostrarModalRevision(info.dateStr); },
-            eventClick: function(info) { const p = info.event.extendedProps; editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar); }
+            
+            // --- ESTAS LÍNEAS SON CLAVE PARA EL CLICK ---
+            selectable: true,      // Permite seleccionar celdas
+            navLinks: false,       // Evita que los días sean enlaces a la vista diaria (opcional)
+            // --------------------------------------------
+
+            // Al hacer clic en un día vacío
+            dateClick: function(info) {
+                console.log("Click en fecha:", info.dateStr); // Para depurar en consola F12
+                mostrarModalRevision(info.dateStr);
+            },
+            
+            // Al hacer clic en un evento (revisión existente)
+            eventClick: function(info) {
+                console.log("Click en evento:", info.event.title);
+                const p = info.event.extendedProps;
+                editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar);
+            }
         });
         calendar.render();
+
     }).getDatosDashboard(); 
   }
 
@@ -306,4 +327,55 @@
   let searchTimeout = null; function handleGlobalSearch(e) { if (e.key === 'Escape') { closeSearchResults(); return; } const txt = document.getElementById('globalSearchInput').value; if (searchTimeout) clearTimeout(searchTimeout); if (txt.length < 3) { closeSearchResults(); return; } searchTimeout = setTimeout(() => { executeGlobalSearch(); }, 300); } function executeGlobalSearch() { const txt = document.getElementById('globalSearchInput').value; if(!txt) return; const resContainer = document.getElementById('globalSearchResults'); resContainer.innerHTML = '<div class="list-group-item text-center text-muted small"><span class="spinner-border spinner-border-sm"></span> Buscando...</div>'; resContainer.classList.remove('d-none'); google.script.run.withSuccessHandler(resultados => { if (resultados.length === 0) { resContainer.innerHTML = '<div class="list-group-item text-center text-muted small">No hay coincidencias</div>'; } else { let html = ''; resultados.forEach(r => { let icon = r.tipo === 'ACTIVO' ? '<i class="bi bi-box-seam text-primary"></i>' : '<i class="bi bi-building text-success"></i>'; html += `<button type="button" class="list-group-item list-group-item-action small" onclick="goToResult('${r.id}', '${r.tipo}')"><div class="d-flex w-100 justify-content-between align-items-center"><strong class="mb-1 text-truncate" style="max-width: 150px;">${icon} ${r.texto}</strong></div><small class="text-muted d-block text-truncate">${r.subtexto}</small></button>`; }); resContainer.innerHTML = html; } }).buscarGlobal(txt); } function closeSearchResults() { const resContainer = document.getElementById('globalSearchResults'); if(resContainer) { resContainer.classList.add('d-none'); resContainer.innerHTML = ''; } } function goToResult(id, tipo) { closeSearchResults(); document.getElementById('globalSearchInput').value = ''; if (tipo === 'ACTIVO') { navTo('activos'); openAssetDetail(id); } else if (tipo === 'EDIFICIO') { navTo('edificios'); openBuildingDetail(id); } } document.addEventListener('click', function(e) { const container = document.querySelector('.input-group'); const results = document.getElementById('globalSearchResults'); if (container && !container.contains(e.target) && results && !results.contains(e.target)) { closeSearchResults(); } });
   function setBtnLoading(btnId, loading) { const btn=document.getElementById(btnId); if(!btn)return; if(loading){btn.dataset.og=btn.innerText;btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';}else{btn.disabled=false;btn.innerText=btn.dataset.og||'Guardar';} } 
   function toggleEditInfo(editable) { if(editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if(sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } } function saveAssetInfo() { const newData = { id: currentAssetId, nombre: document.getElementById('edit-nombre').value, marca: document.getElementById('edit-marca').value, tipo: document.getElementById('edit-tipo').value }; const btnSave = document.querySelector('#btn-save-info button'); setBtnLoading('btn-save-info button', true); google.script.run.withSuccessHandler(res => { btnSave.disabled = false; btnSave.innerText = "Guardar"; if(res.success) { openAssetDetail(currentAssetId); } else { alert("Error al guardar: " + res.error); } }).updateAsset(newData); } function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { if(!confirm("¿Borrar?")) return; document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { loadDocs(); } }).eliminarDocumento(idDoc); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return alert("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } function submitContract() { const id = document.getElementById('contId').value; const datos = { id:id, idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value, estado:document.getElementById('contEstado').value }; if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return alert("Campos incompletos"); setBtnLoading('btnContSubmit', true); const cb = () => { setBtnLoading('btnContSubmit', false); if(contractModal) contractModal.hide(); if (currentAssetId) loadContracts(); else loadGlobalContracts(); }; if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos); else google.script.run.withSuccessHandler(cb).crearContrato(datos); } function deleteContract(id) { if(confirm("¿Borrar contrato?")) google.script.run.withSuccessHandler(cb => { if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }
+  function mostrarModalRevision(dateStr) {
+      if(!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+      
+      // Limpieza del formulario
+      document.getElementById('maintModalTitle').innerText = 'Programar Nueva Revisión';
+      document.getElementById('revId').value = "";
+      document.getElementById('revTipo').value = "Periódica";
+      
+      // Asignar fecha pulsada
+      if (dateStr) {
+          document.getElementById('revFecha').value = dateStr;
+      } else {
+          document.getElementById('revFecha').value = new Date().toISOString().split('T')[0];
+      }
+      
+      // Reseteos varios
+      document.getElementById('revCalendar').checked = true;
+      document.getElementById('revRecur').checked = false;
+      document.getElementById('secRecurOptions').classList.add('d-none');
+      document.getElementById('revFreq').value = 365;
+      document.getElementById('revEnd').value = "";
+      document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
+      document.getElementById('revFileInput').value = "";
+      document.getElementById('revUploadStatus').innerText = "";
+
+      // Mostrar selector de activos (porque venimos del calendario, no de un activo concreto)
+      const assetSelector = document.getElementById('assetSelector');
+      if (assetSelector) {
+          assetSelector.classList.remove('d-none');
+          currentActiveAssetId = null; 
+          
+          // Resetear desplegables
+          document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
+          document.getElementById('maintEdificio').disabled = true;
+          document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
+          document.getElementById('maintActivo').disabled = true;
+          
+          // Cargar Campus si está vacío
+          const selCampus = document.getElementById('maintCampus');
+          if (selCampus && selCampus.options.length <= 1) {
+              google.script.run.withSuccessHandler(list => {
+                  let html = '<option value="">- Seleccione Campus -</option>';
+                  list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+                  selCampus.innerHTML = html;
+              }).getListaCampus();
+          }
+      }
+      
+      updateMaintFormVisibility();
+      maintModal.show();
+  }
 </script>
