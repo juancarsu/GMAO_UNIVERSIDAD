@@ -174,6 +174,64 @@
       </div>
     </div>
 
+      <div id="view-building-detail" class="view-section d-none">
+        <div class="d-flex align-items-center mb-4">
+          <button class="btn btn-light border me-3" onclick="closeBuildingDetail()"><i class="bi bi-arrow-left"></i> Volver</button>
+          <div>
+            <h2 class="mb-0" id="b-detail-name">Cargando...</h2>
+            <span class="badge bg-success mt-1" id="b-detail-campus">Campus</span>
+          </div>
+        </div>
+
+        <ul class="nav nav-tabs mb-4">
+          <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-b-info">Información</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-docs" onclick="loadBuildingDocs()">Documentación Legal/Planos</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-obras" onclick="loadBuildingObras()">Obras y Reformas</a></li>
+          <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-assets" onclick="loadBuildingAssets()">Activos Instalados</a></li>
+        </ul>
+
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="tab-b-info">
+            <div class="card shadow-sm p-4 border-0">
+              <div class="row">
+                <div class="col-md-6 mb-3"><label class="text-muted small">Nombre del Edificio</label><div class="fs-5 fw-bold" id="bd-nombre">-</div></div>
+                <div class="col-md-6 mb-3"><label class="text-muted small">Campus</label><div class="fs-5" id="bd-campus">-</div></div>
+                <div class="col-md-12 mb-3"><label class="text-muted small">Contacto / Responsable</label><div class="fs-5" id="bd-contacto">-</div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="tab-pane fade" id="tab-b-docs">
+            <div class="card p-3 mb-3 bg-light border-0">
+              <div class="d-flex gap-2">
+                <input type="file" class="form-control" id="fileInputBuilding">
+                <button class="btn btn-success text-nowrap" onclick="uploadBuildingFile()"><i class="bi bi-upload"></i> Subir Documento</button>
+              </div>
+              <small class="text-muted mt-1" id="uploadStatusBuilding">Planos, Licencias, Legalizaciones...</small>
+            </div>
+            <table class="table table-striped bg-white shadow-sm rounded">
+              <thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Fecha</th><th>Usuario</th><th></th></tr></thead>
+              <tbody id="buildingDocsBody"></tbody>
+            </table>
+          </div>
+
+          <div class="tab-pane fade" id="tab-b-obras">
+            <div class="d-flex justify-content-end mb-3">
+              <button class="btn btn-primary" onclick="showModalObra()">+ Nueva Obra</button>
+            </div>
+            <div id="buildingObrasList" class="row g-3">
+                </div>
+          </div>
+
+          <div class="tab-pane fade" id="tab-b-assets">
+            <table class="table table-hover bg-white shadow-sm align-middle">
+              <thead class="bg-light"><tr><th class="ps-3">Activo</th><th>Tipo</th><th>Marca</th><th></th></tr></thead>
+              <tbody id="buildingAssetsBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     <div id="view-contratos" class="view-section d-none">
       <div class="page-header">
         <h1 class="page-title">Gestión de Contratos</h1>
@@ -315,6 +373,22 @@
   </div>
   
   <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
+
+  <div class="modal fade" id="obraModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header"><h5 class="modal-title">Registrar Obra / Reforma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body">
+          <div class="mb-3"><label>Nombre de la Obra</label><input type="text" class="form-control" id="obraNombre" placeholder="Ej. Reforma Cubierta Norte"></div>
+          <div class="mb-3"><label>Descripción</label><textarea class="form-control" id="obraDesc" rows="2"></textarea></div>
+          <div class="mb-3"><label>Fecha Inicio</label><input type="date" class="form-control" id="obraFecha"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <?!= include('js'); ?>
