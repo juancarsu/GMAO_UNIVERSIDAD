@@ -505,3 +505,145 @@ function eliminarDocumento(idDoc) {
   }
   return { success: false, error: "Documento no encontrado" };
 }
+
+// ==========================================
+// 8. GESTIÓN DE EDIFICIOS
+// ==========================================
+
+function getBuildingInfo(idEdificio) {
+  const data = getSheetData('EDIFICIOS');
+  const campus = getSheetData('CAMPUS');
+  const mapCampus = {};
+  campus.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
+
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(idEdificio)){
+      return { 
+        id: data[i][0], 
+        campus: mapCampus[data[i][1]] || "Desconocido",
+        nombre: data[i][2], 
+        contacto: data[i][3] 
+      };
+    }
+  }
+  throw new Error("Edificio no encontrado.");
+}
+
+function getObrasPorEdificio(idEdificio) {
+  const data = getSheetData('OBRAS');
+  const obras = [];
+  // Indices: 0=ID, 1=ID_Edif, 2=Nombre, 3=Desc, 4=F.Ini, 5=F.Fin, 6=Estado
+  
+  // MAPA DE DOCS para saber si tienen adjuntos (Clip)
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {};
+  for(let j=1; j<docsData.length; j++) {
+    if(String(docsData[j][1]) === 'OBRA') docsMap[String(docsData[j][2])] = true;
+  }
+
+  for(let i=1; i<data.length; i++) {
+    if(String(data[i][1]) === String(idEdificio)) {
+      obras.push({
+        id: data[i][0],
+        nombre: data[i][2],
+        descripcion: data[i][3],
+        fecha: data[i][4] ? fechaATexto(data[i][4]) : "-",
+        estado: data[i][6],
+        hasDocs: docsMap[String(data[i][0])] || false
+      });
+    }
+  }
+  return obras;
+}
+
+function crearObra(d) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  
+  // 1. Buscar carpeta del edificio padre para crear la subcarpeta de la obra
+  const edifs = getSheetData('EDIFICIOS');
+  let idCarpetaEdificio = null;
+  for(let i=1; i<edifs.length; i++){
+    if(String(edifs[i][0]) === String(d.idEdificio)) {
+      idCarpetaEdificio = edifs[i][4]; // Columna E es Folder ID del edificio
+      break;
+    }
+  }
+  
+  if(!idCarpetaEdificio) return { success: false, error: "Carpeta de edificio no encontrada" };
+
+  // 2. Crear carpeta para la obra (o una general de obras si prefieres, aquí creo una por obra)
+  const nombreCarpeta = "OBRA - " + d.nombre;
+  const idCarpetaObra = crearCarpeta(nombreCarpeta, idCarpetaEdificio);
+
+  // 3. Guardar en Sheet
+  ss.getSheetByName('OBRAS').appendRow([
+    Utilities.getUuid(),
+    d.idEdificio,
+    d.nombre,
+    d.descripcion,
+    textoAFecha(d.fechaInicio),
+    null, // Fecha fin opcional
+    "EN CURSO",
+    idCarpetaObra
+  ]);
+  return { success: true };
+}
+
+function eliminarObra(id) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('OBRAS');
+  const data = sheet.getDataRange().getValues();
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      // Opcional: Marcar carpeta como papelera
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Obra no encontrada" };
+}
+
+// === ACTUALIZACIÓN DE LA FUNCIÓN subirArchivo (REEMPLAZA LA ANTERIOR) ===
+function subirArchivo(dataBase64, nombreArchivo, mimeType, idEntidad, tipoEntidad) {
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    let carpetaId = null;
+
+    // LÓGICA DE CARPETAS SEGÚN TIPO
+    if (tipoEntidad === 'ACTIVO') {
+      const rows = getSheetData('ACTIVOS');
+      for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][6]; break; }
+    } 
+    else if (tipoEntidad === 'EDIFICIO') {
+      const rows = getSheetData('EDIFICIOS');
+      for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][4]; break; } // Col 4 = FolderID Edificio
+    }
+    else if (tipoEntidad === 'OBRA') {
+      const rows = getSheetData('OBRAS');
+      for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][7]; break; } // Col 7 = FolderID Obra
+    }
+    else if (tipoEntidad === 'REVISION') {
+      // Lógica existente para revisiones... (buscar activo padre)
+      const planes = getSheetData('PLAN_MANTENIMIENTO');
+      let activoId = null;
+      for(let i=1; i<planes.length; i++) if(String(planes[i][0]) === String(idEntidad)) { activoId = planes[i][1]; break; }
+      if(activoId) {
+         const rows = getSheetData('ACTIVOS');
+         for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(activoId)) { carpetaId = rows[i][6]; break; }
+      }
+    }
+
+    if (!carpetaId) throw new Error("No se encontró carpeta de destino.");
+
+    const blob = Utilities.newBlob(Utilities.base64Decode(dataBase64), mimeType, nombreArchivo);
+    const folder = DriveApp.getFolderById(carpetaId);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    ss.getSheetByName('DOCS_HISTORICO').appendRow([
+      Utilities.getUuid(), tipoEntidad, idEntidad, nombreArchivo, file.getUrl(), 1, new Date(), Session.getActiveUser().getEmail(), file.getId()
+    ]);
+
+    return { success: true };
+  } catch (e) { return { success: false, error: e.toString() }; }
+}
