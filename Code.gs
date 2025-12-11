@@ -510,3 +510,104 @@ function deleteConfigCatalogo(id) {
   return { success: false, error: "Elemento no encontrado" };
 }
 
+// ==========================================
+// 10. NOTIFICACIONES AUTOMÁTICAS (EMAIL)
+// ==========================================
+
+function enviarResumenSemanal() {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  
+  // 1. OBTENER DESTINATARIOS
+  const sheetUsers = ss.getSheetByName('USUARIOS');
+  if(!sheetUsers) return console.log("No existe hoja USUARIOS");
+  
+  const usuarios = sheetUsers.getDataRange().getValues().slice(1);
+  const emailsDestino = usuarios
+    .filter(u => String(u[3]).toUpperCase() === 'SI' && u[1]) // Col D="SI" y tiene email
+    .map(u => u[1])
+    .join(",");
+    
+  if(!emailsDestino) return console.log("No hay destinatarios configurados.");
+
+  // 2. ANALIZAR MANTENIMIENTOS (Solo Rojos y Amarillos)
+  const mantenimiento = getGlobalMaintenance(); // Reutilizamos tu función existente
+  const mantCriticos = mantenimiento.filter(m => m.color === 'rojo' || m.color === 'amarillo');
+
+  // 3. ANALIZAR CONTRATOS (Solo Caducados y Próximos)
+  const contratos = obtenerContratosGlobal(); // Reutilizamos tu función existente
+  const contCriticos = contratos.filter(c => c.color === 'rojo' || c.color === 'amarillo');
+
+  // Si está todo verde, no molestamos (o mandamos un mail de "Todo OK")
+  if (mantCriticos.length === 0 && contCriticos.length === 0) {
+    console.log("Nada pendiente. No se envía correo.");
+    return;
+  }
+
+  // 4. CONSTRUIR HTML DEL CORREO
+  let html = `
+    <div style="font-family: Arial, sans-serif; color: #333;">
+      <h2 style="color: #0d6efd;">Resumen de Estado GMAO</h2>
+      <p>Este es el informe automático de estado de activos y contratos.</p>
+  `;
+
+  // Sección Mantenimiento
+  if (mantCriticos.length > 0) {
+    html += `<h3 style="border-bottom: 2px solid #666; padding-bottom: 5px;">🔧 Revisiones Pendientes (${mantCriticos.length})</h3>
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+      <tr style="background: #f8f9fa; text-align: left;">
+        <th style="padding: 8px; border: 1px solid #ddd;">Estado</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Activo</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Edificio</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Tipo</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Fecha</th>
+      </tr>`;
+      
+    mantCriticos.forEach(m => {
+      let colorStyle = m.color === 'rojo' ? 'color: white; background: #dc3545;' : 'color: #333; background: #ffc107;';
+      let estadoTexto = m.color === 'rojo' ? 'VENCIDO' : 'PRÓXIMO';
+      
+      html += `<tr>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 12px; font-weight: bold; ${colorStyle}">${estadoTexto}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${m.activo}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${m.edificio}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${m.tipo}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${m.fecha}</td>
+      </tr>`;
+    });
+    html += `</table>`;
+  }
+
+  // Sección Contratos
+  if (contCriticos.length > 0) {
+    html += `<h3 style="border-bottom: 2px solid #666; padding-bottom: 5px;">📄 Contratos por Vencer (${contCriticos.length})</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+      <tr style="background: #f8f9fa; text-align: left;">
+        <th style="padding: 8px; border: 1px solid #ddd;">Estado</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Proveedor</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Ref</th>
+        <th style="padding: 8px; border: 1px solid #ddd;">Fin Vigencia</th>
+      </tr>`;
+      
+    contCriticos.forEach(c => {
+      let colorStyle = c.color === 'rojo' ? 'color: white; background: #dc3545;' : 'color: #333; background: #ffc107;';
+      html += `<tr>
+        <td style="padding: 8px; border: 1px solid #ddd; text-align: center; font-size: 12px; font-weight: bold; ${colorStyle}">${c.estado}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${c.proveedor}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${c.ref}</td>
+        <td style="padding: 8px; border: 1px solid #ddd;">${c.fin}</td>
+      </tr>`;
+    });
+    html += `</table>`;
+  }
+
+  html += `<p style="color: #666; font-size: 12px; margin-top: 30px;">Este correo se ha generado automáticamente desde la App GMAO.</p></div>`;
+
+  // 5. ENVIAR EMAIL
+  MailApp.sendEmail({
+    to: emailsDestino,
+    subject: `[GMAO] Alerta de Mantenimiento - ${mantCriticos.length + contCriticos.length} incidencias`,
+    htmlBody: html
+  });
+  
+  console.log("Correo enviado a: " + emailsDestino);
+}
