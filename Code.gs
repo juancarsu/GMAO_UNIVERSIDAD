@@ -611,3 +611,77 @@ function enviarResumenSemanal() {
   
   console.log("Correo enviado a: " + emailsDestino);
 }
+
+// ==========================================
+// 11. GESTIÓN DE USUARIOS
+// ==========================================
+
+function getListaUsuarios() {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  let sheet = ss.getSheetByName('USUARIOS');
+  
+  // Si no existe, la creamos automáticamente
+  if (!sheet) {
+    sheet = ss.insertSheet('USUARIOS');
+    sheet.appendRow(['ID', 'NOMBRE', 'EMAIL', 'ROL', 'RECIBIR_AVISOS']);
+  }
+  
+  const data = sheet.getDataRange().getValues();
+  // Asumimos fila 1 cabeceras. Indices: 0=ID, 1=Nombre, 2=Email, 3=Rol, 4=Avisos
+  if (data.length < 2) return [];
+  
+  return data.slice(1).map(r => ({
+    id: r[0],
+    nombre: r[1],
+    email: r[2],
+    rol: r[3],
+    avisos: r[4]
+  }));
+}
+
+function saveUsuario(u) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('USUARIOS');
+  
+  if (!u.nombre || !u.email) return { success: false, error: "Nombre y Email obligatorios" };
+
+  if (u.id) {
+    // EDICIÓN
+    const data = sheet.getDataRange().getValues();
+    for(let i=1; i<data.length; i++){
+      if(String(data[i][0]) === String(u.id)) {
+        sheet.getRange(i+1, 2).setValue(u.nombre);
+        sheet.getRange(i+1, 3).setValue(u.email);
+        sheet.getRange(i+1, 4).setValue(u.rol);
+        sheet.getRange(i+1, 5).setValue(u.avisos);
+        return { success: true };
+      }
+    }
+    return { success: false, error: "Usuario no encontrado" };
+  } else {
+    // CREACIÓN
+    sheet.appendRow([
+      Utilities.getUuid(),
+      u.nombre,
+      u.email,
+      u.rol,
+      u.avisos
+    ]);
+    return { success: true };
+  }
+}
+
+function deleteUsuario(id) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('USUARIOS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Usuario no encontrado" };
+}
+
