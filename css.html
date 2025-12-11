@@ -1,28 +1,51 @@
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
 <style>
   :root {
-    --primary-color: #0d6efd;
-    --sidebar-bg: #ffffff;
+    /* PALETA RAL 3020 (ROJO TRÁFICO) & NEUTROS */
+    --primary-color: #CC0605;       /* RAL 3020 Aprox */
+    --primary-hover: #A30504;       /* Un poco más oscuro para interacciones */
+    --primary-light: #FEF2F2;       /* Fondo muy suave para items activos */
+    
+    --secondary-color: #64748b;     /* Slate gray */
+    
+    /* FONDOS */
+    --bg-body: #f3f4f6;             /* Gris frío muy claro */
+    --bg-sidebar: #ffffff;
+    --bg-card: #ffffff;
+    
+    /* TEXTOS */
+    --text-main: #1f2937;           /* Gris muy oscuro (casi negro) */
+    --text-muted: #6b7280;          /* Gris medio */
+    
+    /* SEMÁFOROS (Colores de estado) */
+    --success-bg: #ecfdf5; --success-text: #047857;
+    --warning-bg: #fffbeb; --warning-text: #b45309;
+    --danger-bg:  #fef2f2; --danger-text: #b91c1c; 
+    --info-bg:    #eff6ff; --info-text: #1d4ed8;
+
+    /* MEDIDAS */
     --sidebar-width: 260px;
-    --bg-color: #f3f4f6;
-    --text-color: #1f2937;
-    --text-muted: #6b7280;
-    --border-color: #e5e7eb;
+    --border-radius: 12px;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   }
 
   body {
-    font-family: 'Inter', sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-color);
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-main);
     overflow: hidden; 
+    font-size: 0.925rem;
   }
 
-  /* SIDEBAR */
+  /* --- SIDEBAR --- */
   #sidebar {
     width: var(--sidebar-width);
-    background-color: var(--sidebar-bg);
-    border-right: 1px solid var(--border-color);
+    background-color: var(--bg-sidebar);
+    border-right: none;
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
     height: 100vh;
@@ -33,14 +56,14 @@
   }
 
   .sidebar-header {
-    height: 64px;
+    height: 70px;
     display: flex;
     align-items: center;
     padding: 0 24px;
-    border-bottom: 1px solid var(--border-color);
-    font-weight: 600;
-    font-size: 1.1rem;
-    color: var(--primary-color);
+    font-weight: 800; /* Más negrita para destacar */
+    font-size: 1.2rem;
+    color: var(--primary-color); /* Rojo corporativo */
+    letter-spacing: -0.5px;
   }
 
   .sidebar-menu {
@@ -51,128 +74,254 @@
     overflow-y: auto;
   }
 
-  .menu-item { margin-bottom: 4px; }
+  .menu-item { margin-bottom: 6px; }
 
   .menu-link {
     display: flex;
     align-items: center;
-    padding: 10px 16px;
-    color: var(--text-color);
+    padding: 12px 16px;
+    color: var(--text-muted);
     text-decoration: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-weight: 500;
-    font-size: 0.95rem;
-    transition: all 0.2s;
+    transition: all 0.2s ease;
   }
 
-  .menu-link:hover { background-color: #f8f9fa; color: var(--primary-color); }
-  .menu-link.active { background-color: #eff6ff; color: var(--primary-color); }
-  .menu-icon { margin-right: 12px; font-size: 1.1rem; color: var(--text-muted); }
-  .menu-link.active .menu-icon { color: var(--primary-color); }
+  .menu-link:hover {
+    background-color: #f9fafb;
+    color: var(--primary-color);
+  }
+
+  /* El enlace activo ahora usa el rojo suave de fondo */
+  .menu-link.active {
+    background-color: var(--primary-light); 
+    color: var(--primary-color);
+    font-weight: 600;
+  }
+
+  .menu-icon { 
+    margin-right: 12px; 
+    font-size: 1.1rem; 
+    opacity: 0.8;
+  }
 
   .user-profile {
-    padding: 16px;
-    border-top: 1px solid var(--border-color);
+    padding: 20px;
+    border-top: 1px solid #f1f5f9;
     display: flex;
     align-items: center;
-    font-size: 0.9rem;
+    background-color: #f8fafc;
   }
 
-  /* MAIN CONTENT */
+  /* --- MAIN CONTENT --- */
   #main-content {
     margin-left: var(--sidebar-width);
-    padding: 24px;
+    padding: 32px;
     height: 100vh;
     overflow-y: auto;
   }
 
-  /* CARDS DASHBOARD */
+  .page-header { 
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center; 
+    margin-bottom: 32px; 
+  }
+  .page-title { 
+    font-size: 1.75rem; 
+    font-weight: 700; 
+    color: var(--text-main);
+    letter-spacing: -0.025em;
+  }
+
+  /* --- CARDS & STATS --- */
+  .card {
+    background-color: var(--bg-card);
+    border: none;
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow 0.3s ease;
+  }
+  
   .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 24px;
-    margin-bottom: 24px;
+    margin-bottom: 32px;
   }
 
   .stat-card {
     background: white;
     padding: 24px;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-sm);
     display: flex;
     flex-direction: column;
+    justify-content: space-between;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid rgba(0,0,0,0.02);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  /* Pequeño borde superior de color al hacer hover */
+  .stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-md);
+    border-top: 3px solid var(--primary-color); 
   }
 
-  .stat-value { font-size: 2rem; font-weight: 600; margin-bottom: 4px; }
-  .stat-label { color: var(--text-muted); font-size: 0.9rem; }
-  .stat-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 16px; }
+  .stat-value { font-size: 2.2rem; font-weight: 700; margin: 10px 0; color: var(--text-main); line-height: 1; }
+  .stat-label { color: var(--text-muted); font-size: 0.85rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
+  
+  .stat-icon { 
+    width: 48px; height: 48px; 
+    border-radius: 12px; 
+    display: flex; align-items: center; justify-content: center; 
+    font-size: 1.4rem; 
+    margin-bottom: 12px; 
+  }
 
-  .bg-blue-light { background: #eff6ff; color: #2563eb; }
-  .bg-green-light { background: #f0fdf4; color: #16a34a; }
-  .bg-red-light { background: #fef2f2; color: #dc2626; }
-  .bg-yellow-light { background: #fefce8; color: #ca8a04; }
+  /* Colores suaves para los iconos */
+  .bg-blue-light   { background: #eff6ff; color: #3b82f6; }
+  .bg-green-light  { background: #ecfdf5; color: #10b981; }
+  .bg-red-light    { background: #fef2f2; color: #ef4444; }
+  .bg-yellow-light { background: #fffbeb; color: #f59e0b; }
 
-  /* PAGE HEADER */
-  .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-  .page-title { font-size: 1.5rem; font-weight: 600; }
+  /* --- TABLES --- */
+  .table { margin-bottom: 0; }
+  .table thead th {
+    background-color: #f9fafb;
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 14px 12px;
+  }
+  .table tbody td {
+    padding: 16px 12px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #374151;
+    font-size: 0.9rem;
+  }
+  .table-hover tbody tr:hover { background-color: #fafafa; }
 
-  /* FILTERS */
-  .filters-bar {
-    background: white;
-    padding: 16px;
+  /* --- BADGES --- */
+  .badge {
+    padding: 0.4em 0.8em;
+    font-weight: 600;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    border: none !important;
+  }
+  
+  .bg-success, .badge-verde   { background-color: var(--success-bg) !important; color: var(--success-text) !important; }
+  .bg-warning, .badge-amarillo { background-color: var(--warning-bg) !important; color: var(--warning-text) !important; }
+  .bg-danger, .badge-rojo     { background-color: var(--danger-bg) !important;  color: var(--danger-text) !important; }
+  .bg-secondary, .badge-gris  { background-color: #f1f5f9 !important; color: #475569 !important; }
+  /* Badge Primario ahora usa el Rojo Corporativo Suave */
+  .bg-primary { background-color: var(--primary-light) !important; color: var(--primary-color) !important; }
+
+  /* --- BUTTONS --- */
+  .btn {
     border-radius: 8px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    display: flex;
-    gap: 16px;
-    align-items: end;
-    margin-bottom: 20px;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    box-shadow: none;
+    transition: all 0.2s;
   }
+  
+  .btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+  }
+  
+  .btn-primary:hover, .btn-primary:focus {
+    background-color: var(--primary-hover);
+    border-color: var(--primary-hover);
+    /* Sombra Roja sutil */
+    box-shadow: 0 4px 6px -1px rgba(204, 6, 5, 0.3); 
+  }
+  
+  /* Outline Primary (para bordes rojos) */
+  .btn-outline-primary {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+  }
+  .btn-outline-primary:hover {
+    background-color: var(--primary-color);
+    color: white;
+  }
+  
+  .btn-light { background: #fff; border: 1px solid #e5e7eb; color: var(--text-main); }
+  .btn-light:hover { background: #f9fafb; border-color: #d1d5db; }
 
-  /* MODALES MODERNOS */
+  /* FAB ROJO (El de incidencias) */
+  .rounded-circle.shadow-lg {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 10px 25px -5px rgba(204, 6, 5, 0.5) !important;
+    transition: transform 0.2s;
+  }
+  .rounded-circle.shadow-lg:hover { transform: scale(1.1); background-color: var(--primary-hover) !important; }
+
+  /* --- MODALES --- */
   .modal-content {
     border: none;
-    border-radius: 1rem;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
   }
   .modal-header {
     border-bottom: 1px solid #f3f4f6;
-    padding: 1.5rem;
-    background-color: #ffffff;
-    border-radius: 1rem 1rem 0 0;
+    padding: 20px 24px;
+    background-color: #fff;
+    border-radius: 16px 16px 0 0;
   }
-  .modal-body {
-    padding: 1.5rem;
-    background-color: #ffffff;
-  }
-  .modal-footer {
-    border-top: 1px solid #f3f4f6;
-    padding: 1.25rem;
-    background-color: #f9fafb;
-    border-radius: 0 0 1rem 1rem;
-  }
-  .modal-title {
-    font-weight: 600;
-    color: var(--text-color);
-  }
-
-  /* =========================================
-     SEMÁFOROS Y BADGES (AQUÍ ESTÁN)
-     ========================================= */
-  .dot { 
-    height: 12px; 
-    width: 12px; 
-    border-radius: 50%; 
-    display: inline-block; 
-    margin-right: 6px; 
+  /* Para el modal de averías que tenía cabecera roja */
+  .modal-header.bg-danger {
+      background-color: var(--primary-color) !important;
   }
   
-  .bg-verde { background-color: #198754; } 
-  .bg-amarillo { background-color: #ffc107; } 
-  .bg-rojo { background-color: #dc3545; }
-  .bg-gris { background-color: #6c757d; } /* El gris para estados desconocidos/vacíos */
+  .modal-body { padding: 24px; }
+  .modal-footer {
+    border-top: 1px solid #f3f4f6;
+    padding: 16px 24px;
+    background-color: #f9fafb;
+    border-radius: 0 0 16px 16px;
+  }
+  .modal-title { font-weight: 600; color: var(--text-main); }
 
-  /* Badges para tablas */
-  .badge-verde { background-color: #d1e7dd; color: #0f5132; }
-  .badge-amarillo { background-color: #fff3cd; color: #664d03; }
-  .badge-rojo { background-color: #f8d7da; color: #842029; }
+  /* --- INPUTS & FILTROS --- */
+  .filters-bar {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    gap: 20px;
+    align-items: end;
+    margin-bottom: 24px;
+    border: 1px solid rgba(0,0,0,0.02);
+  }
+  
+  .form-control, .form-select {
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+    padding: 0.5rem 0.75rem;
+  }
+  
+  /* Focus Ring en Rojo */
+  .form-control:focus, .form-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(204, 6, 5, 0.15); /* Anillo rojo suave */
+  }
+
+  /* --- SEMÁFOROS (PUNTITOS) --- */
+  .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+  .dot.bg-rojo { background-color: #ef4444; box-shadow: 0 0 0 2px #fee2e2; }
+  .dot.bg-amarillo { background-color: #f59e0b; box-shadow: 0 0 0 2px #fef3c7; }
+  .dot.bg-verde { background-color: #10b981; box-shadow: 0 0 0 2px #d1fae5; }
 </style>
