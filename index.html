@@ -29,6 +29,7 @@
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
       <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
+      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('usuarios', this, event)"><i class="bi bi-people menu-icon"></i> Usuarios</a></li>
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Administrador</div><small class="text-muted">admin@unav.es</small></div></div>
   </aside>
@@ -159,6 +160,33 @@
         </div>
       </div>
     </div>
+
+    <div id="view-usuarios" class="view-section d-none">
+      <div class="page-header">
+        <h1 class="page-title">Gestión de Usuarios</h1>
+        <button class="btn btn-primary" onclick="openUserModal()">+ Nuevo Usuario</button>
+      </div>
+      
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th class="ps-4">Nombre</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th class="text-center">Recibe Alertas</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableUsersBody">
+              <tr><td colspan="5" class="text-center py-5">Cargando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
@@ -205,6 +233,48 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="userModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="userModalTitle">Usuario</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="userId">
+          <div class="mb-3">
+            <label class="form-label">Nombre Completo</label>
+            <input type="text" class="form-control" id="userNombre" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email (Google)</label>
+            <input type="email" class="form-control" id="userEmail" required>
+          </div>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Rol</label>
+              <select class="form-select" id="userRol">
+                <option value="TECNICO">Técnico</option>
+                <option value="ADMIN">Administrador</option>
+                <option value="CONSULTA">Solo Consulta</option>
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Alertas Email</label>
+              <select class="form-select" id="userAvisos">
+                <option value="NO">No</option>
+                <option value="SI">Sí</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btnUserSubmit" onclick="submitUser()">Guardar</button>
         </div>
       </div>
     </div>
