@@ -5,10 +5,40 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GMAO Universidad</title>
+  
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
+  
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css" rel="stylesheet">
+
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/locales/es.js"></script>
+
   <?!= include('css'); ?>
+  
+  <style>
+    /* Estilos extra para el calendario y tarjetas */
+    #calendar {
+      max-width: 100%;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .fc-event { cursor: pointer; }
+    .stat-card { cursor: pointer; transition: transform 0.2s; }
+    .stat-card:hover { transform: translateY(-3px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+    
+    /* Ajuste para grid de 6 tarjetas */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); /* Tarjetas un poco más compactas */
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+  </style>
 </head>
 <body>
 
@@ -27,34 +57,93 @@
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('edificios', this, event)"><i class="bi bi-building menu-icon"></i> Edificios</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('activos', this, event)"><i class="bi bi-box-seam menu-icon"></i> Activos</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('mantenimiento', this, event)"><i class="bi bi-tools menu-icon"></i> Mantenimiento</a></li>
+      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('incidencias', this, event)"><i class="bi bi-exclamation-triangle menu-icon"></i> Incidencias</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
       <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('usuarios', this, event)"><i class="bi bi-people menu-icon"></i> Usuarios</a></li>
-      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('incidencias', this, event)"><i class="bi bi-exclamation-triangle menu-icon"></i> Incidencias</a></li>
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Cargando...</div><small class="text-muted">...</small></div></div>
   </aside>
 
   <main id="main-content">
+    
     <div id="view-dashboard" class="view-section">
       <div class="page-header"><h1 class="page-title">Resumen General</h1><button class="btn btn-primary" onclick="navTo('activos', null, null)">+ Nuevo Activo</button></div>
-      <div class="stats-grid">
-        <div class="stat-card"><div class="stat-icon bg-blue-light"><i class="bi bi-box-seam"></i></div><div class="stat-value" id="d-activos">--</div><div class="stat-label">Activos</div></div>
-        <div class="stat-card"><div class="stat-icon bg-red-light"><i class="bi bi-exclamation-circle"></i></div><div class="stat-value" id="d-vencidas">--</div><div class="stat-label">Vencidas</div></div>
-        <div class="stat-card"><div class="stat-icon bg-yellow-light"><i class="bi bi-clock"></i></div><div class="stat-value" id="d-pendientes">--</div><div class="stat-label">Pendientes</div></div>
-        <div class="stat-card"><div class="stat-icon bg-green-light"><i class="bi bi-building"></i></div><div class="stat-value" id="d-edificios">--</div><div class="stat-label">Edificios</div></div>
+      
+      <div class="stats-grid mb-4">
+        <div class="stat-card" onclick="navTo('activos', null, null)"><div class="stat-icon bg-blue-light"><i class="bi bi-box-seam"></i></div><div class="stat-value" id="d-activos">--</div><div class="stat-label">Activos</div></div>
+        
+        <div class="stat-card" onclick="navTo('mantenimiento', null, null)"><div class="stat-icon bg-red-light"><i class="bi bi-exclamation-circle"></i></div><div class="stat-value" id="d-vencidas">--</div><div class="stat-label">Vencidas</div></div>
+        <div class="stat-card" onclick="navTo('mantenimiento', null, null)"><div class="stat-icon bg-yellow-light"><i class="bi bi-clock"></i></div><div class="stat-value" id="d-pendientes">--</div><div class="stat-label">Pendientes</div></div>
+        <div class="stat-card" onclick="navTo('incidencias', null, null)"><div class="stat-icon bg-blue-light"><i class="bi bi-cone-striped"></i></div><div class="stat-value" id="d-incidencias">--</div><div class="stat-label">Incidencias</div></div>
+        <div class="stat-card" onclick="navTo('contratos', null, null)"><div class="stat-icon bg-green-light"><i class="bi bi-file-earmark-check"></i></div><div class="stat-value" id="d-contratos">--</div><div class="stat-label">Contratos</div></div>
+        <div class="stat-card" onclick="navTo('campus', null, null)"><div class="stat-icon bg-light text-secondary"><i class="bi bi-bank"></i></div><div class="stat-value" id="d-campus">--</div><div class="stat-label">Campus</div></div>
       </div>
-      <div class="card p-4 border-0 shadow-sm" style="border-radius:12px;"><h5 class="mb-4">Estado Mantenimiento</h5><div style="height:300px;"><canvas id="mainChart"></canvas></div></div>
+
+      <div class="mb-4">
+         <h5 class="mb-3">Calendario de Revisiones</h5>
+         <div id="calendar"></div>
+      </div>
+
+      <div class="row g-4">
+         <div class="col-lg-8">
+            <div class="card p-4 border-0 shadow-sm h-100" style="border-radius:12px;">
+               <h5 class="mb-4">Evolución Mantenimiento (6 meses)</h5>
+               <div style="height:300px;"><canvas id="mainChart"></canvas></div>
+            </div>
+         </div>
+         <div class="col-lg-4">
+            <div class="card p-4 border-0 shadow-sm h-100" style="border-radius:12px;">
+               <h5 class="mb-4">Estado Actual</h5>
+               <div style="height:250px; display:flex; justify-content:center;">
+                  <canvas id="pieChart"></canvas>
+               </div>
+            </div>
+         </div>
+      </div>
     </div>
 
     <div id="view-campus" class="view-section d-none">
-      <div class="page-header"><h1 class="page-title">Campus</h1><button class="btn btn-primary" onclick="mostrarModalCrear('CAMPUS')">+ Nuevo Campus</button></div>
-      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Provincia</th><th>Dirección</th><th></th></tr></thead><tbody id="tableCampusBody"></tbody></table></div></div>
+      <div class="page-header">
+        <h1 class="page-title">Campus</h1>
+        <button class="btn btn-primary" onclick="openCampusModal()">+ Nuevo Campus</button>
+      </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Provincia</th><th>Dirección</th><th class="text-end pe-4">Acciones</th></tr></thead>
+            <tbody id="tableCampusBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
     <div id="view-edificios" class="view-section d-none">
-      <div class="page-header"><h1 class="page-title">Edificios</h1><button class="btn btn-primary" onclick="mostrarModalCrear('EDIFICIO')">+ Nuevo Edificio</button></div>
-      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Edificio</th><th>Campus</th><th>Contacto</th><th></th></tr></thead><tbody id="tableEdificiosBody"></tbody></table></div></div>
+      <div class="page-header">
+        <h1 class="page-title">Edificios</h1>
+        <button class="btn btn-primary" onclick="openEdificioModal()">+ Nuevo Edificio</button>
+      </div>
+      
+      <div class="filters-bar mb-3">
+        <div class="flex-grow-1">
+           <label class="form-label small text-muted">Filtrar por Campus</label>
+           <select id="filterCampusEdificios" class="form-select" onchange="filterEdificiosList()">
+              <option value="">- Todos los Campus -</option>
+           </select>
+        </div>
+        <div class="flex-grow-1">
+           <label class="form-label small text-muted">Buscar Edificio</label>
+           <input type="text" id="searchEdificios" class="form-control" placeholder="Escribe nombre..." onkeyup="filterEdificiosList()">
+        </div>
+      </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light"><tr><th class="ps-4">Edificio</th><th>Campus</th><th>Contacto</th><th></th></tr></thead>
+            <tbody id="tableEdificiosBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
     
     <div id="view-building-detail" class="view-section d-none">
@@ -89,6 +178,12 @@
       <div class="card border-0 shadow-sm"><div style="max-height: 500px; overflow-y: auto;"><table class="table table-hover mb-0 align-middle"><thead class="bg-light sticky-top"><tr><th class="ps-4 text-center" style="width:50px;">#</th><th>Edificio</th><th>Activo</th><th>Tipo Revisión</th><th>Fecha Límite</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalMaint"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
     </div>
 
+    <div id="view-incidencias" class="view-section d-none">
+      <div class="page-header"><h1 class="page-title">Gestión de Incidencias</h1><div class="btn-group"><button class="btn btn-outline-secondary btn-sm active" onclick="filterIncidencias('all', this)">Todas</button><button class="btn btn-outline-danger btn-sm" onclick="filterIncidencias('PENDIENTE', this)">Pendientes</button><button class="btn btn-outline-success btn-sm" onclick="filterIncidencias('RESUELTA', this)">Resueltas</button></div></div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Estado</th><th>Prioridad</th><th>Elemento Afectado</th><th>Descripción</th><th>Reportado</th><th class="text-end pe-4">Acción</th></tr></thead><tbody id="tableIncidenciasBody"><tr><td colspan="6" class="text-center py-5">Cargando incidencias...</td></tr></tbody></table></div></div>
+    </div>
+    <button class="btn btn-danger rounded-circle shadow-lg d-flex align-items-center justify-content-center" style="position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; z-index: 2000;" onclick="openReportModal()" title="Reportar Avería"><i class="bi bi-megaphone-fill fs-4"></i></button>
+
     <div id="view-contratos" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Gestión de Contratos</h1><button class="btn btn-primary" onclick="mostrarModalContrato()">+ Nuevo Contrato</button></div>
       <div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="row mb-3"><div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="contractFilterCampus" class="form-select" onchange="loadEdificiosContractFilter(this.value)"><option value="">Todos los Campus</option></select></div><div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="contractFilterEdificio" class="form-select" onchange="setContractFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div></div><div class="mb-2" id="contractFilterGroup"><span class="text-muted small fw-bold me-2">ESTADO:</span><button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button><button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button><button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button><button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button><button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button></div></div></div>
@@ -121,135 +216,93 @@
         <div class="tab-pane fade" id="tab-contracts"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table></div>
       </div>
     </div>
-
-    <div id="view-incidencias" class="view-section d-none">
-      <div class="page-header">
-        <h1 class="page-title">Gestión de Incidencias</h1>
-        <div class="btn-group">
-           <button class="btn btn-outline-secondary btn-sm active" onclick="filterIncidencias('all', this)">Todas</button>
-           <button class="btn btn-outline-danger btn-sm" onclick="filterIncidencias('PENDIENTE', this)">Pendientes</button>
-           <button class="btn btn-outline-success btn-sm" onclick="filterIncidencias('RESUELTA', this)">Resueltas</button>
-        </div>
-      </div>
-      
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light">
-              <tr>
-                <th class="ps-4">Estado</th>
-                <th>Prioridad</th>
-                <th>Elemento Afectado</th>
-                <th>Descripción</th>
-                <th>Reportado</th>
-                <th class="text-end pe-4">Acción</th>
-              </tr>
-            </thead>
-            <tbody id="tableIncidenciasBody">
-              <tr><td colspan="6" class="text-center py-5">Cargando incidencias...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <button class="btn btn-danger rounded-circle shadow-lg d-flex align-items-center justify-content-center" 
-            style="position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; z-index: 2000;"
-            onclick="openReportModal()" title="Reportar Avería">
-      <i class="bi bi-megaphone-fill fs-4"></i>
-    </button>
-
   </main>
 
-  <div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="revId"><div id="assetSelector" class="mb-3 d-none"><label class="form-label fw-bold">Activo</label><div class="row g-2"><div class="col-4"><select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)"><option value="">- Campus -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)"><option value="">- Edificio -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintActivo" disabled><option value="">- Activo -</option></select></div></div></div><div class="mb-3"><label class="form-label">Tipo de Revisión</label><select class="form-select" id="revTipo"><option value="Legal">Legal</option><option value="Periódica">Periódica</option><option value="Reparación">Reparación</option><option value="Extraordinaria">Extraordinaria</option></select></div><div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded"><label class="small text-muted">Normativa / Reglamento</label><select class="form-select form-select-sm" id="revNorma"><option value="">Seleccione norma...</option></select></div><div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div><div class="form-check mb-3 bg-light p-2 rounded border"><input class="form-check-input ms-1" type="checkbox" id="revCalendar" checked><label class="form-check-label ms-2" for="revCalendar"><i class="bi bi-calendar-event text-primary"></i> Sincronizar con Google Calendar</label></div><div id="secRecur" class="d-none"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="revRecur"><label class="form-check-label" for="revRecur">Repetir esta revisión</label></div><div id="secRecurOptions" class="d-none ms-3 border-start ps-3"><div class="mb-2"><label class="small">Cada (días)</label><input type="number" class="form-control form-control-sm" id="revFreq" value="365"></div><div class="mb-2"><label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd"></div></div></div><div class="mt-4 border-top pt-3"><label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label><div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;"><div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div></div><div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="obraModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Registrar Obra / Reforma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Nombre de la Obra</label><input type="text" class="form-control" id="obraNombre" placeholder="Ej. Reforma Cubierta Norte"></div><div class="mb-3"><label>Descripción</label><textarea class="form-control" id="obraDesc" rows="2"></textarea></div><div class="mb-3"><label>Fecha Inicio</label><input type="date" class="form-control" id="obraFecha"></div><div class="mb-3 p-2 bg-light border rounded"><label class="form-label small text-muted"><i class="bi bi-paperclip"></i> Adjuntar documento inicial (opcional)</label><input type="file" class="form-control form-control-sm" id="obraFileInit"></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button></div></div></div></div>
+  <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="configModalTitle">Nuevo Tipo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="confId"><div class="mb-3"><label class="form-label">Nombre del Tipo</label><input type="text" class="form-control" id="confNombre" placeholder="Ej. Baja Tensión"></div><div class="mb-3"><label class="form-label">Ref. Normativa</label><input type="text" class="form-control" id="confNorma" placeholder="Ej. REBT 2002"></div><div class="mb-3"><label class="form-label">Frecuencia (Días)</label><input type="number" class="form-control" id="confDias" placeholder="Ej. 365"><div class="form-text small">Días por defecto para revisiones.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="userModalTitle">Usuario</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="userId"><div class="mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="userNombre" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" id="userEmail" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Rol</label><select class="form-select" id="userRol"><option value="TECNICO">Técnico</option><option value="ADMIN">Administrador</option><option value="CONSULTA">Solo Consulta</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Alertas</label><select class="form-select" id="userAvisos"><option value="NO">No</option><option value="SI">Sí</option></select></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnUserSubmit" onclick="submitUser()">Guardar</button></div></div></div></div>
+  
+  <div class="modal fade" id="reportModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-danger border-2">
+        <div class="modal-header bg-danger text-white"><h5 class="modal-title"><i class="bi bi-exclamation-circle"></i> Reportar Avería</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body position-relative">
+          <div id="repLoadingOverlay" class="position-absolute top-0 start-0 w-100 h-100 bg-white d-flex align-items-center justify-content-center d-none" style="z-index: 10; opacity: 0.9;"><div class="text-center"><div class="spinner-border text-danger" role="status"></div><div class="mt-2 fw-bold text-secondary">Cargando datos...</div></div></div>
+          <input type="hidden" id="repId">
+          <div class="mb-3"><label class="form-label fw-bold">1. ¿Dónde está el problema?</label><select id="repCampus" class="form-select mb-2" onchange="loadEdificiosReport(this.value)"><option value="">Selecciona Campus...</option></select><select id="repEdificio" class="form-select mb-2" disabled onchange="loadActivosReport(this.value)"><option value="">Selecciona Edificio...</option></select><select id="repActivo" class="form-select" disabled><option value="">(Opcional) Selecciona Activo concreto...</option></select></div>
+          <div class="mb-3"><label class="form-label fw-bold">2. Describe la incidencia</label><textarea class="form-control" id="repDesc" rows="3" placeholder="Ej. La caldera hace un ruido extraño..."></textarea></div>
+          <div class="row">
+             <div class="col-6 mb-3"><label class="form-label fw-bold">Prioridad</label><select class="form-select" id="repPrio"><option value="BAJA">Baja</option><option value="MEDIA" selected>Media</option><option value="ALTA">Alta</option><option value="URGENTE">¡Urgente!</option></select></div>
+             <div class="col-6 mb-3">
+               <label class="form-label fw-bold">Foto (Opcional)</label>
+               <input type="file" class="form-control" id="repFoto" accept="image/*" onchange="previewReportImage()">
+               <div id="repFotoPreview" class="mt-2 text-center d-none p-2 border rounded bg-light position-relative"><img id="imgPreview" src="" class="img-fluid rounded" style="max-height: 120px;"><button type="button" class="btn-close position-absolute top-0 end-0 m-1" aria-label="Close" onclick="clearReportImage()" title="Quitar foto"></button></div>
+             </div>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-danger" id="btnReportSubmit" onclick="submitReport()">Enviar Reporte</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="campusModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
         <div class="modal-header">
-          <h5 class="modal-title" id="modalTitle">Nuevo</h5>
+          <h5 class="modal-title" id="campusModalTitle">Campus</h5>
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <form id="createForm">
-            <input type="hidden" id="repId">
-            <input type="hidden" id="modalType">
-            <input type="hidden" id="modalParentId">
-            <div class="mb-3">
-              <label>Nombre</label>
-              <input type="text" class="form-control" id="fNombre" required>
-            </div>
-            <div id="extraFields">
-            </div>
-          </form>
+          <input type="hidden" id="campId">
+          <div class="mb-3">
+            <label class="form-label">Nombre del Campus</label>
+            <input type="text" class="form-control" id="campNombre" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Provincia</label>
+            <input type="text" class="form-control" id="campProv">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Dirección</label>
+            <input type="text" class="form-control" id="campDir">
+          </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button>
+          <button type="button" class="btn btn-primary" id="btnCampusSubmit" onclick="submitCampus()">Guardar</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="revId"><div id="assetSelector" class="mb-3 d-none"><label class="form-label fw-bold">Activo</label><div class="row g-2"><div class="col-4"><select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)"><option value="">- Campus -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)"><option value="">- Edificio -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintActivo" disabled><option value="">- Activo -</option></select></div></div></div><div class="mb-3"><label class="form-label">Tipo de Revisión</label><select class="form-select" id="revTipo"><option value="Legal">Legal</option><option value="Periódica">Periódica</option><option value="Reparación">Reparación</option><option value="Extraordinaria">Extraordinaria</option></select></div><div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded"><label class="small text-muted">Normativa / Reglamento</label><select class="form-select form-select-sm" id="revNorma"><option value="">Seleccione norma...</option></select></div><div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div><div class="form-check mb-3 bg-light p-2 rounded border"><input class="form-check-input ms-1" type="checkbox" id="revCalendar" checked><label class="form-check-label ms-2" for="revCalendar"><i class="bi bi-calendar-event text-primary"></i> Sincronizar con Google Calendar</label></div><div id="secRecur" class="d-none"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="revRecur"><label class="form-check-label" for="revRecur">Repetir esta revisión</label></div><div id="secRecurOptions" class="d-none ms-3 border-start ps-3"><div class="mb-2"><label class="small">Cada (días)</label><input type="number" class="form-control form-control-sm" id="revFreq" value="365"></div><div class="mb-2"><label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd"></div></div></div><div class="mt-4 border-top pt-3"><label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label><div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;"><div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div></div><div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div></div></div></div>
-  <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
-  <div class="modal fade" id="obraModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Registrar Obra / Reforma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Nombre de la Obra</label><input type="text" class="form-control" id="obraNombre" placeholder="Ej. Reforma Cubierta Norte"></div><div class="mb-3"><label>Descripción</label><textarea class="form-control" id="obraDesc" rows="2"></textarea></div><div class="mb-3"><label>Fecha Inicio</label><input type="date" class="form-control" id="obraFecha"></div><div class="mb-3 p-2 bg-light border rounded"><label class="form-label small text-muted"><i class="bi bi-paperclip"></i> Adjuntar documento inicial (opcional)</label><input type="file" class="form-control form-control-sm" id="obraFileInit"></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button></div></div></div></div>
-  <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="configModalTitle">Nuevo Tipo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="confId"><div class="mb-3"><label class="form-label">Nombre del Tipo</label><input type="text" class="form-control" id="confNombre" placeholder="Ej. Baja Tensión"></div><div class="mb-3"><label class="form-label">Ref. Normativa</label><input type="text" class="form-control" id="confNorma" placeholder="Ej. REBT 2002"></div><div class="mb-3"><label class="form-label">Frecuencia (Días)</label><input type="number" class="form-control" id="confDias" placeholder="Ej. 365"><div class="form-text small">Días por defecto para revisiones.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button></div></div></div></div>
-  <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="userModalTitle">Usuario</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="userId"><div class="mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="userNombre" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" id="userEmail" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Rol</label><select class="form-select" id="userRol"><option value="TECNICO">Técnico</option><option value="ADMIN">Administrador</option><option value="CONSULTA">Solo Consulta</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Alertas</label><select class="form-select" id="userAvisos"><option value="NO">No</option><option value="SI">Sí</option></select></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnUserSubmit" onclick="submitUser()">Guardar</button></div></div></div></div>
-
-  <div class="modal fade" id="reportModal" tabindex="-1">
+  <div class="modal fade" id="edificioModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content border-danger border-2">
-        <div class="modal-header bg-danger text-white">
-          <h5 class="modal-title"><i class="bi bi-exclamation-circle"></i> Reportar Avería</h5>
-          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="edificioModalTitle">Edificio</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <div class="modal-body position-relative"> <div id="repLoadingOverlay" class="position-absolute top-0 start-0 w-100 h-100 bg-white d-flex align-items-center justify-content-center d-none" style="z-index: 10; opacity: 0.9;">
-              <div class="text-center">
-                  <div class="spinner-border text-danger" role="status"></div>
-                  <div class="mt-2 fw-bold text-secondary">Cargando datos...</div>
-              </div>
+          <input type="hidden" id="edifId">
+          <div class="mb-3">
+            <label class="form-label">Nombre del Edificio</label>
+            <input type="text" class="form-control" id="edifNombre" required>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-bold">1. ¿Dónde está el problema?</label>
-            <select id="repCampus" class="form-select mb-2" onchange="loadEdificiosReport(this.value)">
-               <option value="">Selecciona Campus...</option>
-            </select>
-            <select id="repEdificio" class="form-select mb-2" disabled onchange="loadActivosReport(this.value)">
-               <option value="">Selecciona Edificio...</option>
-            </select>
-            <select id="repActivo" class="form-select" disabled>
-               <option value="">(Opcional) Selecciona Activo concreto...</option>
+            <label class="form-label">Campus</label>
+            <select class="form-select" id="edifCampus">
+               <option value="">Cargando...</option>
             </select>
           </div>
-          
           <div class="mb-3">
-            <label class="form-label fw-bold">2. Describe la incidencia</label>
-            <textarea class="form-control" id="repDesc" rows="3" placeholder="Ej. La caldera hace un ruido extraño..."></textarea>
-          </div>
-
-          <div class="row">
-             <div class="col-6 mb-3">
-               <label class="form-label fw-bold">Prioridad</label>
-               <select class="form-select" id="repPrio">
-                 <option value="BAJA">Baja</option>
-                 <option value="MEDIA" selected>Media</option>
-                 <option value="ALTA">Alta</option>
-                 <option value="URGENTE">¡Urgente!</option>
-               </select>
-             </div>
-             <div class="col-6 mb-3">
-                <label class="form-label fw-bold">Foto (Opcional)</label>
-                <input type="file" class="form-control" id="repFoto" accept="image/*" onchange="previewReportImage()">
-                
-                <div id="repFotoPreview" class="mt-2 text-center d-none p-2 border rounded bg-light position-relative">
-                    <img id="imgPreview" src="" class="img-fluid rounded" style="max-height: 120px;">
-                    <button type="button" class="btn-close position-absolute top-0 end-0 m-1" aria-label="Close" onclick="clearReportImage()" title="Quitar foto"></button>
-                </div>
-              </div>
+            <label class="form-label">Contacto / Responsable</label>
+            <input type="text" class="form-control" id="edifContacto">
           </div>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-          <button type="button" class="btn btn-danger" id="btnReportSubmit" onclick="submitReport()">Enviar Reporte</button>
+          <button type="button" class="btn btn-primary" id="btnEdifSubmit" onclick="submitEdificio()">Guardar</button>
         </div>
       </div>
     </div>
