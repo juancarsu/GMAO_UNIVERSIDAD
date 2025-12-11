@@ -260,90 +260,120 @@ function eliminarDocumento(idDoc) {
 }
 
 // ==========================================
-// 6. MANTENIMIENTO
+// 6. MANTENIMIENTO (CON CALENDAR)
 // ==========================================
-function obtenerPlanMantenimiento(idActivo) {
-  const data = getSheetData('PLAN_MANTENIMIENTO'); 
-  const docsData = getSheetData('DOCS_HISTORICO');
-  const docsMap = {};
-  for(let j=1; j<docsData.length; j++) if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
 
-  const planes = [];
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  for(let i=1; i<data.length; i++) {
-    if(String(data[i][1]) === String(idActivo)) {
-      let f = data[i][4];
-      let color = 'gris'; let fechaStr = "-"; let fechaISO = "";
-      if (f instanceof Date) {
-         f.setHours(0,0,0,0);
-         const diff = Math.ceil((f.getTime() - hoy.getTime()) / (86400000));
-         if (diff < 0) color = 'rojo'; else if (diff <= 30) color = 'amarillo'; else color = 'verde';
-         fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
-         fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
-      }
-      planes.push({ id: data[i][0], tipo: data[i][2], fechaProxima: fechaStr, fechaISO: fechaISO, color: color, hasDocs: docsMap[String(data[i][0])] || false });
-    }
-  }
-  return planes.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
+// Helper para obtener ID de calendario
+function getCalendarId() {
+  // Hemos puesto "fijo" el ID de tu calendario de grupo
+  return "unav.es_tg34elssj1cjb9cj090i5g09o4@group.calendar.google.com";
 }
 
-function getGlobalMaintenance() {
-  const planes = getSheetData('PLAN_MANTENIMIENTO');
+// Helper centralizado para crear/actualizar eventos
+function gestionarEventoCalendario(accion, datos, eventIdExistente) {
+  try {
+    const cal = CalendarApp.getCalendarById(getCalendarId());
+    if (!cal) return null;
+
+    const titulo = `MANT: ${datos.tipo} - ${datos.nombreActivo}`;
+    const descripcion = `Activo: ${datos.nombreActivo}\nMarca: ${datos.marca}\nEdificio: ${datos.edificio}\n\nGestión desde GMAO.`;
+    const fechaInicio = textoAFecha(datos.fecha);
+    if (!fechaInicio) return null;
+
+    // Los eventos de mantenimiento suelen ser de día completo
+    // Si quisieras horas, habría que pedir hora en el formulario. Asumimos día completo.
+
+    if (accion === 'CREAR') {
+      const evento = cal.createAllDayEvent(titulo, fechaInicio, { description: descripcion, location: datos.edificio });
+      evento.setColor(CalendarApp.EventColor.PALE_RED); // Color distintivo
+      return evento.getId();
+    } 
+    else if (accion === 'ACTUALIZAR' && eventIdExistente) {
+      const evento = cal.getEventById(eventIdExistente);
+      if (evento) {
+        evento.setTitle(titulo);
+        evento.setAllDayDate(fechaInicio);
+        evento.setDescription(descripcion);
+        evento.setLocation(datos.edificio);
+      }
+      return eventIdExistente;
+    }
+    else if (accion === 'BORRAR' && eventIdExistente) {
+      const evento = cal.getEventById(eventIdExistente);
+      if (evento) evento.deleteEvent();
+      return null;
+    }
+  } catch (e) {
+    console.log("Error Calendar: " + e.toString());
+    return null;
+  }
+}
+
+// Obtener info extra (nombre activo, edificio) para el calendario
+function getInfoParaCalendar(idActivo) {
   const activos = getSheetData('ACTIVOS');
   const edificios = getSheetData('EDIFICIOS');
-  const campus = getSheetData('CAMPUS'); 
-  const docsData = getSheetData('DOCS_HISTORICO');
-  const docsMap = {};
-  for(let j=1; j<docsData.length; j++) if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
+  let nombreActivo = "Activo";
+  let marca = "-";
+  let nombreEdificio = "Sin ubicación";
 
-  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
-  const mapActivos = {}; 
-  activos.slice(1).forEach(r => {
-    const edificioInfo = mapEdificios[r[1]] || {};
-    mapActivos[r[0]] = { nombre: r[3], idEdif: r[1], idCampus: edificioInfo.idCampus || null }; 
-  });
-  const result = [];
-  const hoy = new Date(); hoy.setHours(0,0,0,0);
-  for(let i=1; i<planes.length; i++) {
-    const idActivo = planes[i][1];
-    const activoInfo = mapActivos[idActivo];
-    if(activoInfo) {
-       const nombreEdificio = mapEdificios[activoInfo.idEdif] ? mapEdificios[activoInfo.idEdif].nombre : "-";
-       let f = planes[i][4];
-       let color = 'gris'; let fechaStr = "-"; let dias = 9999; let fechaISO = "";
-       if (f instanceof Date) {
-         f.setHours(0,0,0,0);
-         dias = Math.ceil((f.getTime() - hoy.getTime()) / (86400000));
-         if (dias < 0) color = 'rojo'; else if (dias <= 30) color = 'amarillo'; else color = 'verde';
-         fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
-         fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
-       }
-       result.push({ 
-         id: planes[i][0], idActivo: idActivo, activo: activoInfo.nombre, edificio: nombreEdificio, tipo: planes[i][2], 
-         fecha: fechaStr, fechaISO: fechaISO, color: color, dias: dias, edificioId: activoInfo.idEdif, campusId: activoInfo.idCampus,
-         hasDocs: docsMap[String(planes[i][0])] || false
-       });
+  for(let i=1; i<activos.length; i++){
+    if(String(activos[i][0]) === String(idActivo)) {
+      nombreActivo = activos[i][3];
+      marca = activos[i][4];
+      const idEdif = activos[i][1];
+      for(let j=1; j<edificios.length; j++){
+        if(String(edificios[j][0]) === String(idEdif)) {
+          nombreEdificio = edificios[j][2];
+          break;
+        }
+      }
+      break;
     }
   }
-  return result.sort((a,b) => a.dias - b.dias);
+  return { nombreActivo, marca, edificio: nombreEdificio };
 }
 
 function crearRevision(d) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
+  
   try {
     let fechaActual = textoAFecha(d.fechaProx);
     if (!fechaActual) return { success: false, error: "Fecha inválida" };
+    
     var esRepetitiva = (String(d.esRecursiva) === "true"); 
     var frecuencia = parseInt(d.diasFreq) || 0;
     var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null;
-    sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO"]);
+    var syncCal = (String(d.syncCalendar) === "true");
+
+    // Info auxiliar para el calendario
+    const infoExtra = syncCal ? getInfoParaCalendar(d.idActivo) : {};
+
+    // 1. PRIMERA REVISIÓN
+    let eventId = null;
+    if (syncCal) {
+       eventId = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx });
+    }
+    
+    // Columnas: ID, ID_ACTIVO, TIPO, OBS, FECHA, FREQ, ESTADO, ID_EVENTO_CALENDAR
+    sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventId]);
+
+    // 2. RECURSIVAS
     if (esRepetitiva && frecuencia > 0 && fechaLimite && fechaLimite > fechaActual) {
       let contador = 0;
-      while (contador < 50) { 
+      while (contador < 50) { // Límite de seguridad
         fechaActual.setDate(fechaActual.getDate() + frecuencia);
         if (fechaActual > fechaLimite) break;
-        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO"]);
+        
+        let eventIdLoop = null;
+        if (syncCal) {
+           // Formatear fecha para el helper
+           let fStr = Utilities.formatDate(fechaActual, Session.getScriptTimeZone(), "yyyy-MM-dd");
+           eventIdLoop = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: fStr });
+        }
+
+        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventIdLoop]);
         contador++;
       }
     }
@@ -356,31 +386,171 @@ function updateRevision(d) {
     const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); 
     const data = sheet.getDataRange().getValues(); 
     let nuevaFecha = textoAFecha(d.fechaProx);
+    
     if (!nuevaFecha) return { success: false, error: "Fecha inválida" };
+
+    var syncCal = (String(d.syncCalendar) === "true");
+    
+    // Buscar y actualizar la fila principal
     for(let i=1; i<data.length; i++){ 
         if(String(data[i][0]) === String(d.idPlan)) { 
             sheet.getRange(i+1, 3).setValue(d.tipo); 
             sheet.getRange(i+1, 5).setValue(nuevaFecha); 
+            
+            // Lógica Calendario (Actualizar existente o Crear nuevo si se activó el check)
+            let currentEventId = (data[i].length > 7) ? data[i][7] : null;
+            
+            if (syncCal) {
+                const infoExtra = getInfoParaCalendar(d.idActivo);
+                if (currentEventId) {
+                   gestionarEventoCalendario('ACTUALIZAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx }, currentEventId);
+                } else {
+                   // No tenía evento, pero ahora lo quiere
+                   const newId = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx });
+                   sheet.getRange(i+1, 8).setValue(newId);
+                }
+            } else if (!syncCal && currentEventId) {
+                // Usuario desmarcó la casilla -> ¿Borramos evento?
+                // Opcional: gestionarEventoCalendario('BORRAR', {}, currentEventId);
+                // Por seguridad, dejaremos el evento, o podrías decidir borrarlo.
+                // sheet.getRange(i+1, 8).setValue("");
+            }
+
             break;
         } 
     } 
-    var esRepetitiva = (String(d.esRecursiva) === "true"); 
-    var frecuencia = parseInt(d.diasFreq) || 0;
-    var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null;
-    if (esRepetitiva && frecuencia > 0 && fechaLimite && fechaLimite > nuevaFecha) {
-         let fechaIter = new Date(nuevaFecha.getTime());
-         let contador = 0;
-         while (contador < 50) {
-            fechaIter.setDate(fechaIter.getDate() + frecuencia);
-            if (fechaIter > fechaLimite) break;
-            sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaIter), frecuencia, "ACTIVO"]);
-            contador++;
-         }
-    }
+    
+    // Nota: La edición NO regenera la serie recursiva automáticamente para no romper historial.
+    // Solo actualiza el registro individual seleccionado.
     return { success: true }; 
 }
 
-function eliminarRevision(idPlan) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(idPlan)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Plan no encontrado" }; }
+function eliminarRevision(idPlan) { 
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); 
+  const data = sheet.getDataRange().getValues(); 
+  
+  for(let i=1; i<data.length; i++){ 
+    if(String(data[i][0]) === String(idPlan)) { 
+       // Borrar de Calendar si existe
+       let currentEventId = (data[i].length > 7) ? data[i][7] : null;
+       if (currentEventId) {
+         gestionarEventoCalendario('BORRAR', {}, currentEventId);
+       }
+
+       sheet.deleteRow(i+1); 
+       return { success: true }; 
+    } 
+  } 
+  return { success: false, error: "Plan no encontrado" }; 
+}
+
+// Obtener también el ID de evento al leer (para saber si marcar el checkbox o mostrar icono)
+function obtenerPlanMantenimiento(idActivo) {
+  const data = getSheetData('PLAN_MANTENIMIENTO'); 
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {};
+  for(let j=1; j<docsData.length; j++) if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
+
+  const planes = [];
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
+  for(let i=1; i<data.length; i++) {
+    if(String(data[i][1]) === String(idActivo)) {
+      let f = data[i][4];
+      let color = 'gris'; let fechaStr = "-"; let fechaISO = "";
+      if (f instanceof Date) {
+         f.setHours(0,0,0,0);
+         const diff = Math.ceil((f.getTime() - hoy.getTime()) / (86400000));
+         if (diff < 0) color = 'rojo'; else if (diff <= 30) color = 'amarillo'; else color = 'verde';
+         fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
+         fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      }
+      // Col 7 (indice 7) es EventID
+      let hasEvent = (data[i].length > 7 && data[i][7]) ? true : false;
+      
+      planes.push({ 
+        id: data[i][0], 
+        tipo: data[i][2], 
+        fechaProxima: fechaStr, 
+        fechaISO: fechaISO, 
+        color: color, 
+        hasDocs: docsMap[String(data[i][0])] || false,
+        hasCalendar: hasEvent // <--- Nuevo flag
+      });
+    }
+  }
+  return planes.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
+}
+
+function getGlobalMaintenance() {
+  const planes = getSheetData('PLAN_MANTENIMIENTO');
+  const activos = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  const campus = getSheetData('CAMPUS');
+  const docsData = getSheetData('DOCS_HISTORICO');
+
+  // 1. Mapa de documentos (para el clip)
+  const docsMap = {};
+  for(let j=1; j<docsData.length; j++) {
+    if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
+  }
+
+  // 2. Mapeos auxiliares (Campus y Edificios)
+  const mapEdificios = {}; 
+  edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
+  
+  const mapActivos = {};
+  activos.slice(1).forEach(r => {
+    const edificioInfo = mapEdificios[r[1]] || {};
+    mapActivos[r[0]] = { nombre: r[3], idEdif: r[1], idCampus: edificioInfo.idCampus || null };
+  });
+
+  const result = [];
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+
+  // 3. Iterar sobre el plan
+  for(let i=1; i<planes.length; i++) {
+    const idActivo = planes[i][1];
+    const activoInfo = mapActivos[idActivo];
+    
+    if(activoInfo) {
+       const nombreEdificio = mapEdificios[activoInfo.idEdif] ? mapEdificios[activoInfo.idEdif].nombre : "-";
+       let f = planes[i][4];
+       let color = 'gris'; let fechaStr = "-"; let dias = 9999; let fechaISO = "";
+
+       if (f instanceof Date) {
+         f.setHours(0,0,0,0);
+         dias = Math.ceil((f.getTime() - hoy.getTime()) / (86400000));
+         if (dias < 0) color = 'rojo'; else if (dias <= 30) color = 'amarillo'; else color = 'verde';
+         fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
+         fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
+       }
+       
+       // DETECTAR SI TIENE CALENDARIO (Columna H / Índice 7)
+       let hasCalendar = (planes[i].length > 7 && planes[i][7]) ? true : false;
+
+       result.push({
+         id: planes[i][0], 
+         idActivo: idActivo, 
+         activo: activoInfo.nombre, 
+         edificio: nombreEdificio, 
+         tipo: planes[i][2],
+         fecha: fechaStr, 
+         fechaISO: fechaISO, 
+         color: color, 
+         dias: dias, 
+         edificioId: activoInfo.idEdif, 
+         campusId: activoInfo.idCampus,
+         hasDocs: docsMap[String(planes[i][0])] || false,
+         hasCalendar: hasCalendar
+       });
+    }
+  }
+  
+  // Ordenar por urgencia (días restantes)
+  return result.sort((a,b) => a.dias - b.dias);
+}
 
 // ==========================================
 // 7. CONTRATOS
@@ -685,3 +855,20 @@ function deleteUsuario(id) {
   return { success: false, error: "Usuario no encontrado" };
 }
 
+function testCalendario() {
+  //const id = Session.getActiveUser().getEmail(); // O pon aquí el ID largo de la UNAV entre comillas
+  console.log("Probando acceso a: " + id);
+  
+  try {
+    const cal = CalendarApp.getCalendarById(id);
+    if (cal) {
+      console.log("✅ Calendario encontrado: " + cal.getName());
+      cal.createAllDayEvent("TEST GMAO", new Date());
+      console.log("✅ Evento de prueba creado correctamente hoy.");
+    } else {
+      console.log("❌ Error: El calendario no existe o no tienes acceso a él.");
+    }
+  } catch (e) {
+    console.log("❌ Error de Permisos: " + e.toString());
+  }
+}
