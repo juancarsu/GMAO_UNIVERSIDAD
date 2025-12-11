@@ -21,6 +21,7 @@
       if(document.getElementById('createModal')) myModal = new bootstrap.Modal(document.getElementById('createModal'));
       if(document.getElementById('obraModal')) obraModal = new bootstrap.Modal(document.getElementById('obraModal'));
       if(document.getElementById('configModal')) configModal = new bootstrap.Modal(document.getElementById('configModal'));
+      if(document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
 
       // Cargar normas
       google.script.run.withSuccessHandler(list => {
@@ -93,6 +94,7 @@
     }
     if(viewId==='activos') { const sel = document.getElementById('filterCampus'); if(!sel || sel.options.length <= 1) initFilters(); }
     if(viewId==='config') loadConfigList();
+    if(viewId==='usuarios') loadUserList();
   }
 
   // --- MANTENIMIENTO GLOBAL ---
@@ -1054,6 +1056,95 @@
         alert("Error: " + res.error);
       }
     }).deleteConfigCatalogo(id);
+  }
+
+  // ==========================================
+  // GESTIÓN DE USUARIOS
+  // ==========================================
+
+  function loadUserList() {
+    const tbody = document.getElementById('tableUsersBody');
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>';
+    
+    google.script.run.withSuccessHandler(list => {
+      if(!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay usuarios registrados.</td></tr>';
+        return;
+      }
+      
+      let html = '';
+      list.forEach(u => {
+        let badgeRol = u.rol === 'ADMIN' ? 'bg-danger' : (u.rol === 'TECNICO' ? 'bg-primary' : 'bg-secondary');
+        let iconAvisos = u.avisos === 'SI' ? '<i class="bi bi-bell-fill text-warning"></i>' : '<i class="bi bi-bell-slash text-muted"></i>';
+        
+        html += `
+          <tr>
+            <td class="ps-4 fw-bold">${u.nombre}</td>
+            <td>${u.email}</td>
+            <td><span class="badge ${badgeRol}">${u.rol}</span></td>
+            <td class="text-center fs-5">${iconAvisos}</td>
+            <td class="text-end pe-4">
+              <button class="btn btn-sm btn-light border me-1" onclick="openUserModal('${u.id}', '${u.nombre}', '${u.email}', '${u.rol}', '${u.avisos}')"><i class="bi bi-pencil"></i></button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u.id}')"><i class="bi bi-trash"></i></button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }).getListaUsuarios();
+  }
+
+  function openUserModal(id, nombre, email, rol, avisos) {
+    if(!userModal) userModal = new bootstrap.Modal(document.getElementById('userModal'));
+    
+    if(id) {
+      document.getElementById('userModalTitle').innerText = 'Editar Usuario';
+      document.getElementById('userId').value = id;
+      document.getElementById('userNombre').value = nombre;
+      document.getElementById('userEmail').value = email;
+      document.getElementById('userRol').value = rol;
+      document.getElementById('userAvisos').value = avisos;
+    } else {
+      document.getElementById('userModalTitle').innerText = 'Nuevo Usuario';
+      document.getElementById('userId').value = '';
+      document.getElementById('userNombre').value = '';
+      document.getElementById('userEmail').value = '';
+      document.getElementById('userRol').value = 'TECNICO'; // Default
+      document.getElementById('userAvisos').value = 'NO'; // Default
+    }
+    userModal.show();
+  }
+
+  function submitUser() {
+    const id = document.getElementById('userId').value;
+    const nombre = document.getElementById('userNombre').value;
+    const email = document.getElementById('userEmail').value;
+    const rol = document.getElementById('userRol').value;
+    const avisos = document.getElementById('userAvisos').value;
+
+    if(!nombre || !email) return alert("Nombre y Email son obligatorios");
+
+    setBtnLoading('btnUserSubmit', true);
+    
+    const payload = { id, nombre, email, rol, avisos };
+    
+    google.script.run.withSuccessHandler(res => {
+      setBtnLoading('btnUserSubmit', false);
+      if(res.success) {
+        userModal.hide();
+        loadUserList();
+      } else {
+        alert("Error: " + res.error);
+      }
+    }).saveUsuario(payload);
+  }
+
+  function deleteUser(id) {
+    if(!confirm("¿Borrar usuario? Perderá el acceso.")) return;
+    google.script.run.withSuccessHandler(res => {
+      if(res.success) loadUserList();
+      else alert("Error: " + res.error);
+    }).deleteUsuario(id);
   }
 
 </script>
