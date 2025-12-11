@@ -443,3 +443,70 @@ function buscarGlobal(texto) {
   const edificios = getSheetData('EDIFICIOS'); for(let i=1; i<edificios.length; i++) { const r = edificios[i]; if (String(r[2]).toLowerCase().includes(texto)) { resultados.push({ id: r[0], tipo: 'EDIFICIO', texto: r[2], subtexto: 'Edificio' }); } }
   return resultados.slice(0, 10);
 }
+
+// ==========================================
+// 9. CONFIGURACIÓN (CATÁLOGO INSTALACIONES)
+// ==========================================
+
+// Obtener lista completa para la tabla de configuración
+function getConfigCatalogo() {
+  const data = getSheetData('CAT_INSTALACIONES');
+  // Estructura esperada hoja: ID, Nombre, Normativa/Ref, DiasFreq
+  return data.slice(1).map(r => ({
+    id: r[0],
+    nombre: r[1],
+    normativa: r[2],
+    dias: r[3]
+  }));
+}
+
+// Crear o Actualizar un tipo de instalación
+function saveConfigCatalogo(d) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CAT_INSTALACIONES');
+  
+  // Validar datos básicos
+  if(!d.nombre) return { success: false, error: "El nombre es obligatorio" };
+  
+  if (d.id) {
+    // --- EDICIÓN ---
+    const data = sheet.getDataRange().getValues();
+    for(let i=1; i<data.length; i++) {
+      if(String(data[i][0]) === String(d.id)) {
+        sheet.getRange(i+1, 2).setValue(d.nombre);    // Col B: Nombre
+        sheet.getRange(i+1, 3).setValue(d.normativa); // Col C: Normativa/Ref
+        sheet.getRange(i+1, 4).setValue(d.dias);      // Col D: Días Frecuencia
+        return { success: true };
+      }
+    }
+    return { success: false, error: "ID no encontrado para editar" };
+  } else {
+    // --- CREACIÓN ---
+    sheet.appendRow([
+      Utilities.getUuid(), // ID
+      d.nombre,            // Nombre
+      d.normativa,         // Ref Normativa
+      d.dias               // Días Frecuencia
+    ]);
+    return { success: true };
+  }
+}
+
+// Eliminar un tipo de instalación
+function deleteConfigCatalogo(id) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CAT_INSTALACIONES');
+  const data = sheet.getDataRange().getValues();
+  
+  // Opcional: Podrías verificar si hay Activos usando este tipo antes de borrar
+  // para evitar inconsistencias, pero por ahora haremos un borrado simple.
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Elemento no encontrado" };
+}
+
