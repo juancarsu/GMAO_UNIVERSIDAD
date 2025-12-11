@@ -13,10 +13,7 @@
 <body>
 
   <aside id="sidebar">
-    <div class="sidebar-header">
-      <i class="bi bi-building-check me-2"></i> GMAO Universidad
-    </div>
-
+    <div class="sidebar-header"><i class="bi bi-building-check me-2"></i> GMAO Universidad</div>
     <div class="px-3 mb-3">
       <div class="input-group">
         <input type="text" class="form-control form-control-sm" id="globalSearchInput" placeholder="Buscar activo, edificio..." onkeyup="handleGlobalSearch(event)">
@@ -24,7 +21,6 @@
       </div>
       <div id="globalSearchResults" class="list-group position-absolute shadow-sm d-none" style="z-index: 1050; width: 230px; max-height: 300px; overflow-y: auto;"></div>
     </div>
-
     <ul class="sidebar-menu">
       <li class="menu-item"><a href="#" class="menu-link active" onclick="navTo('dashboard', this, event)"><i class="bi bi-grid-1x2 menu-icon"></i> Dashboard</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('campus', this, event)"><i class="bi bi-bank menu-icon"></i> Campus</a></li>
@@ -32,123 +28,47 @@
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('activos', this, event)"><i class="bi bi-box-seam menu-icon"></i> Activos</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('mantenimiento', this, event)"><i class="bi bi-tools menu-icon"></i> Mantenimiento</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
-      
       <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
-      
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('usuarios', this, event)"><i class="bi bi-people menu-icon"></i> Usuarios</a></li>
     </ul>
-
-    <div class="user-profile">
-      <i class="bi bi-person-circle me-2 fs-5"></i>
-      <div>
-        <div class="fw-bold">Usuario</div>
-        <small class="text-muted text-truncate" style="max-width: 140px; display:block;">Conectado</small>
-      </div>
-    </div>
+    <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Cargando...</div><small class="text-muted">...</small></div></div>
   </aside>
 
   <main id="main-content">
-    
     <div id="view-dashboard" class="view-section">
-      <div class="page-header">
-        <h1 class="page-title">Resumen General</h1>
-        <button class="btn btn-primary" onclick="navTo('activos', null, null)">+ Nuevo Activo</button>
-      </div>
+      <div class="page-header"><h1 class="page-title">Resumen General</h1><button class="btn btn-primary" onclick="navTo('activos', null, null)">+ Nuevo Activo</button></div>
       <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon bg-blue-light"><i class="bi bi-box-seam"></i></div><div class="stat-value" id="d-activos">--</div><div class="stat-label">Activos</div></div>
         <div class="stat-card"><div class="stat-icon bg-red-light"><i class="bi bi-exclamation-circle"></i></div><div class="stat-value" id="d-vencidas">--</div><div class="stat-label">Vencidas</div></div>
         <div class="stat-card"><div class="stat-icon bg-yellow-light"><i class="bi bi-clock"></i></div><div class="stat-value" id="d-pendientes">--</div><div class="stat-label">Pendientes</div></div>
         <div class="stat-card"><div class="stat-icon bg-green-light"><i class="bi bi-building"></i></div><div class="stat-value" id="d-edificios">--</div><div class="stat-label">Edificios</div></div>
       </div>
-      <div class="card p-4 border-0 shadow-sm" style="border-radius:12px;">
-        <h5 class="mb-4">Estado Mantenimiento</h5>
-        <div style="height:300px;"><canvas id="mainChart"></canvas></div>
-      </div>
+      <div class="card p-4 border-0 shadow-sm" style="border-radius:12px;"><h5 class="mb-4">Estado Mantenimiento</h5><div style="height:300px;"><canvas id="mainChart"></canvas></div></div>
     </div>
 
     <div id="view-campus" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Campus</h1><button class="btn btn-primary" onclick="mostrarModalCrear('CAMPUS')">+ Nuevo Campus</button></div>
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Provincia</th><th>Dirección</th><th></th></tr></thead>
-            <tbody id="tableCampusBody"></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Provincia</th><th>Dirección</th><th></th></tr></thead><tbody id="tableCampusBody"></tbody></table></div></div>
     </div>
-
     <div id="view-edificios" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Edificios</h1><button class="btn btn-primary" onclick="mostrarModalCrear('EDIFICIO')">+ Nuevo Edificio</button></div>
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light"><tr><th class="ps-4">Edificio</th><th>Campus</th><th>Contacto</th><th></th></tr></thead>
-            <tbody id="tableEdificiosBody"></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Edificio</th><th>Campus</th><th>Contacto</th><th></th></tr></thead><tbody id="tableEdificiosBody"></tbody></table></div></div>
     </div>
-
+    
     <div id="view-building-detail" class="view-section d-none">
-      <div class="d-flex align-items-center mb-4">
-        <button class="btn btn-light border me-3" onclick="closeBuildingDetail()"><i class="bi bi-arrow-left"></i> Volver</button>
-        <div>
-          <h2 class="mb-0" id="b-detail-name">Cargando...</h2>
-          <span class="badge bg-success mt-1" id="b-detail-campus">Campus</span>
-        </div>
-      </div>
-
+      <div class="d-flex align-items-center mb-4"><button class="btn btn-light border me-3" onclick="closeBuildingDetail()"><i class="bi bi-arrow-left"></i> Volver</button><div><h2 class="mb-0" id="b-detail-name">Cargando...</h2><span class="badge bg-success mt-1" id="b-detail-campus">Campus</span></div></div>
       <ul class="nav nav-tabs mb-4">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-b-info">Información</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-docs" onclick="loadBuildingDocs()">Documentación Legal/Planos</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-obras" onclick="loadBuildingObras()">Obras y Reformas</a></li>
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-b-assets" onclick="loadBuildingAssets()">Activos Instalados</a></li>
       </ul>
-
       <div class="tab-content">
-        <div class="tab-pane fade show active" id="tab-b-info">
-          <div class="card shadow-sm p-4 border-0">
-             <div class="row">
-               <div class="col-md-6 mb-3"><label class="text-muted small">Nombre del Edificio</label><div class="fs-5 fw-bold" id="bd-nombre">-</div></div>
-               <div class="col-md-6 mb-3"><label class="text-muted small">Campus</label><div class="fs-5" id="bd-campus">-</div></div>
-               <div class="col-md-12 mb-3"><label class="text-muted small">Contacto / Responsable</label><div class="fs-5" id="bd-contacto">-</div></div>
-             </div>
-          </div>
-        </div>
-        <div class="tab-pane fade" id="tab-b-docs">
-          <div class="card p-3 mb-3 bg-light border-0">
-             <div class="d-flex gap-2">
-               <input type="file" class="form-control" id="fileInputBuilding">
-               <button class="btn btn-success text-nowrap" onclick="uploadBuildingFile()"><i class="bi bi-upload"></i> Subir Documento</button>
-             </div>
-             <small class="text-muted mt-1" id="uploadStatusBuilding">Planos, Licencias, Legalizaciones...</small>
-          </div>
-          <table class="table table-striped bg-white shadow-sm rounded">
-            <thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Fecha</th><th>Usuario</th><th></th></tr></thead>
-            <tbody id="buildingDocsBody"></tbody>
-          </table>
-        </div>
-        <div class="tab-pane fade" id="tab-b-obras">
-           <div class="d-flex justify-content-end mb-3">
-             <button class="btn btn-primary" onclick="showModalObra()">+ Nueva Obra</button>
-           </div>
-           <div id="buildingObrasList" class="row g-3"></div>
-        </div>
-        <div class="tab-pane fade" id="tab-b-assets">
-           <div class="row mb-3 mt-2">
-             <div class="col-md-6">
-                <select id="filterAssetTypeBuilding" class="form-select form-select-sm" onchange="filterBuildingAssets()">
-                   <option value="">- Todos los tipos -</option>
-                </select>
-             </div>
-           </div>
-           <table class="table table-hover bg-white shadow-sm align-middle">
-             <thead class="bg-light"><tr><th class="ps-3">Activo</th><th>Tipo</th><th>Marca</th><th></th></tr></thead>
-             <tbody id="buildingAssetsBody"></tbody>
-           </table>
-        </div>
+        <div class="tab-pane fade show active" id="tab-b-info"><div class="card shadow-sm p-4 border-0"><div class="row"><div class="col-md-6 mb-3"><label class="text-muted small">Nombre del Edificio</label><div class="fs-5 fw-bold" id="bd-nombre">-</div></div><div class="col-md-6 mb-3"><label class="text-muted small">Campus</label><div class="fs-5" id="bd-campus">-</div></div><div class="col-md-12 mb-3"><label class="text-muted small">Contacto / Responsable</label><div class="fs-5" id="bd-contacto">-</div></div></div></div></div>
+        <div class="tab-pane fade" id="tab-b-docs"><div class="card p-3 mb-3 bg-light border-0"><div class="d-flex gap-2"><input type="file" class="form-control" id="fileInputBuilding"><button class="btn btn-success text-nowrap" onclick="uploadBuildingFile()"><i class="bi bi-upload"></i> Subir Documento</button></div><small class="text-muted mt-1" id="uploadStatusBuilding">Planos, Licencias, Legalizaciones...</small></div><table class="table table-striped bg-white shadow-sm rounded"><thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Fecha</th><th>Usuario</th><th></th></tr></thead><tbody id="buildingDocsBody"></tbody></table></div>
+        <div class="tab-pane fade" id="tab-b-obras"><div class="d-flex justify-content-end mb-3"><button class="btn btn-primary" onclick="showModalObra()">+ Nueva Obra</button></div><div id="buildingObrasList" class="row g-3"></div></div>
+        <div class="tab-pane fade" id="tab-b-assets"><div class="row mb-3 mt-2"><div class="col-md-6"><select id="filterAssetTypeBuilding" class="form-select form-select-sm" onchange="filterBuildingAssets()"><option value="">- Todos los tipos -</option></select></div></div><table class="table table-hover bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th class="ps-3">Activo</th><th>Tipo</th><th>Marca</th><th></th></tr></thead><tbody id="buildingAssetsBody"></tbody></table></div>
       </div>
     </div>
 
@@ -159,102 +79,30 @@
         <div class="flex-grow-1"><label class="form-label small text-muted">2. Edificio</label><select id="filterEdificio" class="form-select" disabled onchange="loadActivos(this.value)"><option value="">- Seleccione -</option></select></div>
         <div class="flex-grow-1"><label class="form-label small text-muted">3. Filtro Texto</label><input type="text" class="form-control" placeholder="Buscar..." disabled id="filterSearch" onkeyup="filterAssets()"></div>
       </div>
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light"><tr><th class="ps-4">Activo</th><th>Tipo</th><th>Marca</th><th class="text-end pe-4">Acción</th></tr></thead>
-            <tbody id="tableActivos"><tr><td colspan="4" class="text-center py-5 text-muted">Selecciona un edificio</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Activo</th><th>Tipo</th><th>Marca</th><th class="text-end pe-4">Acción</th></tr></thead><tbody id="tableActivos"><tr><td colspan="4" class="text-center py-5 text-muted">Selecciona un edificio</td></tr></tbody></table></div></div>
     </div>
 
     <div id="view-mantenimiento" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Plan de Mantenimiento Global</h1></div>
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body">
-          <div class="row mb-3">
-              <div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="maintFilterCampus" class="form-select" onchange="loadEdificiosMaintFilter(this.value)"><option value="">Todos los Campus</option></select></div>
-              <div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="maintFilterEdificio" class="form-select" onchange="setMaintFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div>
-          </div>
-          <div class="mb-2" id="filterGroupColor">
-            <span class="text-muted small fw-bold me-2">ESTADO:</span>
-            <button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('color', 'all', this)">Todas</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="setMaintFilter('color', 'rojo', this)">Vencidas</button>
-            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setMaintFilter('color', 'amarillo', this)">Próximas</button>
-            <button class="btn btn-sm btn-outline-success" onclick="setMaintFilter('color', 'verde', this)">Al día</button>
-          </div>
-          <div id="filterGroupType">
-            <span class="text-muted small fw-bold me-2">TIPO:</span>
-            <button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('type', 'all', this)">Todos</button>
-            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Legal', this)">Legal</button>
-            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Periódica', this)">Periódica</button>
-            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Reparación', this)">Reparación</button>
-            <button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Extraordinaria', this)">Extraordinaria</button>
-          </div>
-        </div>
-      </div>
-      <div class="card border-0 shadow-sm">
-        <div style="max-height: 500px; overflow-y: auto;">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light sticky-top"><tr><th class="ps-4 text-center" style="width:50px;">#</th><th>Edificio</th><th>Activo</th><th>Tipo Revisión</th><th>Fecha Límite</th><th class="text-end pe-4">Acciones</th></tr></thead>
-            <tbody id="tableGlobalMaint"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="row mb-3"><div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="maintFilterCampus" class="form-select" onchange="loadEdificiosMaintFilter(this.value)"><option value="">Todos los Campus</option></select></div><div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="maintFilterEdificio" class="form-select" onchange="setMaintFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div></div><div class="mb-2" id="filterGroupColor"><span class="text-muted small fw-bold me-2">ESTADO:</span><button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('color', 'all', this)">Todas</button><button class="btn btn-sm btn-outline-danger" onclick="setMaintFilter('color', 'rojo', this)">Vencidas</button><button class="btn btn-sm btn-outline-warning text-dark" onclick="setMaintFilter('color', 'amarillo', this)">Próximas</button><button class="btn btn-sm btn-outline-success" onclick="setMaintFilter('color', 'verde', this)">Al día</button></div><div id="filterGroupType"><span class="text-muted small fw-bold me-2">TIPO:</span><button class="btn btn-sm btn-outline-secondary active" onclick="setMaintFilter('type', 'all', this)">Todos</button><button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Legal', this)">Legal</button><button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Periódica', this)">Periódica</button><button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Reparación', this)">Reparación</button><button class="btn btn-sm btn-outline-primary" onclick="setMaintFilter('type', 'Extraordinaria', this)">Extraordinaria</button></div></div></div>
+      <div class="card border-0 shadow-sm"><div style="max-height: 500px; overflow-y: auto;"><table class="table table-hover mb-0 align-middle"><thead class="bg-light sticky-top"><tr><th class="ps-4 text-center" style="width:50px;">#</th><th>Edificio</th><th>Activo</th><th>Tipo Revisión</th><th>Fecha Límite</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalMaint"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
     </div>
 
     <div id="view-contratos" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Gestión de Contratos</h1><button class="btn btn-primary" onclick="mostrarModalContrato()">+ Nuevo Contrato</button></div>
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body">
-          <div class="row mb-3">
-              <div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="contractFilterCampus" class="form-select" onchange="loadEdificiosContractFilter(this.value)"><option value="">Todos los Campus</option></select></div>
-              <div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="contractFilterEdificio" class="form-select" onchange="setContractFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div>
-          </div>
-          <div class="mb-2" id="contractFilterGroup">
-            <span class="text-muted small fw-bold me-2">ESTADO:</span>
-            <button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button>
-            <button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button>
-            <button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button>
-            <button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button>
-          </div>
-        </div>
-      </div>
-      <div class="card border-0 shadow-sm">
-        <div style="max-height: 500px; overflow-y: auto;">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light sticky-top"><tr><th class="ps-4">Estado</th><th>Activo/Edificio</th><th>Proveedor</th><th>Referencia</th><th>Vigencia</th><th class="text-end pe-4">Acciones</th></tr></thead>
-            <tbody id="tableGlobalContracts"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="row mb-3"><div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="contractFilterCampus" class="form-select" onchange="loadEdificiosContractFilter(this.value)"><option value="">Todos los Campus</option></select></div><div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="contractFilterEdificio" class="form-select" onchange="setContractFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div></div><div class="mb-2" id="contractFilterGroup"><span class="text-muted small fw-bold me-2">ESTADO:</span><button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button><button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button><button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button><button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button><button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button></div></div></div>
+      <div class="card border-0 shadow-sm"><div style="max-height: 500px; overflow-y: auto;"><table class="table table-hover mb-0 align-middle"><thead class="bg-light sticky-top"><tr><th class="ps-4">Estado</th><th>Activo/Edificio</th><th>Proveedor</th><th>Referencia</th><th>Vigencia</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalContracts"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
     </div>
 
     <div id="view-config" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Catálogo de Instalaciones</h1><button class="btn btn-primary" onclick="openConfigModal()">+ Nuevo Tipo</button></div>
-      <div class="alert alert-info small"><i class="bi bi-info-circle me-2"></i> Define los tipos de activos. La "Frecuencia" se usa para cálculos automáticos.</div>
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light"><tr><th class="ps-4">Nombre Instalación</th><th>Ref. Normativa</th><th>Frecuencia (Días)</th><th class="text-end pe-4">Acciones</th></tr></thead>
-            <tbody id="tableConfigBody"><tr><td colspan="4" class="text-center py-5">Cargando catálogo...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="alert alert-info small"><i class="bi bi-info-circle me-2"></i> Define los tipos de activos y frecuencias.</div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Nombre Instalación</th><th>Ref. Normativa</th><th>Frecuencia (Días)</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableConfigBody"><tr><td colspan="4" class="text-center py-5">Cargando catálogo...</td></tr></tbody></table></div></div>
     </div>
 
     <div id="view-usuarios" class="view-section d-none">
       <div class="page-header"><h1 class="page-title">Gestión de Usuarios</h1><button class="btn btn-primary" onclick="openUserModal()">+ Nuevo Usuario</button></div>
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Email</th><th>Rol</th><th class="text-center">Alertas</th><th class="text-end pe-4">Acciones</th></tr></thead>
-            <tbody id="tableUsersBody"><tr><td colspan="5" class="text-center py-5">Cargando...</td></tr></tbody>
-          </table>
-        </div>
-      </div>
+      <div class="card border-0 shadow-sm"><div class="card-body p-0"><table class="table table-hover mb-0 align-middle"><thead class="bg-light"><tr><th class="ps-4">Nombre</th><th>Email</th><th>Rol</th><th class="text-center">Alertas</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableUsersBody"><tr><td colspan="5" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
     </div>
 
     <div id="view-asset-detail" class="view-section d-none">
@@ -266,19 +114,7 @@
         <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-contracts" onclick="loadContracts()">Contratos</a></li>
       </ul>
       <div class="tab-content">
-        <div class="tab-pane fade show active" id="tab-info">
-          <div class="card shadow-sm p-4">
-            <div class="d-flex justify-content-end mb-3">
-              <button id="btn-edit-info" class="btn btn-outline-secondary btn-sm" onclick="toggleEditInfo(true)"><i class="bi bi-pencil"></i> Editar</button>
-              <div id="btn-save-info" class="d-none">
-                <button class="btn btn-success btn-sm me-2" onclick="saveAssetInfo()"><i class="bi bi-check-lg"></i> Guardar</button>
-                <button class="btn btn-outline-danger btn-sm" onclick="toggleEditInfo(false)"><i class="bi bi-x-lg"></i> Cancelar</button>
-              </div>
-            </div>
-            <div id="info-view-mode"><div class="row"><div class="col-md-6 mb-3"><label class="small text-muted">Nombre</label><div class="fw-bold fs-5" id="d-nombre-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Tipo Instalación</label><div class="fw-bold fs-5" id="d-tipo-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Marca</label><div class="fw-bold fs-5" id="d-marca-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Fecha Alta</label><div class="text-muted" id="d-fecha-val">-</div></div></div></div>
-            <div id="info-edit-mode" class="d-none"><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="edit-nombre"></div><div class="col-md-6 mb-3"><label class="form-label">Tipo Instalación</label><select class="form-select" id="edit-tipo"><option>Cargando...</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Marca</label><input type="text" class="form-control" id="edit-marca"></div><div class="col-12"><small class="text-muted"><i class="bi bi-info-circle"></i> La fecha de alta no se puede modificar.</small></div></div></div>
-          </div>
-        </div>
+        <div class="tab-pane fade show active" id="tab-info"><div class="card shadow-sm p-4"><div class="d-flex justify-content-end mb-3"><button id="btn-edit-info" class="btn btn-outline-secondary btn-sm" onclick="toggleEditInfo(true)"><i class="bi bi-pencil"></i> Editar</button><div id="btn-save-info" class="d-none"><button class="btn btn-success btn-sm me-2" onclick="saveAssetInfo()"><i class="bi bi-check-lg"></i> Guardar</button><button class="btn btn-outline-danger btn-sm" onclick="toggleEditInfo(false)"><i class="bi bi-x-lg"></i> Cancelar</button></div></div><div id="info-view-mode"><div class="row"><div class="col-md-6 mb-3"><label class="small text-muted">Nombre</label><div class="fw-bold fs-5" id="d-nombre-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Tipo Instalación</label><div class="fw-bold fs-5" id="d-tipo-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Marca</label><div class="fw-bold fs-5" id="d-marca-val">-</div></div><div class="col-md-6 mb-3"><label class="small text-muted">Fecha Alta</label><div class="text-muted" id="d-fecha-val">-</div></div></div></div><div id="info-edit-mode" class="d-none"><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="edit-nombre"></div><div class="col-md-6 mb-3"><label class="form-label">Tipo Instalación</label><select class="form-select" id="edit-tipo"><option>Cargando...</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Marca</label><input type="text" class="form-control" id="edit-marca"></div><div class="col-12"><small class="text-muted"><i class="bi bi-info-circle"></i> La fecha de alta no se puede modificar.</small></div></div></div></div></div>
         <div class="tab-pane fade" id="tab-docs"><div class="card p-3 mb-3 bg-light border-0"><div class="d-flex gap-2"><input type="file" class="form-control" id="fileInput"><button class="btn btn-success text-nowrap" onclick="uploadFile()"><i class="bi bi-upload"></i> Subir</button></div><small class="text-muted mt-1" id="uploadStatus"></small></div><table class="table table-striped bg-white shadow-sm rounded"><thead class="bg-light"><tr><th class="ps-3">Documento</th><th>Versión</th><th>Fecha</th><th></th></tr></thead><tbody id="docsTableBody"></tbody></table></div>
         <div class="tab-pane fade" id="tab-maint"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalRevision()">+ Programar Revisión</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th class="text-center" style="width:50px;">Estado</th><th>Tipo</th><th>Próxima</th><th></th></tr></thead><tbody id="maintTableBody"></tbody></table></div>
         <div class="tab-pane fade" id="tab-contracts"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table></div>
@@ -287,18 +123,10 @@
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
-  
-  <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="revId"><div id="assetSelector" class="mb-3 d-none"><label class="form-label fw-bold">Activo</label><div class="row g-2"><div class="col-4"><select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)"><option value="">- Campus -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)"><option value="">- Edificio -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintActivo" disabled><option value="">- Activo -</option></select></div></div></div><div class="mb-3"><label class="form-label">Tipo de Revisión</label><select class="form-select" id="revTipo"><option value="Legal">Legal</option><option value="Periódica">Periódica</option><option value="Reparación">Reparación</option><option value="Extraordinaria">Extraordinaria</option></select></div><div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded"><label class="small text-muted">Normativa / Reglamento</label><select class="form-select form-select-sm" id="revNorma"><option value="">Seleccione norma...</option></select></div>
-  <div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div>
-  <div class="form-check mb-3 bg-light p-2 rounded border"><input class="form-check-input ms-1" type="checkbox" id="revCalendar" checked><label class="form-check-label ms-2" for="revCalendar"><i class="bi bi-calendar-event text-primary"></i> Sincronizar con Google Calendar</label></div>
-  <div id="secRecur" class="d-none"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="revRecur"><label class="form-check-label" for="revRecur">Repetir esta revisión</label></div><div id="secRecurOptions" class="d-none ms-3 border-start ps-3"><div class="mb-2"><label class="small">Cada (días)</label><input type="number" class="form-control form-control-sm" id="revFreq" value="365"></div><div class="mb-2"><label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd"></div></div></div><div class="mt-4 border-top pt-3"><label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label><div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;"><div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div></div><div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div></div></div></div>
-  
+  <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="revId"><div id="assetSelector" class="mb-3 d-none"><label class="form-label fw-bold">Activo</label><div class="row g-2"><div class="col-4"><select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)"><option value="">- Campus -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)"><option value="">- Edificio -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintActivo" disabled><option value="">- Activo -</option></select></div></div></div><div class="mb-3"><label class="form-label">Tipo de Revisión</label><select class="form-select" id="revTipo"><option value="Legal">Legal</option><option value="Periódica">Periódica</option><option value="Reparación">Reparación</option><option value="Extraordinaria">Extraordinaria</option></select></div><div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded"><label class="small text-muted">Normativa / Reglamento</label><select class="form-select form-select-sm" id="revNorma"><option value="">Seleccione norma...</option></select></div><div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div><div class="form-check mb-3 bg-light p-2 rounded border"><input class="form-check-input ms-1" type="checkbox" id="revCalendar" checked><label class="form-check-label ms-2" for="revCalendar"><i class="bi bi-calendar-event text-primary"></i> Sincronizar con Google Calendar</label></div><div id="secRecur" class="d-none"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="revRecur"><label class="form-check-label" for="revRecur">Repetir esta revisión</label></div><div id="secRecurOptions" class="d-none ms-3 border-start ps-3"><div class="mb-2"><label class="small">Cada (días)</label><input type="number" class="form-control form-control-sm" id="revFreq" value="365"></div><div class="mb-2"><label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd"></div></div></div><div class="mt-4 border-top pt-3"><label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label><div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;"><div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div></div><div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div></div></div></div>
   <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
-
   <div class="modal fade" id="obraModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Registrar Obra / Reforma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Nombre de la Obra</label><input type="text" class="form-control" id="obraNombre" placeholder="Ej. Reforma Cubierta Norte"></div><div class="mb-3"><label>Descripción</label><textarea class="form-control" id="obraDesc" rows="2"></textarea></div><div class="mb-3"><label>Fecha Inicio</label><input type="date" class="form-control" id="obraFecha"></div><div class="mb-3 p-2 bg-light border rounded"><label class="form-label small text-muted"><i class="bi bi-paperclip"></i> Adjuntar documento inicial (opcional)</label><input type="file" class="form-control form-control-sm" id="obraFileInit"></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button></div></div></div></div>
-
   <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="configModalTitle">Nuevo Tipo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="confId"><div class="mb-3"><label class="form-label">Nombre del Tipo</label><input type="text" class="form-control" id="confNombre" placeholder="Ej. Baja Tensión"></div><div class="mb-3"><label class="form-label">Ref. Normativa</label><input type="text" class="form-control" id="confNorma" placeholder="Ej. REBT 2002"></div><div class="mb-3"><label class="form-label">Frecuencia (Días)</label><input type="number" class="form-control" id="confDias" placeholder="Ej. 365"><div class="form-text small">Días por defecto para revisiones.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button></div></div></div></div>
-
   <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="userModalTitle">Usuario</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="userId"><div class="mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="userNombre" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" id="userEmail" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Rol</label><select class="form-select" id="userRol"><option value="TECNICO">Técnico</option><option value="ADMIN">Administrador</option><option value="CONSULTA">Solo Consulta</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Alertas</label><select class="form-select" id="userAvisos"><option value="NO">No</option><option value="SI">Sí</option></select></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnUserSubmit" onclick="submitUser()">Guardar</button></div></div></div></div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
