@@ -436,3 +436,195 @@ function enviarResumenSemanal() {
   html += `<p style="color: #666; font-size: 12px;">Generado automáticamente.</p></div>`;
   MailApp.sendEmail({ to: emailsDestino, subject: `[GMAO] Alerta: ${mantCriticos.length + contCriticos.length} incidencias`, htmlBody: html });
 }
+
+// ==========================================
+// 12. GESTIÓN DE INCIDENCIAS (CORRECTIVO)
+// ==========================================
+
+function getIncidencias() {
+  const data = getSheetData('INCIDENCIAS');
+  // Índices: 0=ID, 1=Tipo, 2=IdOrigen, 3=Nombre, 4=Desc, 5=Prio, 6=Estado, 7=Fecha, 8=Solicitante, 9=IdFoto
+  const list = [];
+  for(let i=1; i<data.length; i++) {
+    // Solo devolvemos filas con ID
+    if(data[i][0]) {
+       let f = data[i][7];
+       let fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "-";
+       
+       // Obtener URL de foto si existe
+       let urlFoto = "";
+       if(data[i][9]) {
+         try { urlFoto = DriveApp.getFileById(data[i][9]).getUrl(); } catch(e) {}
+       }
+
+       list.push({
+         id: data[i][0],
+         tipoOrigen: data[i][1],
+         nombreOrigen: data[i][3],
+         descripcion: data[i][4],
+         prioridad: data[i][5],
+         estado: data[i][6],
+         fecha: fechaStr,
+         solicitante: data[i][8],
+         urlFoto: urlFoto
+       });
+    }
+  }
+  // Ordenar: Primero las pendientes/en proceso, luego por fecha
+  return list.sort((a,b) => {
+    if(a.estado === 'RESUELTA' && b.estado !== 'RESUELTA') return 1;
+    if(a.estado !== 'RESUELTA' && b.estado === 'RESUELTA') return -1;
+    return b.fecha.localeCompare(a.fecha); // Más recientes primero
+  });
+}
+
+function crearIncidencia(d) {
+  // EXCEPCIÓN DE SEGURIDAD: Permitimos a TODOS (incluso CONSULTA) reportar averías
+  // No llamamos a verificarPermiso(['WRITE']) aquí.
+  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('INCIDENCIAS');
+  const usuario = getMyRole().email;
+  const fecha = new Date();
+  
+  try {
+    let idFoto = "";
+    
+    // 1. Si hay foto, la subimos
+    if (d.fotoBase64) {
+       // Buscamos carpeta destino (intentamos guardarla en la carpeta del activo/edificio)
+       let carpetaId = getRootFolderId(); // Por defecto al root si falla
+       if (d.idOrigen) {
+          // Intentar buscar carpeta del origen
+          const activos = getSheetData('ACTIVOS');
+          for(let i=1; i<activos.length; i++) if(String(activos[i][0])===String(d.idOrigen)) { carpetaId = activos[i][6]; break; }
+          if (carpetaId === getRootFolderId()) { // Si no era activo, mirar edificio
+             const edifs = getSheetData('EDIFICIOS');
+             for(let i=1; i<edifs.length; i++) if(String(edifs[i][0])===String(d.idOrigen)) { carpetaId = edifs[i][4]; break; }
+          }
+       }
+       
+       const blob = Utilities.newBlob(Utilities.base64Decode(d.fotoBase64), d.mimeType, "INCIDENCIA_" + d.nombreArchivo);
+       const file = DriveApp.getFolderById(carpetaId).createFile(blob);
+       file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+       idFoto = file.getId();
+    }
+
+    // 2. Guardar en Excel
+    sheet.appendRow([
+      Utilities.getUuid(),
+      d.tipoOrigen,
+      d.idOrigen,
+      d.nombreOrigen,
+      d.descripcion,
+      d.prioridad,
+      "PENDIENTE",
+      fecha,
+      usuario,
+      idFoto
+    ]);
+    
+    return { success: true };
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function actualizarEstadoIncidencia(id, nuevoEstado) {
+  // Solo Técnicos y Admin pueden resolver
+  verificarPermiso(['WRITE']); 
+  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('INCIDENCIAS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      sheet.getRange(i+1, 7).setValue(nuevoEstado); // Col G = Estado
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Incidencia no encontrada" };
+}
+
+// ==========================================
+// 13. EDITAR INCIDENCIAS (Backend)
+// ==========================================
+
+function getIncidenciaDetalle(id) {
+  const data = getSheetData('INCIDENCIAS');
+  const activos = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  
+  for(let i=1; i<data.length; i++) {
+    if(String(data[i][0]) === String(id)) {
+       const r = data[i];
+       let idCampus = null;
+       let idEdificio = null;
+       let idActivo = null;
+
+       if (r[1] === 'ACTIVO') {
+          idActivo = r[2];
+          for(let a=1; a<activos.length; a++) {
+             if(String(activos[a][0]) === String(idActivo)) { idEdificio = activos[a][1]; break; }
+          }
+       } else {
+          idEdificio = r[2];
+       }
+
+       if(idEdificio) {
+          for(let e=1; e<edificios.length; e++) {
+             if(String(edificios[e][0]) === String(idEdificio)) { idCampus = edificios[e][1]; break; }
+          }
+       }
+       
+       // RECUPERAR FOTO SI EXISTE
+       let urlFoto = null;
+       if (r[9]) { // Columna J (índice 9) es ID_DOC_FOTO
+           try { urlFoto = DriveApp.getFileById(r[9]).getUrl(); } catch(e) {}
+       }
+
+       return {
+         id: r[0],
+         tipoOrigen: r[1],
+         idOrigen: r[2],
+         nombreOrigen: r[3],
+         descripcion: r[4],
+         prioridad: r[5],
+         idCampus: idCampus,
+         idEdificio: idEdificio,
+         idActivo: idActivo,
+         urlFoto: urlFoto // <--- AÑADIDO
+       };
+    }
+  }
+  throw new Error("Incidencia no encontrada");
+}
+
+function updateIncidenciaData(d) {
+  verificarPermiso(['WRITE']); // Técnicos y Admin pueden corregir
+  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('INCIDENCIAS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(d.id)) {
+       // Actualizamos columnas de datos (no tocamos estado, fecha ni solicitante)
+       // Col B(2)=Tipo, C(3)=IdOrigen, D(4)=Nombre, E(5)=Desc, F(6)=Prio
+       
+       sheet.getRange(i+1, 2).setValue(d.tipoOrigen);
+       sheet.getRange(i+1, 3).setValue(d.idOrigen);
+       sheet.getRange(i+1, 4).setValue(d.nombreOrigen);
+       sheet.getRange(i+1, 5).setValue(d.descripcion);
+       sheet.getRange(i+1, 6).setValue(d.prioridad);
+       
+       // Nota: No implementamos cambio de foto en edición para no complicar, 
+       // pero si quisieras se podría añadir aquí.
+       
+       return { success: true };
+    }
+  }
+  return { success: false, error: "ID no encontrado" };
+}
