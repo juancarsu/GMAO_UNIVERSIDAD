@@ -79,6 +79,17 @@ function updateAsset(datos) {
 // ==========================================
 function obtenerPlanMantenimiento(idActivo) {
   const data = getSheetData('PLAN_MANTENIMIENTO'); 
+  
+  // --- NUEVO: PRECARGAR QUE REVISIONES TIENEN DOCS ---
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {};
+  for(let j=1; j<docsData.length; j++) {
+    if(String(docsData[j][1]) === 'REVISION') {
+      docsMap[String(docsData[j][2])] = true; // ID_Entidad
+    }
+  }
+  // ----------------------------------------------------
+
   const planes = [];
   const hoy = new Date(); hoy.setHours(0,0,0,0);
   for(let i=1; i<data.length; i++) {
@@ -92,7 +103,14 @@ function obtenerPlanMantenimiento(idActivo) {
          fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
          fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
       }
-      planes.push({ id: data[i][0], tipo: data[i][2], fechaProxima: fechaStr, fechaISO: fechaISO, color: color });
+      planes.push({ 
+        id: data[i][0], 
+        tipo: data[i][2], 
+        fechaProxima: fechaStr, 
+        fechaISO: fechaISO, 
+        color: color,
+        hasDocs: docsMap[String(data[i][0])] || false // <--- NUEVO
+      });
     }
   }
   return planes.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
@@ -103,6 +121,17 @@ function getGlobalMaintenance() {
   const activos = getSheetData('ACTIVOS');
   const edificios = getSheetData('EDIFICIOS');
   const campus = getSheetData('CAMPUS'); 
+
+  // --- NUEVO: MAPA DE DOCS ---
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {};
+  for(let j=1; j<docsData.length; j++) {
+    if(String(docsData[j][1]) === 'REVISION') {
+      docsMap[String(docsData[j][2])] = true;
+    }
+  }
+  // ---------------------------
+
   const mapCampus = {}; campus.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
   const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
   const mapActivos = {}; 
@@ -126,7 +155,20 @@ function getGlobalMaintenance() {
          fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
          fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
        }
-       result.push({ id: planes[i][0], idActivo: idActivo, activo: activoInfo.nombre, edificio: nombreEdificio, tipo: planes[i][2], fecha: fechaStr, fechaISO: fechaISO, color: color, dias: dias, edificioId: activoInfo.idEdif, campusId: activoInfo.idCampus });
+       result.push({ 
+         id: planes[i][0], 
+         idActivo: idActivo, 
+         activo: activoInfo.nombre, 
+         edificio: nombreEdificio, 
+         tipo: planes[i][2], 
+         fecha: fechaStr, 
+         fechaISO: fechaISO, 
+         color: color, 
+         dias: dias, 
+         edificioId: activoInfo.idEdif, 
+         campusId: activoInfo.idCampus,
+         hasDocs: docsMap[String(planes[i][0])] || false // <--- NUEVO
+       });
     }
   }
   return result.sort((a,b) => a.dias - b.dias);
@@ -239,7 +281,7 @@ function updateContrato(datos) { const ss = SpreadsheetApp.openById(PROPS.getPro
 function eliminarContrato(id) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
 
 // ==========================================
-// 6. DASHBOARD & OTROS (ACTUALIZADO: Gráfico Real)
+// 6. DASHBOARD & OTROS
 // ==========================================
 function getDatosDashboard() { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
@@ -302,8 +344,8 @@ function getDatosDashboard() {
       vencidas: revVenc, 
       ok: revOk, 
       contratosCaducados: contCad,
-      chartLabels: chartLabels, // Array de etiquetas [Ene 2025, Feb 2025...]
-      chartData: chartData      // Array de valores [5, 10, ...]
+      chartLabels: chartLabels, 
+      chartData: chartData      
   }; 
 }
 
@@ -322,36 +364,144 @@ function buscarGlobal(texto) {
   
   // 1. Buscar en ACTIVOS
   const activos = getSheetData('ACTIVOS');
-  // Indices: 0=ID, 1=IdEdif, 2=Tipo, 3=Nombre, 4=Marca
   for(let i=1; i<activos.length; i++) {
     const r = activos[i];
-    // Buscamos en Nombre, Tipo o Marca
     if (String(r[3]).toLowerCase().includes(texto) || 
         String(r[2]).toLowerCase().includes(texto) || 
         String(r[4]).toLowerCase().includes(texto)) {
       resultados.push({
         id: r[0],
         tipo: 'ACTIVO',
-        texto: r[3], // Nombre del activo
-        subtexto: r[2] + (r[4] ? " - " + r[4] : "") // Tipo - Marca
+        texto: r[3], 
+        subtexto: r[2] + (r[4] ? " - " + r[4] : "") 
       });
     }
   }
   
   // 2. Buscar en EDIFICIOS
   const edificios = getSheetData('EDIFICIOS');
-  // Indices: 0=ID, 2=Nombre, 3=Contacto
   for(let i=1; i<edificios.length; i++) {
     const r = edificios[i];
     if (String(r[2]).toLowerCase().includes(texto)) {
       resultados.push({
         id: r[0],
         tipo: 'EDIFICIO',
-        texto: r[2], // Nombre del edificio
+        texto: r[2], 
         subtexto: 'Edificio'
       });
     }
   }
   
   return resultados.slice(0, 10); // Limitar a 10 resultados
+}
+
+// ==========================================
+// 7. GESTIÓN DOCUMENTAL (ACTIVOS Y REVISIONES)
+// ==========================================
+
+function obtenerDocs(idEntidad, tipoEntidad) {
+  // Si no se pasa tipo, asumimos ACTIVO por defecto
+  const tipo = tipoEntidad || 'ACTIVO';
+  const data = getSheetData('DOCS_HISTORICO');
+  const docs = [];
+  
+  // Indices: 0=ID_Doc, 1=Tipo, 2=ID_Entidad, 3=Nombre, 4=URL, 5=Version, 6=Fecha
+  for(let i=1; i<data.length; i++) {
+    if(String(data[i][2]) === String(idEntidad) && String(data[i][1]) === tipo) {
+       const f = data[i][6];
+       const fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "-";
+       docs.push({
+         id: data[i][0],
+         nombre: data[i][3],
+         url: data[i][4],
+         version: data[i][5],
+         fecha: fechaStr
+       });
+    }
+  }
+  return docs.sort((a,b) => b.version - a.version); // Ordenar por versión
+}
+
+function subirArchivo(dataBase64, nombreArchivo, mimeType, idEntidad, tipoEntidad) {
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    let carpetaId = null;
+    let activoId = idEntidad; // Por defecto
+
+    // 1. DETERMINAR CARPETA DE DESTINO
+    if (tipoEntidad === 'ACTIVO') {
+      // Buscar carpeta del activo directamente
+      const activos = getSheetData('ACTIVOS');
+      for(let i=1; i<activos.length; i++) {
+        if(String(activos[i][0]) === String(idEntidad)) {
+          carpetaId = activos[i][6]; // Columna G es ID_Carpeta
+          break;
+        }
+      }
+    } else if (tipoEntidad === 'REVISION') {
+      // Si es revisión, primero buscamos a qué activo pertenece esa revisión
+      const planes = getSheetData('PLAN_MANTENIMIENTO');
+      for(let i=1; i<planes.length; i++) {
+        if(String(planes[i][0]) === String(idEntidad)) {
+          activoId = planes[i][1]; // Obtenemos el ID del Activo padre
+          break;
+        }
+      }
+      // Ahora buscamos la carpeta de ese activo
+      if(activoId) {
+        const activos = getSheetData('ACTIVOS');
+        for(let i=1; i<activos.length; i++) {
+          if(String(activos[i][0]) === String(activoId)) {
+            carpetaId = activos[i][6];
+            break;
+          }
+        }
+      }
+    }
+
+    if (!carpetaId) throw new Error("No se encontró carpeta de destino para este elemento.");
+
+    // 2. SUBIR A DRIVE
+    const blob = Utilities.newBlob(Utilities.base64Decode(dataBase64), mimeType, nombreArchivo);
+    const folder = DriveApp.getFolderById(carpetaId);
+    const file = folder.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // 3. REGISTRAR EN CSV
+    const version = 1; 
+    const usuario = Session.getActiveUser().getEmail();
+    const fecha = new Date();
+    
+    ss.getSheetByName('DOCS_HISTORICO').appendRow([
+      Utilities.getUuid(),
+      tipoEntidad,
+      idEntidad,
+      nombreArchivo,
+      file.getUrl(),
+      version,
+      fecha,
+      usuario,
+      file.getId()
+    ]);
+
+    return { success: true };
+
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function eliminarDocumento(idDoc) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('DOCS_HISTORICO');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(idDoc)) {
+      // Opcional: Borrar de Drive también usando DriveApp.getFileById(data[i][8]).setTrashed(true);
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Documento no encontrado" };
 }
