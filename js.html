@@ -20,6 +20,7 @@
       if(document.getElementById('contractModal')) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
       if(document.getElementById('createModal')) myModal = new bootstrap.Modal(document.getElementById('createModal'));
       if(document.getElementById('obraModal')) obraModal = new bootstrap.Modal(document.getElementById('obraModal'));
+      if(document.getElementById('configModal')) configModal = new bootstrap.Modal(document.getElementById('configModal'));
 
       // Cargar normas
       google.script.run.withSuccessHandler(list => {
@@ -91,6 +92,7 @@
         loadContractFilters();
     }
     if(viewId==='activos') { const sel = document.getElementById('filterCampus'); if(!sel || sel.options.length <= 1) initFilters(); }
+    if(viewId==='config') loadConfigList();
   }
 
   // --- MANTENIMIENTO GLOBAL ---
@@ -952,4 +954,106 @@
       });
       tbody.innerHTML = html;
   }
+
+  // ==========================================
+  // LÓGICA DE CONFIGURACIÓN
+  // ==========================================
+  
+  let configModal = null; // Variable global
+
+  // Inicializar modal en window.onload (añade esto dentro de tu window.onload existente)
+  // if(document.getElementById('configModal')) configModal = new bootstrap.Modal(document.getElementById('configModal'));
+
+  function loadConfigList() {
+    const tbody = document.getElementById('tableConfigBody');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>';
+    
+    google.script.run.withSuccessHandler(list => {
+      if(!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No hay tipos definidos. Crea el primero.</td></tr>';
+        return;
+      }
+      
+      let html = '';
+      list.forEach(item => {
+        html += `
+          <tr>
+            <td class="ps-4 fw-bold">${item.nombre}</td>
+            <td><span class="badge bg-light text-dark border">${item.normativa || '-'}</span></td>
+            <td>${item.dias ? item.dias + ' días' : '-'}</td>
+            <td class="text-end pe-4">
+              <button class="btn btn-sm btn-light border me-1" onclick="openConfigModal('${item.id}', '${item.nombre}', '${item.normativa}', '${item.dias}')" title="Editar">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('${item.id}')" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    }).getConfigCatalogo();
+  }
+
+  function openConfigModal(id, nombre, norma, dias) {
+    if(!configModal) configModal = new bootstrap.Modal(document.getElementById('configModal'));
+    
+    if(id) {
+      document.getElementById('configModalTitle').innerText = 'Editar Tipo';
+      document.getElementById('confId').value = id;
+      document.getElementById('confNombre').value = nombre;
+      document.getElementById('confNorma').value = (norma === 'undefined' || !norma) ? '' : norma;
+      document.getElementById('confDias').value = (dias === 'undefined' || !dias) ? '' : dias;
+    } else {
+      document.getElementById('configModalTitle').innerText = 'Nuevo Tipo de Instalación';
+      document.getElementById('confId').value = '';
+      document.getElementById('confNombre').value = '';
+      document.getElementById('confNorma').value = '';
+      document.getElementById('confDias').value = '';
+    }
+    configModal.show();
+  }
+
+  function submitConfig() {
+    const id = document.getElementById('confId').value;
+    const nombre = document.getElementById('confNombre').value;
+    const norma = document.getElementById('confNorma').value;
+    const dias = document.getElementById('confDias').value;
+    
+    if(!nombre) return alert("Debes indicar un nombre para la instalación.");
+    
+    setBtnLoading('btnConfigSubmit', true);
+    
+    const payload = {
+      id: id,
+      nombre: nombre,
+      normativa: norma,
+      dias: dias
+    };
+    
+    google.script.run.withSuccessHandler(res => {
+      setBtnLoading('btnConfigSubmit', false);
+      if(res.success) {
+        configModal.hide();
+        loadConfigList();
+        // Opcional: Recargar selectores globales si es necesario
+      } else {
+        alert("Error al guardar: " + res.error);
+      }
+    }).saveConfigCatalogo(payload);
+  }
+
+  function deleteConfig(id) {
+    if(!confirm("¿Estás seguro? Si borras este tipo, los activos que lo tengan asignado podrían perder la referencia.")) return;
+    
+    google.script.run.withSuccessHandler(res => {
+      if(res.success) {
+        loadConfigList();
+      } else {
+        alert("Error: " + res.error);
+      }
+    }).deleteConfigCatalogo(id);
+  }
+
 </script>
