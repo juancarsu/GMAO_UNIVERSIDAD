@@ -26,6 +26,9 @@
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('activos', this, event)"><i class="bi bi-box-seam menu-icon"></i> Activos</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('mantenimiento', this, event)"><i class="bi bi-tools menu-icon"></i> Mantenimiento</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
+      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
+      <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
+      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Administrador</div><small class="text-muted">admin@unav.es</small></div></div>
   </aside>
@@ -127,6 +130,35 @@
       <div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="row mb-3"><div class="col-md-3"><label class="form-label small text-muted">Campus</label><select id="contractFilterCampus" class="form-select" onchange="loadEdificiosContractFilter(this.value)"><option value="">Todos los Campus</option></select></div><div class="col-md-3"><label class="form-label small text-muted">Edificio</label><select id="contractFilterEdificio" class="form-select" onchange="setContractFilter('edificio', this.value)"><option value="">Todos los Edificios</option></select></div></div><div class="mb-2" id="contractFilterGroup"><span class="text-muted small fw-bold me-2">ESTADO:</span><button class="btn btn-sm btn-outline-secondary active" onclick="setContractFilter('all', this)">Todos</button><button class="btn btn-sm btn-outline-success" onclick="setContractFilter('VIGENTE', this)">Vigente</button><button class="btn btn-sm btn-outline-warning text-dark" onclick="setContractFilter('PRÓXIMO', this)">Próximo a Caducar</button><button class="btn btn-sm btn-outline-danger" onclick="setContractFilter('CADUCADO', this)">Caducado</button><button class="btn btn-sm btn-outline-secondary" onclick="setContractFilter('INACTIVO', this)">Inactivo</button></div></div></div>
       <div class="card border-0 shadow-sm"><div style="max-height: 500px; overflow-y: auto;"><table class="table table-hover mb-0 align-middle"><thead class="bg-light sticky-top"><tr><th class="ps-4">Estado</th><th>Activo/Edificio</th><th>Proveedor</th><th>Referencia</th><th>Vigencia</th><th class="text-end pe-4">Acciones</th></tr></thead><tbody id="tableGlobalContracts"><tr><td colspan="6" class="text-center py-5">Cargando...</td></tr></tbody></table></div></div>
     </div>
+
+    <div id="view-config" class="view-section d-none">
+      <div class="page-header">
+        <h1 class="page-title">Catálogo de Instalaciones y Normativa</h1>
+        <button class="btn btn-primary" onclick="openConfigModal()">+ Nuevo Tipo</button>
+      </div>
+      
+      <div class="alert alert-info small">
+        <i class="bi bi-info-circle me-2"></i> Aquí defines los tipos de activos disponibles. La "Frecuencia" se usará para calcular automáticamente las revisiones periódicas.
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th class="ps-4">Nombre Instalación</th>
+                <th>Ref. Normativa / Reglamento</th>
+                <th>Frecuencia (Días)</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableConfigBody">
+              <tr><td colspan="4" class="text-center py-5">Cargando catálogo...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
@@ -144,6 +176,36 @@
           <div class="mb-3 p-2 bg-light border rounded"><label class="form-label small text-muted"><i class="bi bi-paperclip"></i> Adjuntar documento inicial (opcional)</label><input type="file" class="form-control form-control-sm" id="obraFileInit"></div>
         </div>
         <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="configModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="configModalTitle">Nuevo Tipo de Instalación</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="confId">
+          <div class="mb-3">
+            <label class="form-label">Nombre del Tipo</label>
+            <input type="text" class="form-control" id="confNombre" placeholder="Ej. Baja Tensión, Extintores...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Referencia Normativa (Opcional)</label>
+            <input type="text" class="form-control" id="confNorma" placeholder="Ej. REBT 2002, RITE...">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Frecuencia de Revisión (Días)</label>
+            <input type="number" class="form-control" id="confDias" placeholder="Ej. 365">
+            <div class="form-text small">Días por defecto para revisiones periódicas.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button>
+        </div>
       </div>
     </div>
   </div>
