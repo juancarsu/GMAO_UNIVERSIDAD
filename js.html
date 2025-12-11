@@ -167,7 +167,12 @@
         if (item.color === 'rojo') dotClass = 'bg-rojo';
         if (item.color === 'amarillo') dotClass = 'bg-amarillo';
         if (item.color === 'verde') dotClass = 'bg-verde';
-        html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td><small class="text-muted d-block">${item.edificio}</small></td><td class="fw-bold">${item.activo}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span></td><td>${item.fecha}</td><td class="text-end"><button class="btn btn-sm btn-light border me-1" onclick="editRevision('${item.id}', '${item.tipo}', '${item.fechaISO}', '${item.idActivo}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalMaint('${item.id}')" title="Borrar"><i class="bi bi-trash"></i></button></td></tr>`;
+
+        // --- LOGICA DEL CLIP ---
+        let clipIcon = item.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Contiene documentos adjuntos" style="font-size:1.1em;"></i>' : '';
+        // -----------------------
+
+        html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td><small class="text-muted d-block">${item.edificio}</small></td><td class="fw-bold">${item.activo}</td><td><span class="badge bg-light text-dark border">${item.tipo}</span> ${clipIcon}</td><td>${item.fecha}</td><td class="text-end"><button class="btn btn-sm btn-light border me-1" onclick="editRevision('${item.id}', '${item.tipo}', '${item.fechaISO}', '${item.idActivo}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteGlobalMaint('${item.id}')" title="Borrar"><i class="bi bi-trash"></i></button></td></tr>`;
     });
     tbody.innerHTML = html;
   }
@@ -314,9 +319,125 @@
       const assetSelector = document.getElementById('assetSelector');
       if(assetSelector) assetSelector.classList.add('d-none');
       updateMaintFormVisibility();
+
+      // NUEVA LÍNEA AÑADIDA: Cargar documentos de esta revisión
+      loadRevDocs(id); 
+
       if(maintModal) maintModal.show(); 
   }
   
+  // --- GESTIÓN DOCUMENTAL DE REVISIONES (NUEVO) ---
+
+  function loadRevDocs(idRevision) {
+      const container = document.getElementById('revDocsList');
+      container.innerHTML = '<div class="text-center text-muted"><span class="spinner-border spinner-border-sm"></span></div>';
+      
+      google.script.run.withSuccessHandler(docs => {
+          if (!docs || docs.length === 0) {
+              container.innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin evidencias adjuntas</div>';
+              return;
+          }
+          let html = '<ul class="list-group list-group-flush bg-transparent">';
+          docs.forEach(d => {
+              html += `<li class="list-group-item bg-transparent d-flex justify-content-between align-items-center p-1">
+                <a href="${d.url}" target="_blank" class="text-decoration-none text-truncate" style="max-width: 250px;">
+                   <i class="bi bi-file-earmark-text text-danger"></i> ${d.nombre}
+                </a>
+                <button class="btn btn-sm text-danger py-0" onclick="deleteRevDoc('${d.id}')" title="Eliminar">&times;</button>
+              </li>`;
+          });
+          html += '</ul>';
+          container.innerHTML = html;
+      }).obtenerDocs(idRevision, 'REVISION');
+  }
+
+  function uploadRevDoc() {
+      const idRevision = document.getElementById('revId').value;
+      const fileInput = document.getElementById('revFileInput');
+      const file = fileInput.files[0];
+      const status = document.getElementById('revUploadStatus');
+
+      if (!idRevision) return alert("Primero debes guardar la revisión antes de adjuntar archivos.");
+      if (!file) return alert("Selecciona un archivo.");
+
+      status.innerText = "Subiendo...";
+      const btn = event.target; // El botón pulsado
+      btn.disabled = true;
+
+      const r = new FileReader();
+      r.onload = function(e) {
+          const content = e.target.result.split(',')[1]; // Base64
+          google.script.run.withSuccessHandler(res => {
+              btn.disabled = false;
+              status.innerText = "";
+              fileInput.value = ""; // Limpiar input
+              if (res.success) {
+                  loadRevDocs(idRevision); // Recargar lista
+              } else {
+                  alert("Error al subir: " + res.error);
+              }
+          }).subirArchivo(content, file.name, file.type, idRevision, 'REVISION');
+      };
+      r.readAsDataURL(file);
+  }
+
+  function deleteRevDoc(idDoc) {
+      if(!confirm("¿Eliminar esta evidencia?")) return;
+      google.script.run.withSuccessHandler(res => {
+          if(res.success) {
+              const idRev = document.getElementById('revId').value;
+              loadRevDocs(idRev);
+          } else {
+              alert("Error: " + res.error);
+          }
+      }).eliminarDocumento(idDoc);
+  }
+
+  function loadMaint() { 
+      if(!currentAssetId) return; 
+      const tbody = document.getElementById('maintTableBody'); 
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; 
+      
+      google.script.run.withSuccessHandler(list => { 
+          if(list.length === 0) { 
+              tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay mantenimiento programado</td></tr>'; 
+              return; 
+          }
+          let html = ''; 
+          list.forEach(p => { 
+              let dotClass = 'bg-secondary'; 
+              if (p.color === 'rojo') dotClass = 'bg-rojo'; 
+              if (p.color === 'amarillo') dotClass = 'bg-amarillo'; 
+              if (p.color === 'verde') dotClass = 'bg-verde'; 
+
+              // --- LOGICA DEL CLIP ---
+              let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos disponibles"></i>' : '';
+              // -----------------------
+
+              html += `<tr class="align-middle">
+                  <td class="text-center"><span class="dot ${dotClass}"></span></td>
+                  <td>${p.tipo} ${clipIcon}</td>
+                  <td>${p.fechaProxima}</td>
+                  <td class="text-end">
+                      <div class="btn-group">
+                          <button class="btn btn-sm btn-light border" onclick="editRevision('${p.id}', '${p.tipo}', '${p.fechaISO}')"><i class="bi bi-pencil"></i></button>
+                          <button class="btn btn-sm btn-outline-danger" onclick="deleteRevision('${p.id}')"><i class="bi bi-trash"></i></button>
+                      </div>
+                  </td>
+              </tr>`; 
+          }); 
+          tbody.innerHTML = html; 
+      }).obtenerPlanMantenimiento(currentAssetId); 
+  }
+  
+  // FUNCION BORRAR REVISION (Estaba en versiones anteriores o implícita)
+  function deleteRevision(id) {
+    if(!confirm("¿Borrar revisión del plan?")) return;
+    google.script.run.withSuccessHandler(() => {
+        loadMaint();
+    }).eliminarRevision(id);
+  }
+
   function submitRevision() {
     const id = document.getElementById('revId').value;
     const tipo = document.getElementById('revTipo').value;
@@ -371,10 +492,10 @@
           myChart = new Chart(ctx, {
               type: 'line',
               data: {
-                  labels: d.chartLabels, // ETIQUETAS REALES DEL BACKEND
+                  labels: d.chartLabels, 
                   datasets: [{
                       label: 'Próximas Revisiones',
-                      data: d.chartData, // DATOS REALES DEL BACKEND
+                      data: d.chartData, 
                       borderColor: '#0d6efd',
                       backgroundColor: 'rgba(13, 110, 253, 0.1)',
                       tension: 0.3,
@@ -388,7 +509,7 @@
                       legend: { display: false }
                   },
                   scales: {
-                      y: { beginAtZero: true, ticks: { precision: 0 } } // Eje Y enteros
+                      y: { beginAtZero: true, ticks: { precision: 0 } } 
                   }
               }
           });
@@ -475,14 +596,11 @@
           // Esperamos un poco para que el DOM se ajuste (opcional) y abrimos ficha
           openAssetDetail(id);
       } else if (tipo === 'EDIFICIO') {
-          // Por ahora solo vamos a la lista de edificios (no tenemos ficha detalle de edificio aún)
-          // Podríamos implementar un filtro rápido en la tabla de edificios si quisiéramos.
           navTo('edificios');
           alert("Navegando al Edificio. (Ficha de detalle de edificio pendiente de implementar)");
       }
   }
 
-  // Cerrar buscador si clicamos fuera
   document.addEventListener('click', function(e) {
       const container = document.querySelector('.input-group');
       const results = document.getElementById('globalSearchResults');
