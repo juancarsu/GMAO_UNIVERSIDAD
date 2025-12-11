@@ -1,128 +1,740 @@
-# Manual GMAO Universidad - Dashboard
+# 📘 Manual de Usuario GMAO Universidad de Navarra
 
-## 📊 Tarjetas de Resumen
+## Sistema de Gestión de Mantenimiento, Activos y Obras
 
-El dashboard muestra **6 tarjetas** con métricas clave:
-
-| Tarjeta | Descripción | Acción al hacer clic |
-|---------|-------------|---------------------|
-| **Activos** | Total de instalaciones registradas | Va a la sección Activos |
-| **Vencidas** | Revisiones con fecha superada | Va a Mantenimiento (filtro rojo) |
-| **Pendientes** | Revisiones en los próximos 30 días | Va a Mantenimiento (filtro amarillo) |
-| **Incidencias** | Averías pendientes o en proceso | Va a Incidencias |
-| **Contratos** | Total de contratos activos | Va a Contratos |
-| **Campus** | Número de sedes registradas | Va a Campus |
+**Versión 1.0** | Autor: Juan Carlos Suárez  
+**Licencia**: Creative Commons Reconocimiento (CC BY)
 
 ---
 
-## 📅 Calendario de Revisiones
+## 🎯 Índice Rápido
 
-### Funcionalidades del calendario
-
-- **Vista mensual** de todas las revisiones programadas
-- **Código de colores**:
-  - 🔴 **Rojo**: Revisión vencida
-  - 🟡 **Amarillo**: Revisión próxima (≤30 días)
-  - 🟢 **Verde**: Revisión al día (>30 días)
-
-### Acciones disponibles
-
-1. **Crear revisión desde el calendario**:
-   - Haz clic en cualquier **día vacío** del calendario
-   - Se abrirá el formulario de nueva revisión con la fecha preseleccionada
-   - Selecciona Campus → Edificio → Activo
-   - Completa los datos y guarda
-
-2. **Ver/Editar revisión existente**:
-   - Haz clic sobre un **evento** (revisión programada)
-   - Se abrirá el formulario con los datos para editar
-
-3. **Cambiar vista**:
-   - **Mes**: Vista general por días
-   - **Lista**: Listado cronológico de eventos
+- [1. Introducción](#1-introducción)
+- [2. Acceso y Roles](#2-acceso-y-roles)
+- [3. Dashboard](#3-dashboard)
+- [4. Campus](#4-campus)
+- [5. Edificios](#5-edificios)
+- [6. Activos](#6-activos)
+- [7. Mantenimiento](#7-mantenimiento)
+- [8. Incidencias](#8-incidencias)
+- [9. Contratos](#9-contratos)
+- [10. Configuración](#10-configuración)
+- [11. Usuarios](#11-usuarios)
+- [12. FAQ](#12-faq)
 
 ---
 
-## 📈 Gráficos de Evolución
+# 1. Introducción
 
-### Gráfico lineal (6 meses)
+## ¿Qué es GMAO Universidad?
 
-Muestra la **tendencia de revisiones** programadas para los próximos 6 meses:
-- Eje X: Meses (Ene 2025, Feb 2025...)
-- Eje Y: Número de revisiones por mes
-- Útil para prever carga de trabajo
+Sistema integral de **Gestión de Mantenimiento Asistido por Ordenador** diseñado para:
 
-### Gráfico circular (Estado actual)
+✅ Gestionar activos en múltiples campus  
+✅ Planificar mantenimiento preventivo  
+✅ Documentar obras y reformas  
+✅ Registrar incidencias en tiempo real  
+✅ Administrar contratos con proveedores  
+✅ Cumplir normativas de mantenimiento  
 
-Distribución del estado de las revisiones:
-- 🟡 **Amarillo**: Pendientes (≤30 días)
-- 🔴 **Rojo**: Vencidas
-- 🟢 **Verde**: Al día
+## Arquitectura del Sistema
 
----
-
-## 🧭 Menú de Navegación Lateral
-
-### Secciones principales
-
-| Icono | Sección | Descripción |
-|-------|---------|-------------|
-| 📊 | Dashboard | Panel principal (esta página) |
-| 🏛️ | Campus | Gestión de sedes universitarias |
-| 🏢 | Edificios | Gestión de inmuebles por campus |
-| 📦 | Activos | Instalaciones y equipos |
-| 🔧 | Mantenimiento | Plan global de revisiones |
-| ⚠️ | Incidencias | Reportes de averías |
-| 📄 | Contratos | Gestión de proveedores |
-
-### Secciones de administración
-
-| Icono | Sección | Acceso |
-|-------|---------|--------|
-| ⚙️ | Configuración | Solo ADMIN |
-| 👥 | Usuarios | Solo ADMIN |
+```
+CAMPUS (Sedes)
+  └─ EDIFICIOS (Inmuebles)
+      └─ ACTIVOS (Instalaciones/Equipos)
+          ├─ Mantenimiento (Revisiones)
+          ├─ Documentación (Archivos)
+          └─ Contratos (Proveedores)
+```
 
 ---
 
-## 🔍 Barra de Búsqueda Global
+# 2. Acceso y Roles
 
-**Ubicación**: Parte superior del menú lateral
+## Inicio de Sesión
 
-### Cómo usar la búsqueda
+1. Acceder a la URL proporcionada por tu administrador
+2. Autorizar con tu cuenta Google corporativa
+3. El sistema identifica tu rol automáticamente
 
-1. Escribe al menos **3 caracteres** en el cuadro de búsqueda
-2. El sistema buscará automáticamente en:
-   - Nombres de activos
-   - Tipos de instalación
-   - Marcas de equipos
-   - Nombres de edificios
+## Roles y Permisos
 
-3. **Resultados**:
-   - 📦 **Activos**: Con icono azul
-   - 🏢 **Edificios**: Con icono verde
+| Rol | Crear | Editar | Eliminar | Config | Usuarios |
+|-----|-------|--------|----------|--------|----------|
+| **🔴 ADMIN** | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **🔵 TECNICO** | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **⚪ CONSULTA** | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-4. Haz clic en un resultado para ir directamente a su ficha
-
-> **💡 Tip**: Presiona `ESC` para cerrar los resultados
+> **Nota**: CONSULTA puede reportar incidencias
 
 ---
 
-## 👤 Perfil de Usuario
+# 3. Dashboard
 
-**Ubicación**: Parte inferior del menú lateral
+## Tarjetas de Resumen
 
-Muestra:
-- **Nombre** del usuario logueado
-- **Rol** asignado (ADMIN / TECNICO / CONSULTA)
+| Tarjeta | Descripción | Clic = |
+|---------|-------------|--------|
+| **Activos** | Total de instalaciones | → Activos |
+| **Vencidas** | Revisiones atrasadas | → Mantenimiento (rojo) |
+| **Pendientes** | Revisiones ≤30 días | → Mantenimiento (amarillo) |
+| **Incidencias** | Averías activas | → Incidencias |
+| **Contratos** | Total activos | → Contratos |
+| **Campus** | Sedes registradas | → Campus |
+
+## Calendario de Revisiones
+
+**Crear revisión**:
+- Clic en día vacío → Formulario con fecha preseleccionada
+
+**Editar revisión**:
+- Clic en evento existente → Formulario con datos
+
+**Colores**:
+- 🔴 Rojo = Vencida
+- 🟡 Amarillo = Próxima (≤30 días)
+- 🟢 Verde = Al día
+
+## Gráficos
+
+**Lineal (6 meses)**: Evolución de revisiones programadas  
+**Circular**: Distribución por estado (Vencidas/Pendientes/Al día)
+
+## Búsqueda Global
+
+**Ubicación**: Barra superior del menú lateral
+
+**Uso**:
+1. Escribe ≥3 caracteres
+2. Busca en: activos, edificios, tipos, marcas
+3. Clic en resultado → Ficha detallada
+4. `ESC` para cerrar
 
 ---
 
-## 🚀 Acciones Rápidas desde el Dashboard
+# 4. Campus
 
-### Crear nuevo activo
-Botón superior derecho **"+ Nuevo Activo"**
+## Gestión de Sedes
 
-### Reportar avería urgente
-Botón rojo **flotante inferior derecho** (icono megáfono)
-- Disponible desde cualquier sección
-- Accesible para todos los roles (incluido CONSULTA)
+### Ver Campus
+
+**Tabla muestra**:
+- Nombre
+- Provincia
+- Dirección
+
+### Crear Campus
+
+**Requisito**: TECNICO o ADMIN
+
+1. Clic **"+ Nuevo Campus"**
+2. Rellenar:
+   - **Nombre** (obligatorio)
+   - **Provincia**
+   - **Dirección**
+3. Guardar
+
+> Se crea carpeta automática en Google Drive
+
+### Editar Campus
+
+1. Clic en ✏️
+2. Modificar datos
+3. Guardar
+
+### Eliminar Campus
+
+**Requisito**: Solo ADMIN
+
+1. Clic en 🗑️
+2. Confirmar
+
+> ⚠️ Verificar que no tenga edificios asociados
+
+---
+
+# 5. Edificios
+
+## Gestión de Inmuebles
+
+### Filtros
+
+**Por Campus**: Desplegable  
+**Por texto**: Buscar nombre/contacto
+
+### Ver Edificio
+
+**Tabla muestra**:
+- Edificio (nombre)
+- Campus
+- Contacto/Responsable
+
+### Crear Edificio
+
+**Requisito**: TECNICO o ADMIN
+
+1. Clic **"+ Nuevo Edificio"**
+2. Completar:
+   - **Nombre** (obligatorio)
+   - **Campus** (obligatorio)
+   - **Contacto**
+3. Guardar
+
+> Se crean 2 carpetas: Edificio + subcarpeta "Activos"
+
+## Ficha Detallada
+
+**4 Pestañas**:
+
+### 📋 Información
+
+- Nombre
+- Campus
+- Contacto
+
+### 📄 Documentación Legal/Planos
+
+**Subir**:
+1. Elegir archivo
+2. Clic **"📤 Subir Documento"**
+
+**Tipos sugeridos**:
+- Planos arquitectónicos
+- Licencias
+- Certificados (gas, electricidad, PCI)
+- Seguros
+
+### 🏗️ Obras y Reformas
+
+**Crear obra**:
+1. Clic **"+ Nueva Obra"**
+2. Completar:
+   - **Nombre** (ej: "Reforma Cubierta Norte")
+   - **Descripción**
+   - **Fecha Inicio**
+   - *Opcional*: Adjuntar documento
+3. Guardar
+
+**Estados**:
+- 🟡 EN CURSO
+- 🟢 FINALIZADA
+
+**Acciones**:
+- **Finalizar**: Botón ✓ → introducir fecha fin
+- **Adjuntar evidencias**: Botón "+" en tarjeta
+- **Ver documentos**: Clic "Ver documentos"
+- **Eliminar** (solo ADMIN): 🗑️
+
+### 📦 Activos Instalados
+
+**Filtro**: Por tipo de instalación  
+**Acción**: Clic "Ir a Activo" → Ficha completa
+
+---
+
+# 6. Activos
+
+## Gestión de Instalaciones
+
+### Sistema de Filtrado
+
+**Cascada en 3 pasos**:
+1. Seleccionar **Campus**
+2. Seleccionar **Edificio** (se activa)
+3. **Filtro texto** (opcional, se activa)
+
+### Crear Activo
+
+**Requisito**: TECNICO o ADMIN
+
+1. Clic **"+ Crear Activo"**
+2. **Paso 1**: Campus + Edificio
+3. **Paso 2**: Tipo de Instalación (del catálogo)
+4. **Paso 3**: Nombre + Marca
+5. Guardar
+
+> Se crea carpeta en "Activos" del edificio
+
+## Ficha de Activo
+
+**4 Pestañas**:
+
+### 📋 Información
+
+**Modo Vista**:
+- Nombre, Tipo, Marca, Fecha alta
+
+**Modo Edición**:
+1. Clic **"✏️ Editar"**
+2. Modificar: Nombre, Tipo, Marca
+3. Guardar o Cancelar
+
+> 🔒 Fecha alta no modificable
+
+### 📄 Documentación
+
+**Subir**:
+1. Elegir archivo
+2. Clic **"📤 Subir"**
+
+**Control de versiones**: Automático por nombre
+
+**Acciones**:
+- Ver: 👁️
+- Eliminar (ADMIN): 🗑️
+
+### 🔧 Mantenimiento
+
+**Tabla de revisiones**:
+- **Estado**: 🔴/🟡/🟢 (semáforo)
+- **Tipo**: Legal / Periódica / Reparación / Extraordinaria
+- **Próxima**: Fecha límite
+- **Iconos**: 📎 (docs) 📅 (calendar)
+
+**Crear revisión**:
+1. Clic **"+ Programar Revisión"**
+2. Ver sección [7. Mantenimiento](#7-mantenimiento)
+
+**Editar**: ✏️  
+**Eliminar** (ADMIN): 🗑️
+
+### 📄 Contratos
+
+**Estados**:
+- 🟢 VIGENTE
+- 🟡 PRÓXIMO (≤90 días)
+- 🔴 CADUCADO
+- ⚪ INACTIVO / SIN FECHA
+
+**Crear**: **"+ Añadir Contrato"**  
+**Ver sección**: [9. Contratos](#9-contratos)
+
+---
+
+# 7. Mantenimiento
+
+## Vista Global
+
+**Acceso**: Menú lateral → Mantenimiento
+
+### Filtros Avanzados
+
+**Por ubicación**:
+- Campus (desplegable)
+- Edificio (se carga tras campus)
+
+**Por estado** (botones):
+- Todas (predeterminado)
+- 🔴 Vencidas
+- 🟡 Próximas
+- 🟢 Al día
+
+**Por tipo** (botones):
+- Todos
+- Legal
+- Periódica
+- Reparación
+- Extraordinaria
+
+### Tabla Global
+
+| # | Edificio | Activo | Tipo | Fecha Límite | Acciones |
+|---|----------|--------|------|--------------|----------|
+| 🔴 | ... | ... | ... | ... | ✏️ 🗑️ |
+
+> Ordenado por urgencia (vencidas primero)
+
+## Formulario de Revisión
+
+### 1. Selector de Activo
+
+**Visible solo desde**:
+- Dashboard (calendario)
+- Vista global
+
+**Cascada**: Campus → Edificio → Activo
+
+> Oculto si accedes desde ficha de activo
+
+### 2. Tipo de Revisión
+
+**Opciones**:
+- **Legal**: Obligatoria por normativa
+- **Periódica**: Preventiva programada
+- **Reparación**: Correctiva
+- **Extraordinaria**: Puntual
+
+**Si Legal**:
+- Aparece: Desplegable "Normativa"
+- Autorellena frecuencia
+
+**Si Legal o Periódica**:
+- Aparece: Checkbox "Repetir"
+
+### 3. Fecha Próxima
+
+Calendario `YYYY-MM-DD`
+
+### 4. Sincronizar Google Calendar
+
+✅ **Activado por defecto**
+
+**Crea evento**:
+- Título: `MANT: [Tipo] - [Activo]`
+- Día completo
+- Color rojo
+- Descripción con datos del activo
+
+**Actualización**:
+- Editar revisión → actualiza evento
+- Eliminar revisión → borra evento
+
+### 5. Repetir Revisión
+
+**Solo**: Legal y Periódica
+
+**Campos**:
+- **Cada (días)**: Frecuencia (ej: 365)
+- **Repetir hasta**: Fecha límite
+
+**Funcionamiento**:
+- Crea revisiones automáticas espaciadas
+- Máximo 50 repeticiones
+- Ejemplo: Cada 365 días hasta 2028 → 4 revisiones
+
+### 6. Evidencias / Documentos
+
+**Importante**: Solo tras guardar revisión por primera vez
+
+**Subir evidencias**:
+1. Guardar revisión (primera vez)
+2. Editar revisión (✏️)
+3. Sección "EVIDENCIAS"
+4. Elegir archivo → Subir
+
+**Tipos útiles**:
+- Certificados de revisión
+- Fotos de intervención
+- Informes técnicos
+
+**Eliminar**: Botón ✕
+
+---
+
+# 8. Incidencias
+
+## Gestión de Averías
+
+### Botón Flotante
+
+**Ubicación**: 🔴 Esquina inferior derecha (megáfono)
+
+**Acceso**: Todos los roles (incluido CONSULTA)
+
+**Función**: Reportar avería desde cualquier sección
+
+### Tabla de Incidencias
+
+| Estado | Prioridad | Elemento | Descripción | Reportado | Acción |
+|--------|-----------|----------|-------------|-----------|--------|
+| Badge | BAJA/MEDIA/ALTA/URGENTE | ... | ... | Fecha + Usuario | Botones |
+
+### Filtros
+
+- **Todas**
+- **Pendientes**
+- **Resueltas**
+
+## Reportar Incidencia
+
+1. Clic botón 🔴 flotante
+
+### Formulario
+
+**1. ¿Dónde?**
+- Campus (obligatorio)
+- Edificio (obligatorio)
+- Activo (opcional)
+
+**2. Descripción**
+- Texto libre explicando problema
+
+**3. Prioridad**
+- BAJA / MEDIA / ALTA / ¡URGENTE!
+
+**4. Foto** (opcional)
+- Elegir archivo
+- Vista previa
+- Botón ✕ para quitar
+
+5. **"Enviar Reporte"**
+
+> 📸 Recomendación: Adjuntar fotos siempre que sea posible
+
+## Gestionar Incidencias
+
+**Requisito**: TECNICO o ADMIN
+
+### Cambiar Estado
+
+**Desde PENDIENTE**:
+- ▶️ **En Proceso**
+- ✅ **Resolver**
+
+**Desde EN PROCESO**:
+- ✅ **Resolver**
+
+> No se puede reabrir una incidencia RESUELTA
+
+### Editar Datos
+
+**Botón ✏️** (solo si no resuelta):
+- Modificar: Campus, Edificio, Activo, Descripción, Prioridad
+- **No se puede**: Cambiar foto, fecha, usuario
+
+---
+
+# 9. Contratos
+
+## Gestión de Proveedores
+
+### Vista Global
+
+**Acceso**: Menú lateral → Contratos
+
+### Filtros
+
+**Por ubicación**:
+- Campus
+- Edificio
+
+**Por estado**:
+- Todos
+- 🟢 Vigente
+- 🟡 Próximo (≤90 días)
+- 🔴 Caducado
+- ⚪ Inactivo
+
+### Tabla
+
+| Estado | Activo/Edificio | Proveedor | Ref | Vigencia | Acciones |
+|--------|-----------------|-----------|-----|----------|----------|
+| Badge | ... | ... | ... | Inicio - Fin | ✏️ 🗑️ |
+
+## Crear Contrato
+
+**Desde**:
+- Ficha de activo (pestaña Contratos)
+- Vista global (botón "+ Nuevo Contrato")
+
+### Formulario
+
+| Campo | Obligatorio | Descripción |
+|-------|-------------|-------------|
+| **Proveedor** | ✅ | Nombre empresa |
+| **Referencia** | ❌ | Nº contrato/pedido |
+| **Estado** | ✅ | ACTIVO / INACTIVO |
+| **Inicio** | ✅ | Fecha inicio |
+| **Fin** | ✅ | Fecha finalización |
+
+### Cálculo Automático
+
+**Si ACTIVO**:
+- Días hasta fin **<0** → 🔴 CADUCADO
+- Días hasta fin **≤90** → 🟡 PRÓXIMO
+- Días hasta fin **>90** → 🟢 VIGENTE
+- Sin fecha fin → ⚪ SIN FECHA
+
+**Si INACTIVO** → ⚪ Badge gris
+
+## Editar/Eliminar
+
+- **Editar**: ✏️ (todos los roles con permisos)
+- **Eliminar**: 🗑️ (solo ADMIN)
+
+---
+
+# 10. Configuración
+
+## Catálogo de Instalaciones
+
+**Requisito**: Solo ADMIN
+
+### Función
+
+- Estandarizar tipos de activos
+- Asociar normativas
+- Definir frecuencias predeterminadas
+
+### Tabla
+
+| Nombre | Ref. Normativa | Frecuencia (días) | Acciones |
+|--------|----------------|-------------------|----------|
+| Baja Tensión | REBT 2002 | 365 | ✏️ 🗑️ |
+
+### Crear Tipo
+
+1. Clic **"+ Nuevo Tipo"**
+2. Completar:
+   - **Nombre** (obligatorio, ej: "Climatización")
+   - **Ref. Normativa** (opcional, ej: "RITE 2021")
+   - **Frecuencia** (días, opcional)
+3. Guardar
+
+### Uso Posterior
+
+- Aparece en desplegable al crear activo
+- Al programar revisión Legal, autorellena frecuencia
+
+### Editar/Eliminar
+
+- **Editar**: ✏️
+- **Eliminar**: 🗑️
+
+> ⚠️ No eliminar tipos en uso
+
+---
+
+# 11. Usuarios
+
+## Gestión de Accesos
+
+**Requisito**: Solo ADMIN
+
+### Tabla
+
+| Nombre | Email | Rol | Alertas | Acciones |
+|--------|-------|-----|---------|----------|
+| ... | ... | Badge | 🔔/🔕 | ✏️ 🗑️ |
+
+### Crear Usuario
+
+1. Clic **"+ Nuevo Usuario"**
+2. Completar:
+   - **Nombre** (obligatorio)
+   - **Email** (obligatorio, Google corporativo)
+   - **Rol** (obligatorio):
+     - ADMIN: Permisos completos
+     - TECNICO: Crear/editar
+     - CONSULTA: Solo lectura
+   - **Alertas**:
+     - Sí: Recibe emails semanales
+     - No: Sin notificaciones
+3. Guardar
+
+### Activación
+
+Usuario debe acceder con su cuenta Google → reconocido por email → aplica rol
+
+### Editar/Eliminar
+
+- **Editar**: ✏️ (cambiar rol/alertas)
+- **Eliminar**: 🗑️ (pierde acceso inmediato)
+
+---
+
+# 12. FAQ
+
+## General
+
+**¿Acceso desde móvil?**  
+✅ Sí, interfaz responsive
+
+**¿Autoguardado?**  
+❌ No, siempre hacer clic en "Guardar"
+
+**¿Deshacer acción?**  
+❌ No, eliminaciones permanentes (con confirmación)
+
+## Campus/Edificios
+
+**¿Mover edificio a otro campus?**  
+✅ Editar edificio → cambiar campus
+
+**¿Eliminar campus con edificios?**  
+⚠️ Sin verificación, eliminar edificios primero
+
+## Activos
+
+**¿Cambiar activo de edificio?**  
+❌ Crear nuevo + copiar datos + eliminar antiguo
+
+**¿Cambiar fecha de alta?**  
+❌ Inmutable
+
+## Mantenimiento
+
+**¿Revisión sin activo?**  
+❌ Siempre debe asociarse a activo
+
+**¿Revisiones repetitivas se crean todas?**  
+✅ Sí, al guardar (máx 50)
+
+**¿Editar una actualiza todas?**  
+❌ Cada revisión es independiente
+
+**¿Sincronizar revisiones antiguas con Calendar?**  
+❌ Solo al crear/editar
+
+## Incidencias
+
+**¿Reabrir incidencia resuelta?**  
+❌ Crear nueva si reaparece problema
+
+**¿Cambiar foto?**  
+❌ Solo al crear
+
+**¿Asignación automática de tareas?**  
+❌ Gestión manual
+
+## Contratos
+
+**¿Contrato sin fecha fin?**  
+✅ Posible, aparece como "SIN FECHA"
+
+**¿Alertas automáticas de vencimiento?**  
+✅ Si usuario tiene "Alertas: Sí" → email semanal
+
+## Notificaciones
+
+**¿Cómo activar emails automáticos?**  
+⚙️ Configurar trigger en Apps Script: función `enviarResumenSemanal()` → frecuencia semanal
+
+**¿Qué contiene el email?**  
+📧 Revisiones vencidas/próximas + Contratos por vencer
+
+## Almacenamiento
+
+**¿Dónde se guardan los archivos?**  
+🗂️ Google Drive, estructura automática: Campus → Edificios → Activos
+
+**¿Límite de archivos?**  
+❌ Sin límite del sistema, sujeto a cuota de Drive
+
+**¿Permisos de archivos?**  
+🔗 Cualquiera con enlace (Vista)
+
+---
+
+# 📞 Soporte
+
+## Contacto
+
+Para dudas o incidencias técnicas, contactar con:
+
+**Administrador GMAO**: [Insertar contacto]  
+**Soporte IT**: [Insertar contacto]
+
+## Reportar Errores
+
+1. Descripción detallada del problema
+2. Pasos para reproducir
+3. Capturas de pantalla (si aplica)
+4. Rol de usuario y navegador utilizado
+
+---
+
+**Fin del Manual**
+
+*Versión 1.0 | Última actualización: Diciembre 2024*
