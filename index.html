@@ -295,7 +295,20 @@
              </div>
           </div>
 
-        </div>
+          <div class="mt-4 border-top pt-3">
+            <label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label>
+            
+            <div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;">
+              <div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>
+            </div>
+
+            <div class="input-group input-group-sm">
+              <input type="file" class="form-control" id="revFileInput">
+              <button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button>
+            </div>
+            <small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small>
+          </div>
+          </div>
         <div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div>
       </div>
     </div>
