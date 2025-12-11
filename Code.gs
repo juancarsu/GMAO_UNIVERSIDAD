@@ -17,34 +17,24 @@ function include(filename) { return HtmlService.createHtmlOutputFromFile(filenam
 function getMyRole() {
   const email = Session.getActiveUser().getEmail();
   const data = getSheetData('USUARIOS');
-  // Buscar email en columna C (índice 2)
   for(let i=1; i<data.length; i++) {
     if(String(data[i][2]).trim().toLowerCase() === email.toLowerCase()) {
-      return { email: email, nombre: data[i][1], rol: data[i][3] }; // ADMIN, TECNICO, CONSULTA
+      return { email: email, nombre: data[i][1], rol: data[i][3] }; 
     }
   }
-  // Si no está en la lista, es CONSULTA (invitado)
   return { email: email, nombre: "Invitado", rol: 'CONSULTA' };
 }
 
 function verificarPermiso(accionesPermitidas) {
   const usuario = getMyRole();
   const rol = usuario.rol;
-  
-  // 1. ADMIN: Dios todopoderoso
   if (rol === 'ADMIN') return true;
-
-  // 2. CONSULTA: Solo mirar, no tocar
   if (rol === 'CONSULTA') throw new Error("Acceso denegado: Permisos de solo lectura.");
-
-  // 3. TECNICO: Puede trabajar (WRITE), pero no destruir (DELETE) ni administrar
   if (rol === 'TECNICO') {
     if (accionesPermitidas.includes('ADMIN_ONLY')) throw new Error("Acceso denegado: Requiere ser Administrador.");
     if (accionesPermitidas.includes('DELETE')) throw new Error("Acceso denegado: Los técnicos no pueden eliminar registros.");
-    // Si la acción es 'WRITE', el técnico pasa por aquí y devuelve true
     return true; 
   }
-
   throw new Error("Rol desconocido.");
 }
 
@@ -102,7 +92,7 @@ function getAssetInfo(idActivo) {
 }
 
 function updateAsset(datos) {
-  verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK
+  verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('ACTIVOS');
   const data = sheet.getDataRange().getValues();
@@ -145,7 +135,7 @@ function getObrasPorEdificio(idEdificio) {
 }
 
 function crearObra(d) {
-  verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK
+  verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const edifs = getSheetData('EDIFICIOS');
   let idCarpetaEdificio = null;
@@ -159,7 +149,7 @@ function crearObra(d) {
 }
 
 function finalizarObra(idObra, fechaFin) {
-  verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK
+  verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('OBRAS');
   const data = sheet.getDataRange().getValues();
@@ -173,7 +163,7 @@ function finalizarObra(idObra, fechaFin) {
 }
 
 function eliminarObra(id) {
-  verificarPermiso(['DELETE']); // PERMISO: SOLO ADMIN
+  verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('OBRAS');
   const data = sheet.getDataRange().getValues();
@@ -201,7 +191,7 @@ function obtenerDocs(idEntidad, tipoEntidad) {
 }
 
 function subirArchivo(dataBase64, nombreArchivo, mimeType, idEntidad, tipoEntidad) {
-  verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK
+  if (tipoEntidad !== 'INCIDENCIA') verificarPermiso(['WRITE']); 
   try {
     const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
     let carpetaId = null;
@@ -215,19 +205,21 @@ function subirArchivo(dataBase64, nombreArchivo, mimeType, idEntidad, tipoEntida
       const planes = getSheetData('PLAN_MANTENIMIENTO'); let activoId = null;
       for(let i=1; i<planes.length; i++) if(String(planes[i][0]) === String(idEntidad)) { activoId = planes[i][1]; break; }
       if(activoId) { const rows = getSheetData('ACTIVOS'); for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(activoId)) { carpetaId = rows[i][6]; break; } }
-    }
-    if (!carpetaId) throw new Error("No se encontró carpeta de destino.");
+    } else { carpetaId = getRootFolderId(); }
+    if (!carpetaId) carpetaId = getRootFolderId();
     const blob = Utilities.newBlob(Utilities.base64Decode(dataBase64), mimeType, nombreArchivo);
     const folder = DriveApp.getFolderById(carpetaId);
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    ss.getSheetByName('DOCS_HISTORICO').appendRow([Utilities.getUuid(), tipoEntidad, idEntidad, nombreArchivo, file.getUrl(), 1, new Date(), Session.getActiveUser().getEmail(), file.getId()]);
-    return { success: true };
+    if(tipoEntidad !== 'INCIDENCIA') {
+       ss.getSheetByName('DOCS_HISTORICO').appendRow([Utilities.getUuid(), tipoEntidad, idEntidad, nombreArchivo, file.getUrl(), 1, new Date(), Session.getActiveUser().getEmail(), file.getId()]);
+    }
+    return { success: true, fileId: file.getId(), url: file.getUrl() };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
 
 function eliminarDocumento(idDoc) {
-  verificarPermiso(['DELETE']); // PERMISO: SOLO ADMIN
+  verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('DOCS_HISTORICO');
   const data = sheet.getDataRange().getValues();
@@ -305,7 +297,7 @@ function getGlobalMaintenance() {
 }
 
 function crearRevision(d) {
-  verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK
+  verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
   try {
     let fechaActual = textoAFecha(d.fechaProx); if (!fechaActual) return { success: false, error: "Fecha inválida" };
@@ -326,7 +318,7 @@ function crearRevision(d) {
 }
 
 function updateRevision(d) { 
-    verificarPermiso(['WRITE']); // PERMISO: TÉCNICO OK (¡CORREGIDO!)
+    verificarPermiso(['WRITE']); 
     const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); 
     let nuevaFecha = textoAFecha(d.fechaProx); if (!nuevaFecha) return { success: false, error: "Fecha inválida" };
     var syncCal = (String(d.syncCalendar) === "true");
@@ -346,7 +338,7 @@ function updateRevision(d) {
 }
 
 function eliminarRevision(idPlan) { 
-  verificarPermiso(['DELETE']); // PERMISO: SOLO ADMIN
+  verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); 
   for(let i=1; i<data.length; i++){ 
     if(String(data[i][0]) === String(idPlan)) { 
@@ -383,18 +375,101 @@ function updateContrato(datos) { verificarPermiso(['WRITE']); const ss = Spreads
 function eliminarContrato(id) { verificarPermiso(['DELETE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
 
 // ==========================================
-// 9. DASHBOARD Y CRUD GENERAL
+// 9. DASHBOARD Y CRUD GENERAL (ACTUALIZADO V5)
 // ==========================================
 function getDatosDashboard() { 
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const hoy = new Date(); hoy.setHours(0,0,0,0);
-  const dataMant = getSheetData('PLAN_MANTENIMIENTO'); let revPend = 0, revVenc = 0, revOk = 0; 
-  const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]; const countsMap = {}; const chartLabels = []; const chartData = [];
-  let dIter = new Date(hoy.getFullYear(), hoy.getMonth(), 1); for (let k = 0; k < 6; k++) { let key = mesesNombres[dIter.getMonth()] + " " + dIter.getFullYear(); countsMap[key] = 0; chartLabels.push(key); dIter.setMonth(dIter.getMonth() + 1); }
-  for(let i=1; i<dataMant.length; i++) { const f = dataMant[i][4]; if(f instanceof Date) { f.setHours(0,0,0,0); const diff = Math.ceil((f.getTime() - hoy.getTime()) / 86400000); if(diff < 0) revVenc++; else if(diff <= 30) revPend++; else revOk++; let key = mesesNombres[f.getMonth()] + " " + f.getFullYear(); if (countsMap.hasOwnProperty(key)) { countsMap[key]++; } } } 
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
+  // 1. MANTENIMIENTO
+  const dataMant = getSheetData('PLAN_MANTENIMIENTO');
+  const activos = getSheetData('ACTIVOS');
+  
+  // Mapa de nombres de activos para el calendario
+  const mapActivos = {};
+  activos.slice(1).forEach(r => mapActivos[r[0]] = r[3]); // ID -> Nombre
+
+  let revPend = 0, revVenc = 0, revOk = 0; 
+  const calendarEvents = [];
+
+  // Gráfico Lineal (Meses)
+  const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const countsMap = {}; const chartLabels = []; const chartData = [];
+  let dIter = new Date(hoy.getFullYear(), hoy.getMonth(), 1); 
+  for (let k = 0; k < 6; k++) { 
+    let key = mesesNombres[dIter.getMonth()] + " " + dIter.getFullYear(); 
+    countsMap[key] = 0; chartLabels.push(key); 
+    dIter.setMonth(dIter.getMonth() + 1); 
+  }
+
+  for(let i=1; i<dataMant.length; i++) { 
+    const f = dataMant[i][4]; 
+    if(f instanceof Date) { 
+      f.setHours(0,0,0,0); 
+      const diff = Math.ceil((f.getTime() - hoy.getTime()) / 86400000); 
+      let status = 'verde';
+      
+      if(diff < 0) { revVenc++; status = 'rojo'; }
+      else if(diff <= 30) { revPend++; status = 'amarillo'; }
+      else { revOk++; status = 'verde'; }
+      
+      // Datos para gráfico lineal
+      let key = mesesNombres[f.getMonth()] + " " + f.getFullYear(); 
+      if (countsMap.hasOwnProperty(key)) { countsMap[key]++; }
+      
+      // Datos para Calendario
+      let nombreActivo = mapActivos[dataMant[i][1]] || 'Activo';
+      let colorEvento = (status === 'rojo') ? '#dc3545' : (status === 'amarillo' ? '#ffc107' : '#198754');
+      let textColor = (status === 'amarillo') ? '#000' : '#fff';
+      
+      calendarEvents.push({
+        id: dataMant[i][0], // ID Plan
+        title: `${dataMant[i][2]} - ${nombreActivo}`,
+        start: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        backgroundColor: colorEvento,
+        borderColor: colorEvento,
+        textColor: textColor,
+        extendedProps: {
+           id: dataMant[i][0],
+           tipo: dataMant[i][2],
+           fechaISO: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+           idActivo: dataMant[i][1],
+           hasCalendar: (dataMant[i].length > 7 && dataMant[i][7]) ? true : false
+        }
+      });
+    } 
+  } 
+  
   chartLabels.forEach(lbl => { chartData.push(countsMap[lbl]); });
-  const dataCont = getSheetData('CONTRATOS'); let contCad = 0; for(let i=1; i<dataCont.length; i++) { const f = dataCont[i][6]; if(f instanceof Date && f < hoy) contCad++; }
-  const cAct = (ss.getSheetByName('ACTIVOS').getLastRow() - 1) || 0; const cEdif = (ss.getSheetByName('EDIFICIOS').getLastRow() - 1) || 0;
-  return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratosCaducados: contCad, chartLabels: chartLabels, chartData: chartData }; 
+
+  // 2. OTROS CONTEOS
+  const dataCont = getSheetData('CONTRATOS'); 
+  let contCount = (dataCont.length > 1) ? dataCont.length - 1 : 0;
+  
+  const dataInc = getSheetData('INCIDENCIAS');
+  let incCount = 0;
+  // Contamos solo pendientes o en proceso
+  for(let i=1; i<dataInc.length; i++) {
+     if(dataInc[i][6] !== 'RESUELTA') incCount++;
+  }
+
+  const cAct = (activos.length > 1) ? activos.length - 1 : 0; 
+  const cEdif = (getSheetData('EDIFICIOS').length - 1) || 0;
+  const cCampus = (getSheetData('CAMPUS').length - 1) || 0;
+
+  return { 
+    activos: cAct, 
+    edificios: cEdif, 
+    pendientes: revPend, 
+    vencidas: revVenc, 
+    ok: revOk, 
+    contratos: contCount,
+    incidencias: incCount,
+    campus: cCampus,
+    chartLabels: chartLabels, 
+    chartData: chartData,
+    calendarEvents: calendarEvents // <--- Nuevo para el calendario
+  }; 
 }
 
 function crearCampus(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); return {success:true}; }
@@ -438,193 +513,163 @@ function enviarResumenSemanal() {
 }
 
 // ==========================================
-// 12. GESTIÓN DE INCIDENCIAS (CORRECTIVO)
+// 12. GESTIÓN DE INCIDENCIAS
 // ==========================================
-
 function getIncidencias() {
   const data = getSheetData('INCIDENCIAS');
-  // Índices: 0=ID, 1=Tipo, 2=IdOrigen, 3=Nombre, 4=Desc, 5=Prio, 6=Estado, 7=Fecha, 8=Solicitante, 9=IdFoto
   const list = [];
   for(let i=1; i<data.length; i++) {
-    // Solo devolvemos filas con ID
     if(data[i][0]) {
        let f = data[i][7];
        let fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : "-";
-       
-       // Obtener URL de foto si existe
        let urlFoto = "";
-       if(data[i][9]) {
-         try { urlFoto = DriveApp.getFileById(data[i][9]).getUrl(); } catch(e) {}
-       }
-
-       list.push({
-         id: data[i][0],
-         tipoOrigen: data[i][1],
-         nombreOrigen: data[i][3],
-         descripcion: data[i][4],
-         prioridad: data[i][5],
-         estado: data[i][6],
-         fecha: fechaStr,
-         solicitante: data[i][8],
-         urlFoto: urlFoto
-       });
+       if(data[i][9]) { try { urlFoto = DriveApp.getFileById(data[i][9]).getUrl(); } catch(e) {} }
+       list.push({ id: data[i][0], tipoOrigen: data[i][1], nombreOrigen: data[i][3], descripcion: data[i][4], prioridad: data[i][5], estado: data[i][6], fecha: fechaStr, solicitante: data[i][8], urlFoto: urlFoto });
     }
   }
-  // Ordenar: Primero las pendientes/en proceso, luego por fecha
   return list.sort((a,b) => {
     if(a.estado === 'RESUELTA' && b.estado !== 'RESUELTA') return 1;
     if(a.estado !== 'RESUELTA' && b.estado === 'RESUELTA') return -1;
-    return b.fecha.localeCompare(a.fecha); // Más recientes primero
+    return b.fecha.localeCompare(a.fecha);
   });
 }
 
 function crearIncidencia(d) {
-  // EXCEPCIÓN DE SEGURIDAD: Permitimos a TODOS (incluso CONSULTA) reportar averías
-  // No llamamos a verificarPermiso(['WRITE']) aquí.
-  
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   const sheet = ss.getSheetByName('INCIDENCIAS');
   const usuario = getMyRole().email;
   const fecha = new Date();
-  
   try {
     let idFoto = "";
-    
-    // 1. Si hay foto, la subimos
     if (d.fotoBase64) {
-       // Buscamos carpeta destino (intentamos guardarla en la carpeta del activo/edificio)
-       let carpetaId = getRootFolderId(); // Por defecto al root si falla
+       let carpetaId = getRootFolderId(); 
        if (d.idOrigen) {
-          // Intentar buscar carpeta del origen
           const activos = getSheetData('ACTIVOS');
           for(let i=1; i<activos.length; i++) if(String(activos[i][0])===String(d.idOrigen)) { carpetaId = activos[i][6]; break; }
-          if (carpetaId === getRootFolderId()) { // Si no era activo, mirar edificio
+          if (carpetaId === getRootFolderId()) { 
              const edifs = getSheetData('EDIFICIOS');
              for(let i=1; i<edifs.length; i++) if(String(edifs[i][0])===String(d.idOrigen)) { carpetaId = edifs[i][4]; break; }
           }
        }
-       
        const blob = Utilities.newBlob(Utilities.base64Decode(d.fotoBase64), d.mimeType, "INCIDENCIA_" + d.nombreArchivo);
        const file = DriveApp.getFolderById(carpetaId).createFile(blob);
        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
        idFoto = file.getId();
     }
-
-    // 2. Guardar en Excel
-    sheet.appendRow([
-      Utilities.getUuid(),
-      d.tipoOrigen,
-      d.idOrigen,
-      d.nombreOrigen,
-      d.descripcion,
-      d.prioridad,
-      "PENDIENTE",
-      fecha,
-      usuario,
-      idFoto
-    ]);
-    
+    sheet.appendRow([Utilities.getUuid(), d.tipoOrigen, d.idOrigen, d.nombreOrigen, d.descripcion, d.prioridad, "PENDIENTE", fecha, usuario, idFoto]);
     return { success: true };
-    
-  } catch (e) {
-    return { success: false, error: e.toString() };
-  }
+  } catch (e) { return { success: false, error: e.toString() }; }
 }
 
 function actualizarEstadoIncidencia(id, nuevoEstado) {
-  // Solo Técnicos y Admin pueden resolver
   verificarPermiso(['WRITE']); 
-  
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('INCIDENCIAS');
-  const data = sheet.getDataRange().getValues();
-  
-  for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(id)) {
-      sheet.getRange(i+1, 7).setValue(nuevoEstado); // Col G = Estado
-      return { success: true };
-    }
-  }
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('INCIDENCIAS'); const data = sheet.getDataRange().getValues();
+  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.getRange(i+1, 7).setValue(nuevoEstado); return { success: true }; } }
   return { success: false, error: "Incidencia no encontrada" };
 }
 
-// ==========================================
-// 13. EDITAR INCIDENCIAS (Backend)
-// ==========================================
-
 function getIncidenciaDetalle(id) {
-  const data = getSheetData('INCIDENCIAS');
-  const activos = getSheetData('ACTIVOS');
-  const edificios = getSheetData('EDIFICIOS');
-  
+  const data = getSheetData('INCIDENCIAS'); const activos = getSheetData('ACTIVOS'); const edificios = getSheetData('EDIFICIOS');
   for(let i=1; i<data.length; i++) {
     if(String(data[i][0]) === String(id)) {
        const r = data[i];
-       let idCampus = null;
-       let idEdificio = null;
-       let idActivo = null;
-
+       let idCampus = null; let idEdificio = null; let idActivo = null;
        if (r[1] === 'ACTIVO') {
-          idActivo = r[2];
-          for(let a=1; a<activos.length; a++) {
-             if(String(activos[a][0]) === String(idActivo)) { idEdificio = activos[a][1]; break; }
-          }
-       } else {
-          idEdificio = r[2];
-       }
-
-       if(idEdificio) {
-          for(let e=1; e<edificios.length; e++) {
-             if(String(edificios[e][0]) === String(idEdificio)) { idCampus = edificios[e][1]; break; }
-          }
-       }
-       
-       // RECUPERAR FOTO SI EXISTE
-       let urlFoto = null;
-       if (r[9]) { // Columna J (índice 9) es ID_DOC_FOTO
-           try { urlFoto = DriveApp.getFileById(r[9]).getUrl(); } catch(e) {}
-       }
-
-       return {
-         id: r[0],
-         tipoOrigen: r[1],
-         idOrigen: r[2],
-         nombreOrigen: r[3],
-         descripcion: r[4],
-         prioridad: r[5],
-         idCampus: idCampus,
-         idEdificio: idEdificio,
-         idActivo: idActivo,
-         urlFoto: urlFoto // <--- AÑADIDO
-       };
+          idActivo = r[2]; for(let a=1; a<activos.length; a++) { if(String(activos[a][0]) === String(idActivo)) { idEdificio = activos[a][1]; break; } }
+       } else { idEdificio = r[2]; }
+       if(idEdificio) { for(let e=1; e<edificios.length; e++) { if(String(edificios[e][0]) === String(idEdificio)) { idCampus = edificios[e][1]; break; } } }
+       let urlFoto = null; if (r[9]) { try { urlFoto = DriveApp.getFileById(r[9]).getUrl(); } catch(e) {} }
+       return { id: r[0], tipoOrigen: r[1], idOrigen: r[2], nombreOrigen: r[3], descripcion: r[4], prioridad: r[5], idCampus: idCampus, idEdificio: idEdificio, idActivo: idActivo, urlFoto: urlFoto };
     }
   }
   throw new Error("Incidencia no encontrada");
 }
 
 function updateIncidenciaData(d) {
-  verificarPermiso(['WRITE']); // Técnicos y Admin pueden corregir
-  
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('INCIDENCIAS');
-  const data = sheet.getDataRange().getValues();
-  
+  verificarPermiso(['WRITE']); 
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('INCIDENCIAS'); const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(d.id)) {
-       // Actualizamos columnas de datos (no tocamos estado, fecha ni solicitante)
-       // Col B(2)=Tipo, C(3)=IdOrigen, D(4)=Nombre, E(5)=Desc, F(6)=Prio
-       
-       sheet.getRange(i+1, 2).setValue(d.tipoOrigen);
-       sheet.getRange(i+1, 3).setValue(d.idOrigen);
-       sheet.getRange(i+1, 4).setValue(d.nombreOrigen);
-       sheet.getRange(i+1, 5).setValue(d.descripcion);
-       sheet.getRange(i+1, 6).setValue(d.prioridad);
-       
-       // Nota: No implementamos cambio de foto en edición para no complicar, 
-       // pero si quisieras se podría añadir aquí.
-       
+       sheet.getRange(i+1, 2).setValue(d.tipoOrigen); sheet.getRange(i+1, 3).setValue(d.idOrigen); sheet.getRange(i+1, 4).setValue(d.nombreOrigen);
+       sheet.getRange(i+1, 5).setValue(d.descripcion); sheet.getRange(i+1, 6).setValue(d.prioridad);
        return { success: true };
     }
   }
   return { success: false, error: "ID no encontrado" };
+}
+
+// ==========================================
+// 13. GESTIÓN DE CAMPUS (EDITAR/BORRAR)
+// ==========================================
+
+function updateCampus(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CAMPUS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(d.id)) {
+      sheet.getRange(i+1, 2).setValue(d.nombre);
+      sheet.getRange(i+1, 3).setValue(d.provincia);
+      sheet.getRange(i+1, 4).setValue(d.direccion);
+      // Nota: No cambiamos la carpeta de Drive (Columna 5) para no romper enlaces
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Campus no encontrado" };
+}
+
+function eliminarCampus(id) {
+  verificarPermiso(['DELETE']); // Solo Admin
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CAMPUS');
+  const data = sheet.getDataRange().getValues();
+  
+  // Opcional: Verificar si tiene edificios antes de borrar para evitar huérfanos
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Campus no encontrado" };
+}
+
+// ==========================================
+// 14. GESTIÓN DE EDIFICIOS (EDITAR/BORRAR)
+// ==========================================
+
+function updateEdificio(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('EDIFICIOS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(d.id)) {
+      // Col B: ID_Campus, Col C: Nombre, Col D: Contacto
+      sheet.getRange(i+1, 2).setValue(d.idCampus);
+      sheet.getRange(i+1, 3).setValue(d.nombre);
+      sheet.getRange(i+1, 4).setValue(d.contacto);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Edificio no encontrado" };
+}
+
+function eliminarEdificio(id) {
+  verificarPermiso(['DELETE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('EDIFICIOS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      sheet.deleteRow(i+1);
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Edificio no encontrado" };
 }
