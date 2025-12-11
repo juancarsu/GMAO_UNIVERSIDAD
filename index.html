@@ -31,6 +31,7 @@
       <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('usuarios', this, event)"><i class="bi bi-people menu-icon"></i> Usuarios</a></li>
+      <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('incidencias', this, event)"><i class="bi bi-exclamation-triangle menu-icon"></i> Incidencias</a></li>
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Cargando...</div><small class="text-muted">...</small></div></div>
   </aside>
@@ -120,14 +121,139 @@
         <div class="tab-pane fade" id="tab-contracts"><div class="d-flex justify-content-end mb-3"><button class="btn btn-outline-primary" onclick="mostrarModalContrato()">+ Añadir Contrato</button></div><table class="table table-bordered bg-white shadow-sm align-middle"><thead class="bg-light"><tr><th>Estado</th><th>Proveedor</th><th>Ref</th><th>Vigencia</th><th></th></tr></thead><tbody id="contractsTableBody"></tbody></table></div>
       </div>
     </div>
+
+    <div id="view-incidencias" class="view-section d-none">
+      <div class="page-header">
+        <h1 class="page-title">Gestión de Incidencias</h1>
+        <div class="btn-group">
+           <button class="btn btn-outline-secondary btn-sm active" onclick="filterIncidencias('all', this)">Todas</button>
+           <button class="btn btn-outline-danger btn-sm" onclick="filterIncidencias('PENDIENTE', this)">Pendientes</button>
+           <button class="btn btn-outline-success btn-sm" onclick="filterIncidencias('RESUELTA', this)">Resueltas</button>
+        </div>
+      </div>
+      
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th class="ps-4">Estado</th>
+                <th>Prioridad</th>
+                <th>Elemento Afectado</th>
+                <th>Descripción</th>
+                <th>Reportado</th>
+                <th class="text-end pe-4">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="tableIncidenciasBody">
+              <tr><td colspan="6" class="text-center py-5">Cargando incidencias...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-danger rounded-circle shadow-lg d-flex align-items-center justify-content-center" 
+            style="position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; z-index: 2000;"
+            onclick="openReportModal()" title="Reportar Avería">
+      <i class="bi bi-megaphone-fill fs-4"></i>
+    </button>
+
   </main>
 
-  <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
+  <div class="modal fade" id="createModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalTitle">Nuevo</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="createForm">
+            <input type="hidden" id="repId">
+            <input type="hidden" id="modalType">
+            <input type="hidden" id="modalParentId">
+            <div class="mb-3">
+              <label>Nombre</label>
+              <input type="text" class="form-control" id="fNombre" required>
+            </div>
+            <div id="extraFields">
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal fade" id="maintModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="maintModalTitle">Programar Revisión</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="revId"><div id="assetSelector" class="mb-3 d-none"><label class="form-label fw-bold">Activo</label><div class="row g-2"><div class="col-4"><select class="form-select form-select-sm" id="maintCampus" onchange="loadEdificiosModalMaint(this.value)"><option value="">- Campus -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintEdificio" disabled onchange="loadActivosModalMaint(this.value)"><option value="">- Edificio -</option></select></div><div class="col-4"><select class="form-select form-select-sm" id="maintActivo" disabled><option value="">- Activo -</option></select></div></div></div><div class="mb-3"><label class="form-label">Tipo de Revisión</label><select class="form-select" id="revTipo"><option value="Legal">Legal</option><option value="Periódica">Periódica</option><option value="Reparación">Reparación</option><option value="Extraordinaria">Extraordinaria</option></select></div><div id="secLegal" class="mb-3 d-none p-2 bg-light border rounded"><label class="small text-muted">Normativa / Reglamento</label><select class="form-select form-select-sm" id="revNorma"><option value="">Seleccione norma...</option></select></div><div class="mb-3"><label>Fecha Próxima</label><input type="date" class="form-control" id="revFecha"></div><div class="form-check mb-3 bg-light p-2 rounded border"><input class="form-check-input ms-1" type="checkbox" id="revCalendar" checked><label class="form-check-label ms-2" for="revCalendar"><i class="bi bi-calendar-event text-primary"></i> Sincronizar con Google Calendar</label></div><div id="secRecur" class="d-none"><div class="form-check mb-2"><input class="form-check-input" type="checkbox" id="revRecur"><label class="form-check-label" for="revRecur">Repetir esta revisión</label></div><div id="secRecurOptions" class="d-none ms-3 border-start ps-3"><div class="mb-2"><label class="small">Cada (días)</label><input type="number" class="form-control form-control-sm" id="revFreq" value="365"></div><div class="mb-2"><label class="small">Repetir hasta</label><input type="date" class="form-control form-control-sm" id="revEnd"></div></div></div><div class="mt-4 border-top pt-3"><label class="form-label fw-bold small text-muted"><i class="bi bi-paperclip"></i> EVIDENCIAS / DOCUMENTOS</label><div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;"><div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div></div><div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnMaintSubmit" onclick="submitRevision()">Guardar</button></div></div></div></div>
   <div class="modal fade" id="contractModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="contModalTitle">Nuevo Contrato</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="contId"><div class="row"><div class="col-8 mb-3"><label>Proveedor</label><input type="text" class="form-control" id="contProv"></div><div class="col-4 mb-3"><label>Estado</label><select id="contEstado" class="form-select"><option value="ACTIVO">Activo</option><option value="INACTIVO">Inactivo</option></select></div></div><div class="mb-3"><label>Ref</label><input type="text" class="form-control" id="contRef"></div><div class="row"><div class="col-6 mb-3"><label>Inicio</label><input type="date" class="form-control" id="contIni"></div><div class="col-6 mb-3"><label>Fin</label><input type="date" class="form-control" id="contFin"></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnContSubmit" onclick="submitContract()">Guardar</button></div></div></div></div>
   <div class="modal fade" id="obraModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Registrar Obra / Reforma</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="mb-3"><label>Nombre de la Obra</label><input type="text" class="form-control" id="obraNombre" placeholder="Ej. Reforma Cubierta Norte"></div><div class="mb-3"><label>Descripción</label><textarea class="form-control" id="obraDesc" rows="2"></textarea></div><div class="mb-3"><label>Fecha Inicio</label><input type="date" class="form-control" id="obraFecha"></div><div class="mb-3 p-2 bg-light border rounded"><label class="form-label small text-muted"><i class="bi bi-paperclip"></i> Adjuntar documento inicial (opcional)</label><input type="file" class="form-control form-control-sm" id="obraFileInit"></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnObraSubmit" onclick="submitObra()">Crear</button></div></div></div></div>
   <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="configModalTitle">Nuevo Tipo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="confId"><div class="mb-3"><label class="form-label">Nombre del Tipo</label><input type="text" class="form-control" id="confNombre" placeholder="Ej. Baja Tensión"></div><div class="mb-3"><label class="form-label">Ref. Normativa</label><input type="text" class="form-control" id="confNorma" placeholder="Ej. REBT 2002"></div><div class="mb-3"><label class="form-label">Frecuencia (Días)</label><input type="number" class="form-control" id="confDias" placeholder="Ej. 365"><div class="form-text small">Días por defecto para revisiones.</div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnConfigSubmit" onclick="submitConfig()">Guardar</button></div></div></div></div>
   <div class="modal fade" id="userModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="userModalTitle">Usuario</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" id="userId"><div class="mb-3"><label class="form-label">Nombre</label><input type="text" class="form-control" id="userNombre" required></div><div class="mb-3"><label class="form-label">Email</label><input type="email" class="form-control" id="userEmail" required></div><div class="row"><div class="col-md-6 mb-3"><label class="form-label">Rol</label><select class="form-select" id="userRol"><option value="TECNICO">Técnico</option><option value="ADMIN">Administrador</option><option value="CONSULTA">Solo Consulta</option></select></div><div class="col-md-6 mb-3"><label class="form-label">Alertas</label><select class="form-select" id="userAvisos"><option value="NO">No</option><option value="SI">Sí</option></select></div></div></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnUserSubmit" onclick="submitUser()">Guardar</button></div></div></div></div>
+
+  <div class="modal fade" id="reportModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-danger border-2">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title"><i class="bi bi-exclamation-circle"></i> Reportar Avería</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="modal-body position-relative"> <div id="repLoadingOverlay" class="position-absolute top-0 start-0 w-100 h-100 bg-white d-flex align-items-center justify-content-center d-none" style="z-index: 10; opacity: 0.9;">
+              <div class="text-center">
+                  <div class="spinner-border text-danger" role="status"></div>
+                  <div class="mt-2 fw-bold text-secondary">Cargando datos...</div>
+              </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">1. ¿Dónde está el problema?</label>
+            <select id="repCampus" class="form-select mb-2" onchange="loadEdificiosReport(this.value)">
+               <option value="">Selecciona Campus...</option>
+            </select>
+            <select id="repEdificio" class="form-select mb-2" disabled onchange="loadActivosReport(this.value)">
+               <option value="">Selecciona Edificio...</option>
+            </select>
+            <select id="repActivo" class="form-select" disabled>
+               <option value="">(Opcional) Selecciona Activo concreto...</option>
+            </select>
+          </div>
+          
+          <div class="mb-3">
+            <label class="form-label fw-bold">2. Describe la incidencia</label>
+            <textarea class="form-control" id="repDesc" rows="3" placeholder="Ej. La caldera hace un ruido extraño..."></textarea>
+          </div>
+
+          <div class="row">
+             <div class="col-6 mb-3">
+               <label class="form-label fw-bold">Prioridad</label>
+               <select class="form-select" id="repPrio">
+                 <option value="BAJA">Baja</option>
+                 <option value="MEDIA" selected>Media</option>
+                 <option value="ALTA">Alta</option>
+                 <option value="URGENTE">¡Urgente!</option>
+               </select>
+             </div>
+             <div class="col-6 mb-3">
+                <label class="form-label fw-bold">Foto (Opcional)</label>
+                <input type="file" class="form-control" id="repFoto" accept="image/*" onchange="previewReportImage()">
+                
+                <div id="repFotoPreview" class="mt-2 text-center d-none p-2 border rounded bg-light position-relative">
+                    <img id="imgPreview" src="" class="img-fluid rounded" style="max-height: 120px;">
+                    <button type="button" class="btn-close position-absolute top-0 end-0 m-1" aria-label="Close" onclick="clearReportImage()" title="Quitar foto"></button>
+                </div>
+              </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-danger" id="btnReportSubmit" onclick="submitReport()">Enviar Reporte</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
   <?!= include('js'); ?>
