@@ -18,6 +18,7 @@
       if(document.getElementById('maintModal')) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
       if(document.getElementById('contractModal')) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
       if(document.getElementById('createModal')) myModal = new bootstrap.Modal(document.getElementById('createModal'));
+      if(document.getElementById('obraModal')) obraModal = new bootstrap.Modal(document.getElementById('obraModal'));
 
       // Cargar normas
       google.script.run.withSuccessHandler(list => {
@@ -473,7 +474,27 @@
   function deleteContract(id) { if(confirm("¿Borrar contrato?")) google.script.run.withSuccessHandler(cb => { if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }
   function setBtnLoading(btnId, loading) { const btn=document.getElementById(btnId); if(!btn)return; if(loading){btn.dataset.og=btn.innerText;btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';}else{btn.disabled=false;btn.innerText=btn.dataset.og||'Guardar';} }
   function loadCampusList() { google.script.run.withSuccessHandler(d=>{let h='';d.forEach(r=>h+=`<tr><td class="ps-4 fw-bold text-primary">${r.nombre}</td><td>${r.provincia}</td><td><small>${r.direccion}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-light border"><i class="bi bi-pencil"></i></button></td></tr>`);document.getElementById('tableCampusBody').innerHTML=h||'<tr><td colspan="4" class="text-center text-muted">Vacío</td></tr>';}).getTableData('CAMPUS'); }
-  function loadEdificiosList() { google.script.run.withSuccessHandler(d=>{let h='';d.forEach(r=>h+=`<tr><td class="ps-4 fw-bold">${r.nombre}</td><td><span class="badge bg-light text-dark border">${r.campus}</span></td><td>${r.contacto}</td><td class="text-end pe-4"><button class="btn btn-sm btn-light border"><i class="bi bi-pencil"></i></button></td></tr>`);document.getElementById('tableEdificiosBody').innerHTML=h||'<tr><td colspan="4" class="text-center text-muted">Vacío</td></tr>';}).getTableData('EDIFICIOS'); }
+  
+  function loadEdificiosList() { 
+    google.script.run.withSuccessHandler(d=>{
+      let h='';
+      d.forEach(r=>{
+        // HE CAMBIADO EL ONCLICK AQUÍ PARA USAR openBuildingDetail
+        h+=`<tr>
+          <td class="ps-4 fw-bold">
+            <a href="#" class="text-decoration-none" onclick="openBuildingDetail('${r.id}'); return false;">${r.nombre}</a>
+          </td>
+          <td><span class="badge bg-light text-dark border">${r.campus}</span></td>
+          <td>${r.contacto}</td>
+          <td class="text-end pe-4">
+            <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')">Ver Ficha</button>
+          </td>
+        </tr>`;
+      });
+      document.getElementById('tableEdificiosBody').innerHTML=h||'<tr><td colspan="4" class="text-center text-muted">Vacío</td></tr>';
+    }).getTableData('EDIFICIOS'); 
+  }
+
   function initFilters() { const sel = document.getElementById('filterCampus'); if (campusLoaded || (sel && sel.options.length > 1)) return; if (sel) { google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);sel.innerHTML=h; campusLoaded=true;}).getListaCampus(); } }
   function loadEdificios(id) { const s=document.getElementById('filterEdificio'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!id) { s.innerHTML='<option value="">- Seleccione -</option>'; return; } google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
   function loadEdificiosModal(id) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!id)return; google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
@@ -597,7 +618,7 @@
           openAssetDetail(id);
       } else if (tipo === 'EDIFICIO') {
           navTo('edificios');
-          alert("Navegando al Edificio. (Ficha de detalle de edificio pendiente de implementar)");
+          openBuildingDetail(id);
       }
   }
 
@@ -608,4 +629,210 @@
           closeSearchResults();
       }
   });
+
+  // --- NAVEGACIÓN A FICHA EDIFICIO ---
+  function openBuildingDetail(id) {
+    currentBuildingId = id;
+    // Ocultar otras vistas
+    document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+    // Mostrar ficha edificio
+    document.getElementById('view-building-detail').classList.remove('d-none');
+    
+    document.getElementById('b-detail-name').innerText = "Cargando...";
+    
+    // Cargar Info Básica
+    google.script.run.withSuccessHandler(info => {
+      document.getElementById('b-detail-name').innerText = info.nombre;
+      document.getElementById('b-detail-campus').innerText = info.campus;
+      
+      document.getElementById('bd-nombre').innerText = info.nombre;
+      document.getElementById('bd-campus').innerText = info.campus;
+      document.getElementById('bd-contacto').innerText = info.contacto;
+      
+      // Resetear pestañas
+      loadBuildingDocs(); // Cargar docs por defecto si es la pestaña activa
+    }).getBuildingInfo(id);
+  }
+
+  function closeBuildingDetail() {
+    currentBuildingId = null;
+    document.getElementById('view-building-detail').classList.add('d-none');
+    document.getElementById('view-edificios').classList.remove('d-none'); // Volver a lista
+  }
+
+  // --- DOCUMENTOS EDIFICIO ---
+  function loadBuildingDocs() {
+    if(!currentBuildingId) return;
+    const tbody = document.getElementById('buildingDocsBody');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>';
+    
+    google.script.run.withSuccessHandler(docs => {
+      let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentación asociada</td></tr>';
+      docs.forEach(d => {
+        html += `<tr>
+           <td class="ps-3"><i class="bi bi-file-earmark-pdf text-danger me-2"></i><a href="${d.url}" target="_blank" class="text-decoration-none text-dark">${d.nombre}</a></td>
+           <td>${d.fecha}</td>
+           <td class="small text-muted">Usuario</td>
+           <td class="text-end pe-3"><button class="btn btn-sm btn-outline-danger" onclick="deleteDocBuilding('${d.id}')"><i class="bi bi-trash"></i></button></td>
+        </tr>`;
+      });
+      tbody.innerHTML = html;
+    }).obtenerDocs(currentBuildingId, 'EDIFICIO');
+  }
+
+  function uploadBuildingFile() {
+    const file = document.getElementById('fileInputBuilding').files[0];
+    if(!file || !currentBuildingId) return alert("Selecciona archivo");
+    const st = document.getElementById('uploadStatusBuilding');
+    st.innerText = 'Subiendo...';
+    
+    const r = new FileReader();
+    r.onload = function(e){
+      const content = e.target.result.split(',')[1];
+      google.script.run.withSuccessHandler(res => {
+         st.innerText = 'Subido';
+         document.getElementById('fileInputBuilding').value = '';
+         loadBuildingDocs();
+      }).subirArchivo(content, file.name, file.type, currentBuildingId, 'EDIFICIO');
+    };
+    r.readAsDataURL(file);
+  }
+
+  function deleteDocBuilding(id) {
+    if(confirm("¿Eliminar documento?")) {
+      google.script.run.withSuccessHandler(() => loadBuildingDocs()).eliminarDocumento(id);
+    }
+  }
+
+  // --- OBRAS ---
+  function showModalObra() {
+    if(!obraModal) obraModal = new bootstrap.Modal(document.getElementById('obraModal'));
+    document.getElementById('obraNombre').value = '';
+    document.getElementById('obraDesc').value = '';
+    document.getElementById('obraFecha').value = '';
+    obraModal.show();
+  }
+
+  function submitObra() {
+    const n = document.getElementById('obraNombre').value;
+    const d = document.getElementById('obraDesc').value;
+    const f = document.getElementById('obraFecha').value;
+    if(!n) return alert("Nombre obligatorio");
+    
+    setBtnLoading('btnObraSubmit', true);
+    google.script.run.withSuccessHandler(res => {
+      setBtnLoading('btnObraSubmit', false);
+      obraModal.hide();
+      if(res.success) loadBuildingObras();
+      else alert("Error: " + res.error);
+    }).crearObra({ idEdificio: currentBuildingId, nombre: n, descripcion: d, fechaInicio: f });
+  }
+
+  function loadBuildingObras() {
+    if(!currentBuildingId) return;
+    const container = document.getElementById('buildingObrasList');
+    container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    
+    google.script.run.withSuccessHandler(obras => {
+      if(!obras.length) { container.innerHTML = '<div class="col-12 text-center text-muted fst-italic">No hay obras registradas.</div>'; return; }
+      
+      let html = '';
+      obras.forEach(o => {
+        // Tarjeta para cada Obra con botón de adjuntar
+        let clipClass = o.hasDocs ? 'text-primary' : 'text-muted';
+        html += `
+        <div class="col-md-6">
+          <div class="card h-100 border shadow-sm">
+            <div class="card-body">
+              <div class="d-flex justify-content-between">
+                <h5 class="card-title fw-bold text-primary">${o.nombre}</h5>
+                <span class="badge bg-warning text-dark align-self-start">${o.estado}</span>
+              </div>
+              <p class="card-text small text-muted mb-2">${o.descripcion}</p>
+              <div class="d-flex align-items-center text-muted small mb-3">
+                 <i class="bi bi-calendar-event me-2"></i> Inicio: ${o.fecha}
+              </div>
+              
+              <div class="border-top pt-2">
+                 <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong class="small"><i class="bi bi-paperclip ${clipClass}"></i> Actas y Docs</strong>
+                    <label class="btn btn-sm btn-light border py-0" style="font-size:0.8rem;">
+                       + Adjuntar <input type="file" hidden onchange="uploadObraDoc(this, '${o.id}')">
+                    </label>
+                 </div>
+                 <div id="obra-docs-${o.id}" class="small">
+                    <button class="btn btn-link p-0 text-decoration-none small" onclick="toggleObraDocs('${o.id}')">Ver documentos</button>
+                 </div>
+              </div>
+            </div>
+            <div class="card-footer bg-white border-top-0 text-end">
+               <button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')"><i class="bi bi-trash"></i> Eliminar Obra</button>
+            </div>
+          </div>
+        </div>`;
+      });
+      container.innerHTML = html;
+    }).getObrasPorEdificio(currentBuildingId);
+  }
+
+  function uploadObraDoc(input, idObra) {
+    const file = input.files[0];
+    if(!file) return;
+    const container = document.getElementById('obra-docs-' + idObra);
+    container.innerHTML = '<span class="text-muted">Subiendo...</span>';
+    
+    const r = new FileReader();
+    r.onload = function(e){
+      const content = e.target.result.split(',')[1];
+      google.script.run.withSuccessHandler(res => {
+         // Recargamos la lista completa de obras para refrescar el estado
+         loadBuildingObras(); 
+         // Opcionalmente podríamos abrir automáticamente el toggle de docs
+      }).subirArchivo(content, file.name, file.type, idObra, 'OBRA');
+    };
+    r.readAsDataURL(file);
+  }
+  
+  function toggleObraDocs(idObra) {
+      const container = document.getElementById('obra-docs-' + idObra);
+      container.innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+      google.script.run.withSuccessHandler(docs => {
+          if(!docs.length) { container.innerHTML = '<span class="text-muted fst-italic">Vacío</span>'; return; }
+          let h = '<ul class="list-unstyled mb-0">';
+          docs.forEach(d => {
+              h += `<li class="d-flex justify-content-between align-items-center mb-1">
+                      <a href="${d.url}" target="_blank" class="text-truncate" style="max-width:200px;">${d.nombre}</a>
+                      <i class="bi bi-x text-danger" style="cursor:pointer;" onclick="deleteDocBuilding('${d.id}')"></i>
+                    </li>`;
+          });
+          h += '</ul>';
+          container.innerHTML = h;
+      }).obtenerDocs(idObra, 'OBRA');
+  }
+
+  function deleteObra(id) {
+    if(confirm("¿Borrar obra y sus registros?")) {
+      google.script.run.withSuccessHandler(()=>loadBuildingObras()).eliminarObra(id);
+    }
+  }
+
+  // --- ACTIVOS DEL EDIFICIO (LISTADO) ---
+  function loadBuildingAssets() {
+    if(!currentBuildingId) return;
+    const tbody = document.getElementById('buildingAssetsBody');
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>';
+    google.script.run.withSuccessHandler(list => {
+       if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin activos</td></tr>'; return; }
+       let html = '';
+       list.forEach(a => {
+         html += `<tr>
+            <td class="ps-3 fw-bold">${a.nombre}</td>
+            <td><span class="badge bg-light text-dark border">${a.tipo}</span></td>
+            <td>${a.marca}</td>
+            <td class="text-end pe-3"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}')">Ir a Activo</button></td>
+         </tr>`;
+       });
+       tbody.innerHTML = html;
+    }).getActivosPorEdificio(currentBuildingId);
+  }
 </script>
