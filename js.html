@@ -9,6 +9,7 @@
   let maintModal = null;
   let contractModal = null;
   let myModal = null;
+  let lastView = 'activos';
 
   window.onload = function() { 
       loadDashboard(); 
@@ -286,19 +287,50 @@
   }
 
   // --- FUNCIONES COMUNES ---
-  function openAssetDetail(id) {
-    currentAssetId = id; document.getElementById('view-activos').classList.add('d-none'); document.getElementById('view-asset-detail').classList.remove('d-none'); 
+  function openAssetDetail(id, fromView) {
+    currentAssetId = id;
     currentActiveAssetId = id; 
+
+    // Guardamos de dónde venimos ('activos', 'edificio', etc)
+    if (fromView) lastView = fromView;
+    else lastView = 'activos';
+
+    // 1. OCULTAMOS TODO (Para evitar superposiciones como en tu captura)
+    document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+    
+    // 2. MOSTRAMOS SOLO DETALLE ACTIVO
+    document.getElementById('view-asset-detail').classList.remove('d-none');
+    
+    // Lógica de carga de datos (existente)...
     toggleEditInfo(false); 
     document.getElementById('detail-name').innerText = "Cargando...";
     google.script.run.withSuccessHandler(info => {
-      document.getElementById('detail-name').innerText = info.nombre; document.getElementById('detail-type').innerText = info.tipo;
-      document.getElementById('d-nombre-val').innerText = info.nombre; document.getElementById('d-tipo-val').innerText = info.tipo; document.getElementById('d-marca-val').innerText = info.marca; document.getElementById('d-fecha-val').innerText = info.fechaAlta;
-      document.getElementById('edit-nombre').value = info.nombre; document.getElementById('edit-marca').value = info.marca;
+      document.getElementById('detail-name').innerText = info.nombre; 
+      document.getElementById('detail-type').innerText = info.tipo;
+      document.getElementById('d-nombre-val').innerText = info.nombre; 
+      document.getElementById('d-tipo-val').innerText = info.tipo; 
+      document.getElementById('d-marca-val').innerText = info.marca; 
+      document.getElementById('d-fecha-val').innerText = info.fechaAlta;
+      document.getElementById('edit-nombre').value = info.nombre; 
+      document.getElementById('edit-marca').value = info.marca;
       loadDocs(); loadMaint(); loadContracts();
     }).getAssetInfo(id);
   }
-  function closeAssetDetail() { currentAssetId = null; currentActiveAssetId = null; document.getElementById('view-asset-detail').classList.add('d-none'); document.getElementById('view-activos').classList.remove('d-none'); }
+
+  function closeAssetDetail() { 
+    currentAssetId = null; 
+    currentActiveAssetId = null; 
+    
+    document.getElementById('view-asset-detail').classList.add('d-none');
+    
+    // Volver a la vista anterior
+    if (lastView === 'edificio' && currentBuildingId) {
+        document.getElementById('view-building-detail').classList.remove('d-none');
+    } else {
+        document.getElementById('view-activos').classList.remove('d-none');
+    }
+  }
+
   function toggleEditInfo(editable) { if(editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if(sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } }
   function saveAssetInfo() { const newData = { id: currentAssetId, nombre: document.getElementById('edit-nombre').value, marca: document.getElementById('edit-marca').value, tipo: document.getElementById('edit-tipo').value }; const btnSave = document.querySelector('#btn-save-info button'); setBtnLoading('btn-save-info button', true); google.script.run.withSuccessHandler(res => { btnSave.disabled = false; btnSave.innerText = "Guardar"; if(res.success) { openAssetDetail(currentAssetId); } else { alert("Error al guardar: " + res.error); } }).updateAsset(newData); }
   function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; }).obtenerDocs(currentAssetId); }
@@ -717,15 +749,54 @@
     const n = document.getElementById('obraNombre').value;
     const d = document.getElementById('obraDesc').value;
     const f = document.getElementById('obraFecha').value;
+    const fileInput = document.getElementById('obraFileInit'); // El nuevo input
+    
     if(!n) return alert("Nombre obligatorio");
     
     setBtnLoading('btnObraSubmit', true);
+    
+    // 1. Crear Obra
     google.script.run.withSuccessHandler(res => {
-      setBtnLoading('btnObraSubmit', false);
-      obraModal.hide();
-      if(res.success) loadBuildingObras();
-      else alert("Error: " + res.error);
+      if(res.success) {
+          // 2. Si hay archivo, lo subimos usando el ID nuevo (res.newId)
+          if(fileInput.files.length > 0) {
+              const file = fileInput.files[0];
+              const r = new FileReader();
+              r.onload = function(e) {
+                 const content = e.target.result.split(',')[1];
+                 google.script.run.withSuccessHandler(uploadRes => {
+                     finishSubmitObra(); // Terminar proceso
+                 }).subirArchivo(content, file.name, file.type, res.newId, 'OBRA');
+              };
+              r.readAsDataURL(file);
+          } else {
+              finishSubmitObra(); // Sin archivo, terminar directo
+          }
+      } else {
+          alert("Error al crear: " + res.error);
+          setBtnLoading('btnObraSubmit', false);
+      }
     }).crearObra({ idEdificio: currentBuildingId, nombre: n, descripcion: d, fechaInicio: f });
+  }
+
+  function finishSubmitObra() {
+    setBtnLoading('btnObraSubmit', false);
+    if(obraModal) obraModal.hide();
+    document.getElementById('obraFileInit').value = ''; // Limpiar input
+    loadBuildingObras();
+  }
+
+  function finalizarObraJS(id) {
+    // Pedir fecha de fin (por defecto hoy)
+    const hoy = new Date().toISOString().split('T')[0];
+    const fechaFin = prompt("Introduce fecha de fin (YYYY-MM-DD):", hoy);
+    
+    if (fechaFin) {
+        google.script.run.withSuccessHandler(res => {
+            if(res.success) loadBuildingObras();
+            else alert("Error: " + res.error);
+        }).finalizarObra(id, fechaFin);
+    }
   }
 
   function loadBuildingObras() {
@@ -738,26 +809,32 @@
       
       let html = '';
       obras.forEach(o => {
-        // Tarjeta para cada Obra con botón de adjuntar
         let clipClass = o.hasDocs ? 'text-primary' : 'text-muted';
+        
+        // Botón finalizar: Solo si NO está finalizada
+        let btnFinalizar = '';
+        if(o.estado !== 'FINALIZADA') {
+            btnFinalizar = `<button class="btn btn-sm btn-outline-success me-2" onclick="finalizarObraJS('${o.id}')"><i class="bi bi-check-circle"></i> Finalizar</button>`;
+        }
+        let badgeColor = o.estado === 'FINALIZADA' ? 'bg-success' : 'bg-warning text-dark';
+
         html += `
         <div class="col-md-6">
           <div class="card h-100 border shadow-sm">
             <div class="card-body">
               <div class="d-flex justify-content-between">
                 <h5 class="card-title fw-bold text-primary">${o.nombre}</h5>
-                <span class="badge bg-warning text-dark align-self-start">${o.estado}</span>
+                <span class="badge ${badgeColor} align-self-start">${o.estado}</span>
               </div>
               <p class="card-text small text-muted mb-2">${o.descripcion}</p>
               <div class="d-flex align-items-center text-muted small mb-3">
                  <i class="bi bi-calendar-event me-2"></i> Inicio: ${o.fecha}
               </div>
-              
               <div class="border-top pt-2">
                  <div class="d-flex justify-content-between align-items-center mb-2">
-                    <strong class="small"><i class="bi bi-paperclip ${clipClass}"></i> Actas y Docs</strong>
+                    <strong class="small"><i class="bi bi-paperclip ${clipClass}"></i> Evidencias</strong>
                     <label class="btn btn-sm btn-light border py-0" style="font-size:0.8rem;">
-                       + Adjuntar <input type="file" hidden onchange="uploadObraDoc(this, '${o.id}')">
+                       + <input type="file" hidden onchange="uploadObraDoc(this, '${o.id}')">
                     </label>
                  </div>
                  <div id="obra-docs-${o.id}" class="small">
@@ -766,7 +843,8 @@
               </div>
             </div>
             <div class="card-footer bg-white border-top-0 text-end">
-               <button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')"><i class="bi bi-trash"></i> Eliminar Obra</button>
+               ${btnFinalizar}
+               <button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')"><i class="bi bi-trash"></i></button>
             </div>
           </div>
         </div>`;
@@ -820,19 +898,58 @@
   function loadBuildingAssets() {
     if(!currentBuildingId) return;
     const tbody = document.getElementById('buildingAssetsBody');
+    const select = document.getElementById('filterAssetTypeBuilding');
+    
     tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>';
+    
     google.script.run.withSuccessHandler(list => {
        if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin activos</td></tr>'; return; }
-       let html = '';
-       list.forEach(a => {
-         html += `<tr>
-            <td class="ps-3 fw-bold">${a.nombre}</td>
-            <td><span class="badge bg-light text-dark border">${a.tipo}</span></td>
-            <td>${a.marca}</td>
-            <td class="text-end pe-3"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}')">Ir a Activo</button></td>
-         </tr>`;
-       });
-       tbody.innerHTML = html;
+       
+       // 1. Llenar el Select de Filtro (Tipos únicos)
+       const tiposUnicos = [...new Set(list.map(item => item.tipo))].sort();
+       let options = '<option value="">- Todos los tipos -</option>';
+       tiposUnicos.forEach(t => options += `<option value="${t}">${t}</option>`);
+       select.innerHTML = options;
+
+       // 2. Renderizar tabla completa
+       renderBuildingAssetsTable(list);
+       
+       // 3. Guardar lista en variable global temporal para filtrar rápido sin llamar a Google
+       window.currentBuildingAssetsList = list; 
+
     }).getActivosPorEdificio(currentBuildingId);
+}
+
+// NUEVA FUNCIÓN DE FILTRADO (FRONTEND)
+  function filterBuildingAssets() {
+      const tipo = document.getElementById('filterAssetTypeBuilding').value;
+      const list = window.currentBuildingAssetsList || [];
+      
+      if (!tipo) {
+          renderBuildingAssetsTable(list);
+      } else {
+          const filtered = list.filter(a => a.tipo === tipo);
+          renderBuildingAssetsTable(filtered);
+      }
+  }
+
+// HELPER PARA PINTAR TABLA (Para no repetir código)
+  function renderBuildingAssetsTable(list) {
+      const tbody = document.getElementById('buildingAssetsBody');
+      if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay coincidencias</td></tr>'; return; }
+      
+      let html = '';
+      list.forEach(a => {
+          // NOTA: Aquí usamos openAssetDetail(id, 'edificio') para decir que venimos del edificio
+          html += `<tr>
+              <td class="ps-3 fw-bold">${a.nombre}</td>
+              <td><span class="badge bg-light text-dark border">${a.tipo}</span></td>
+              <td>${a.marca}</td>
+              <td class="text-end pe-3">
+                  <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}', 'edificio')">Ir a Activo</button>
+              </td>
+          </tr>`;
+      });
+      tbody.innerHTML = html;
   }
 </script>
