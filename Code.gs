@@ -302,25 +302,73 @@ function obtenerPlanMantenimiento(idActivo) {
 function getGlobalMaintenance() {
   const planes = getSheetData('PLAN_MANTENIMIENTO'); 
   const activos = getSheetData('ACTIVOS'); 
-  const edificios = getSheetData('EDIFICIOS'); 
-  const docsData = getSheetData('DOCS_HISTORICO');
-  const docsMap = {}; for(let j=1; j<docsData.length; j++) { if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true; }
-  const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
-  const mapActivos = {}; activos.slice(1).forEach(r => { const edificioInfo = mapEdificios[r[1]] || {}; mapActivos[r[0]] = { nombre: r[3], idEdif: r[1], idCampus: edificioInfo.idCampus || null }; });
+  const edificios = getSheetData('EDIFICIOS');
   
-  const result = []; const hoy = new Date(); hoy.setHours(0,0,0,0);
+  // 1. CARGAR CAMPUS (Blindado a String para evitar errores de ID)
+  const campusData = getSheetData('CAMPUS');
+  const mapCampus = {};
+  campusData.slice(1).forEach(r => {
+    mapCampus[String(r[0])] = r[1]; // Guardamos ID como Texto -> Nombre
+  });
+
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {}; 
+  for(let j=1; j<docsData.length; j++) { if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true; }
+  
+  const mapEdificios = {}; 
+  edificios.slice(1).forEach(r => mapEdificios[String(r[0])] = { nombre: r[2], idCampus: String(r[1]) });
+  
+  const mapActivos = {}; 
+  activos.slice(1).forEach(r => { 
+    const edificioInfo = mapEdificios[String(r[1])] || {}; 
+    mapActivos[String(r[0])] = { 
+      nombre: r[3], 
+      idEdif: r[1], 
+      idCampus: edificioInfo.idCampus || null 
+    }; 
+  });
+  
+  const result = []; 
+  const hoy = new Date(); 
+  hoy.setHours(0,0,0,0);
   
   for(let i=1; i<planes.length; i++) {
-    // FILTRO NUEVO: Si está realizada, saltar
     if (planes[i][6] === 'REALIZADA') continue;
 
-    const idActivo = planes[i][1]; const activoInfo = mapActivos[idActivo];
+    const idActivo = String(planes[i][1]); 
+    const activoInfo = mapActivos[idActivo];
+    
     if(activoInfo) {
-       const nombreEdificio = mapEdificios[activoInfo.idEdif] ? mapEdificios[activoInfo.idEdif].nombre : "-";
+       const nombreEdificio = mapEdificios[String(activoInfo.idEdif)] ? mapEdificios[String(activoInfo.idEdif)].nombre : "-";
+       
+       // 2. RESOLVER NOMBRE CAMPUS
+       const idC = activoInfo.idCampus;
+       // Buscamos en el mapa. Si no existe, devolvemos "-"
+       const nombreCampus = (idC && mapCampus[idC]) ? mapCampus[idC] : "-";
+
        let f = planes[i][4]; let color = 'gris'; let fechaStr = "-"; let dias = 9999; let fechaISO = "";
        if (f instanceof Date) { f.setHours(0,0,0,0); dias = Math.ceil((f.getTime() - hoy.getTime()) / (86400000)); if (dias < 0) color = 'rojo'; else if (dias <= 30) color = 'amarillo'; else color = 'verde'; fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy"); fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"); }
        let hasCalendar = (planes[i].length > 7 && planes[i][7]) ? true : false;
-       result.push({ id: planes[i][0], idActivo: idActivo, activo: activoInfo.nombre, edificio: nombreEdificio, tipo: planes[i][2], fecha: fechaStr, fechaISO: fechaISO, color: color, dias: dias, edificioId: activoInfo.idEdif, campusId: activoInfo.idCampus, hasDocs: docsMap[String(planes[i][0])] || false, hasCalendar: hasCalendar });
+       
+       result.push({ 
+         id: planes[i][0], 
+         idActivo: idActivo, 
+         activo: activoInfo.nombre, 
+         edificio: nombreEdificio, 
+         
+         // AQUÍ VA EL DATO CLAVE
+         campusNombre: nombreCampus, 
+         campusId: activoInfo.idCampus,
+
+         tipo: planes[i][2], 
+         fecha: fechaStr, 
+         fechaISO: fechaISO, 
+         color: color, 
+         dias: dias, 
+         edificioId: activoInfo.idEdif, 
+         hasDocs: docsMap[String(planes[i][0])] || false, 
+         hasCalendar: hasCalendar 
+       });
     }
   }
   return result.sort((a,b) => a.dias - b.dias);
@@ -628,15 +676,77 @@ function updateIncidenciaData(d) {
 // ==========================================
 // 15. SISTEMA DE FEEDBACK
 // ==========================================
+
+// 1. Enviar Feedback + Notificación Email
 function enviarFeedback(datos) {
   try {
     const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
     let sheet = ss.getSheetByName('FEEDBACK');
-    if (!sheet) { sheet = ss.insertSheet('FEEDBACK'); sheet.appendRow(['ID', 'FECHA', 'USUARIO', 'TIPO', 'MENSAJE', 'ESTADO']); }
+    if (!sheet) { 
+      sheet = ss.insertSheet('FEEDBACK'); 
+      sheet.appendRow(['ID', 'FECHA', 'USUARIO', 'TIPO', 'MENSAJE', 'ESTADO']); 
+    }
+    
     const usuario = getMyRole().email || "Anónimo"; 
-    sheet.appendRow([Utilities.getUuid(), new Date(), usuario, datos.tipo, datos.mensaje, 'NUEVO']);
+    const fecha = new Date();
+    
+    // Guardar en Excel
+    sheet.appendRow([Utilities.getUuid(), fecha, usuario, datos.tipo, datos.mensaje, 'NUEVO']);
+    
+    // --- NUEVO: ENVIAR EMAIL AL ADMIN ---
+    // (Asegúrate de cambiar este email por el tuyo real o cogerlo de la config)
+    const emailAdmin = "jcsuarez@unav.es"; // O pon "tu_email@dominio.com"
+    const asunto = `[GMAO] Nuevo Feedback: ${datos.tipo}`;
+    const cuerpo = `
+      Has recibido una nueva sugerencia en la App:
+      
+      Tipo: ${datos.tipo}
+      Usuario: ${usuario}
+      Mensaje: ${datos.mensaje}
+      
+      Entra en la App para gestionarla.
+    `;
+    
+    MailApp.sendEmail(emailAdmin, asunto, cuerpo);
+    // ------------------------------------
+
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
+}
+
+// 2. Leer Feedback (Solo Admin)
+function getFeedbackList() {
+  verificarPermiso(['ADMIN_ONLY']);
+  const data = getSheetData('FEEDBACK');
+  // Devolvemos objetos limpios invertidos (lo más nuevo primero)
+  return data.slice(1).reverse().map(r => ({
+    id: r[0],
+    fecha: r[1] ? fechaATexto(r[1]) : "-",
+    usuario: r[2],
+    tipo: r[3],
+    mensaje: r[4],
+    estado: r[5]
+  }));
+}
+
+// 3. Actualizar Estado (Marcar como leído/borrar)
+function updateFeedbackStatus(id, nuevoEstado) {
+  verificarPermiso(['ADMIN_ONLY']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('FEEDBACK');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      if(nuevoEstado === 'DELETE') {
+        sheet.deleteRow(i+1);
+      } else {
+        sheet.getRange(i+1, 6).setValue(nuevoEstado); // Columna 6 es ESTADO
+      }
+      return { success: true };
+    }
+  }
+  return { success: false, error: "No encontrado" };
 }
 
 // ==========================================
