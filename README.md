@@ -715,26 +715,352 @@ Usuario debe acceder con su cuenta Google → reconocido por email → aplica ro
 **¿Permisos de archivos?**  
 🔗 Cualquiera con enlace (Vista)
 
+## Revisiones Completadas
+
+**¿Qué pasa al marcar una revisión como "Completada"?**  
+🟢 Desaparece de la lista de pendientes y del dashboard
+
+**¿Se puede deshacer?**  
+❌ No, pero puedes crear una nueva revisión para la próxima fecha
+
+**¿Dónde ver el histórico de revisiones completadas?**  
+📊 Actualmente no hay vista de histórico (próxima versión)
+
+## Importación Masiva
+
+**¿Puedo importar muchos activos a la vez?**  
+✅ Sí, desde Excel/CSV usando copiar-pegar
+
+**¿Cómo funciona?**  
+1. Preparar Excel con columnas: Campus | Edificio | Tipo | Nombre | Marca
+2. Copiar datos (sin cabeceras)
+3. Pegar en modal de importación
+4. Procesar
+
+**¿Qué errores pueden ocurrir?**  
+❌ Campus o Edificio no existente  
+❌ Columnas mal ordenadas  
+❌ Filas incompletas
+
 ---
 
-# 📞 Soporte
+# PARTE 13: FUNCIONES AVANZADAS ADICIONALES
 
-## Contacto
+---
 
-Para dudas o incidencias técnicas, contactar con:
+## 🔔 Sistema de Feedback
+
+### Reportar Bugs o Sugerencias
+
+**Acceso**: Botón flotante azul (💬) inferior derecho
+
+**Función**: Enviar feedback sobre la aplicación
+
+### Tipos de Feedback
+
+**💡 Sugerencia / Idea**
+- Propuestas de mejora
+- Nuevas funcionalidades
+- Cambios en la interfaz
+
+**🪲 Reporte de Fallo (Bug)**
+- Errores encontrados
+- Comportamientos inesperados
+- Problemas de rendimiento
+
+**💬 Otro comentario**
+- Comentarios generales
+- Dudas sobre uso
+- Agradecimientos
+
+### Cómo Enviar Feedback
+
+1. Clic en botón flotante azul (💬)
+2. Seleccionar tipo de mensaje
+3. Escribir descripción detallada
+4. Clic en **"Enviar"**
+
+> **📝 Nota**: El feedback se guarda en una hoja "FEEDBACK" de la base de datos para revisión del administrador.
+
+### Buenas Prácticas
+
+**Para reportar bugs**:
+- Describir qué intentabas hacer
+- Indicar qué pasó en su lugar
+- Mencionar navegador y dispositivo
+- Adjuntar captura si es posible (por email)
+
+**Para sugerencias**:
+- Explicar el problema que resolvería
+- Describir el comportamiento esperado
+- Priorizar según necesidad
+
+---
+
+## ✅ Completar Revisiones
+
+### Marcar Revisión como Realizada
+
+**Ubicación**: Vista Global de Mantenimiento
+
+**Función**: Indicar que una revisión se ha completado
+
+### Cómo Completar una Revisión
+
+1. Ir a **Mantenimiento** (vista global)
+2. Localizar la revisión en la tabla
+3. Clic en botón **✓ verde** (Completar)
+4. Confirmar acción
+
+### Efectos de Completar
+
+**Cambios inmediatos**:
+- ✅ Estado cambia a "REALIZADA"
+- 📊 Desaparece del dashboard (contadores)
+- 📅 Se oculta del calendario
+- 🔍 No aparece en filtros de pendientes
+
+**Permanece en**:
+- 📁 Base de datos (histórico)
+- 📎 Documentación asociada
+
+### Diferencia: Completar vs Eliminar
+
+| Acción | Completar ✓ | Eliminar 🗑️ |
+|--------|------------|-------------|
+| **Registra ejecución** | ✅ Sí | ❌ No |
+| **Mantiene histórico** | ✅ Sí | ❌ No |
+| **Elimina evento Calendar** | ❌ No | ✅ Sí |
+| **Recuperable** | ⚠️ Manual | ❌ No |
+| **Rol mínimo** | TECNICO | ADMIN |
+
+### Caso de Uso
+
+**Situación**: Revisión anual de caldera completada el 15/03/2025
+
+**Pasos**:
+1. Técnico realiza la revisión físicamente
+2. Sube certificado/evidencias al plan
+3. Marca como **"Completada"**
+4. Sistema la oculta de pendientes
+5. Crea nueva revisión para 15/03/2026
+
+> **💡 Tip**: Siempre sube evidencias ANTES de completar la revisión para mantener trazabilidad.
+
+---
+
+## 📊 Importación Masiva de Activos
+
+### Para Qué Sirve
+
+Permite **migrar rápidamente** activos desde hojas de cálculo existentes (Excel, Google Sheets, CSV).
+
+**Casos de uso**:
+- Migración desde sistema antiguo
+- Alta inicial de muchos activos
+- Actualización masiva tras auditoría
+
+### Requisitos Previos
+
+**Antes de importar**:
+1. ✅ Todos los **Campus** deben existir
+2. ✅ Todos los **Edificios** deben existir
+3. ✅ Los nombres deben coincidir **exactamente**
+
+### Formato de Datos
+
+**Orden de columnas** (obligatorio):
+
+| Columna 1 | Columna 2 | Columna 3 | Columna 4 | Columna 5 |
+|-----------|-----------|-----------|-----------|-----------|
+| **Campus** | **Edificio** | **Tipo** | **Nombre Activo** | **Marca** |
+
+**Ejemplo**:
+```
+Campus Central    Edificio A    Baja Tensión    Cuadro Principal    Schneider
+Campus Central    Edificio A    Climatización    Caldera 1    Vaillant
+Campus Tecnológico    Lab 3    Ascensor    Ascensor Principal    Otis
+```
+
+### Paso a Paso
+
+#### 1. Preparar Excel
+
+**En tu hoja de cálculo**:
+- Organiza datos en 5 columnas (orden correcto)
+- **NO incluyas fila de cabeceras**
+- Verifica nombres de Campus/Edificios
+
+#### 2. Copiar Datos
+
+1. Selecciona **solo las celdas con datos** (sin cabecera)
+2. Presiona **Ctrl+C** (Cmd+C en Mac)
+
+#### 3. Abrir Modal de Importación
+
+1. Ir a **Activos** (menú lateral)
+2. Clic en botón **"📊 Importar"** (superior derecho)
+3. Se abre modal "Importación Masiva"
+
+#### 4. Pegar Datos
+
+1. Clic en el área de texto grande
+2. Presiona **Ctrl+V** (Cmd+V en Mac)
+3. Los datos aparecen con tabulaciones
+
+#### 5. Procesar Importación
+
+1. Revisar datos pegados
+2. Clic en **"Procesar Importación"**
+3. Confirmar cantidad de activos
+4. Esperar procesamiento (puede tardar)
+
+### Resultado
+
+**Si todo va bien**:
+- ✅ Mensaje: "¡Éxito! Se han creado X activos"
+- 🗂️ Cada activo tiene su carpeta en Drive
+- 📊 Dashboard actualizado automáticamente
+
+**Si hay errores**:
+- ⚠️ Mensaje: "Importación parcial"
+- 📝 Lista de errores abajo del área de texto
+- ✅ Los activos válidos SÍ se crearon
+- ❌ Los erróneos NO se crearon
+
+### Errores Comunes
+
+| Error | Causa | Solución |
+|-------|-------|----------|
+| "Campus 'X' no existe" | Nombre no coincide | Crear campus primero o corregir nombre |
+| "Edificio 'Y' no encontrado" | No existe en ese campus | Verificar edificio y campus |
+| "Fila incompleta" | Faltan columnas | Completar todas las 5 columnas |
+| "No se detectan datos válidos" | Formato incorrecto | Usar tabulaciones (copiar de Excel) |
+
+### Limitaciones
+
+**Restricciones técnicas**:
+- ⚠️ Puede tardar con **muchos activos** (>100)
+- ⚠️ Drive tiene límites de carpetas/minuto
+- ❌ No actualiza activos existentes, solo crea nuevos
+- ❌ No permite importar mantenimientos o contratos
+
+### Recomendaciones
+
+**Mejores prácticas**:
+1. 🧪 **Prueba primero** con 5-10 activos
+2. 📝 **Documenta** nombres exactos de Campus/Edificios
+3. 🔄 **Procesa por lotes** si son muchos (50-100 cada vez)
+4. ✅ **Verifica** en la tabla tras cada importación
+5. 🗂️ **Revisa Drive** que las carpetas se crearon
+
+### Ejemplo Completo
+
+**Escenario**: Importar 3 calderas
+
+**Excel original**:
+```
+Campus       | Edificio  | Tipo          | Nombre        | Marca
+-------------|-----------|---------------|---------------|----------
+Campus Norte | Edif. A   | Climatización | Caldera Norte | Vaillant
+Campus Norte | Edif. B   | Climatización | Caldera Sur   | Junkers
+Campus Sur   | Edif. C   | Climatización | Caldera Este  | Baxi
+```
+
+**Pasos**:
+1. Seleccionar solo datos (sin fila Campus|Edificio|...)
+2. Copiar (Ctrl+C)
+3. GMAO → Activos → Importar
+4. Pegar (Ctrl+V) en área de texto
+5. Procesar Importación
+6. Confirmar
+
+**Resultado**:
+```
+✅ ¡Éxito! Se han creado 3 activos.
+```
+
+---
+
+## 🎨 Sistema de Notificaciones Mejorado
+
+El sistema ahora incluye **notificaciones visuales elegantes** con SweetAlert2.
+
+### Tipos de Notificaciones
+
+**🟢 Éxito (Toast verde)**
+- Aparece en esquina superior derecha
+- Desaparece automáticamente en 3 segundos
+- Ejemplos: "Activo guardado", "Revisión completada"
+
+**🔴 Error (Alerta modal)**
+- Ventana central bloqueante
+- Requiere clic en "OK" para cerrar
+- Ejemplos: "Campus no encontrado", "Campos incompletos"
+
+**⚠️ Confirmación (Alerta modal)**
+- Antes de acciones destructivas
+- Botones: "Sí, proceder" / "Cancelar"
+- Ejemplos: "¿Eliminar edificio?", "¿Marcar como completada?"
+
+### Diferencias con Sistema Anterior
+
+| Antes | Ahora |
+|-------|-------|
+| `alert()` nativo | Modal elegante SweetAlert2 |
+| `confirm()` simple | Modal con estilos personalizados |
+| Sin notificaciones de éxito | Toasts verdes informativos |
+| Interrumpe flujo de trabajo | Notificaciones no invasivas |
+
+---
+
+# 📞 Soporte y Feedback
+
+## Reportar Problemas
+
+### Sistema Integrado de Feedback
+
+**Acceso rápido**: Botón flotante azul (💬) siempre visible
+
+**Proceso recomendado**:
+1. Clic en botón flotante azul
+2. Seleccionar tipo:
+   - 🪲 **Bug**: Para errores técnicos
+   - 💡 **Sugerencia**: Para mejoras
+   - 💬 **Otro**: Para comentarios generales
+3. Describir claramente el problema/idea
+4. Enviar
+
+**Ventajas**:
+- ✅ No necesitas email del administrador
+- ✅ Queda registrado en el sistema
+- ✅ Accesible para todos los roles (incluido CONSULTA)
+- ✅ Contexto automático (usuario, fecha)
+
+### Contacto Directo
+
+Para incidencias críticas o urgentes:
 
 **Administrador GMAO**: [Insertar contacto]  
 **Soporte IT**: [Insertar contacto]
 
-## Reportar Errores
+### Información Útil al Reportar
 
-1. Descripción detallada del problema
-2. Pasos para reproducir
-3. Capturas de pantalla (si aplica)
-4. Rol de usuario y navegador utilizado
+**Para cualquier tipo de reporte**:
+- 🖥️ Navegador y versión (Chrome 120, Firefox 115...)
+- 📱 Dispositivo (PC, móvil, tablet)
+- 👤 Rol de usuario (ADMIN, TECNICO, CONSULTA)
+- 📝 Descripción paso a paso
+- 📸 Capturas de pantalla (si aplica)
+
+**Para bugs específicos**:
+- ❌ Mensaje de error exacto
+- 🔄 Pasos para reproducir
+- ✅ Comportamiento esperado vs real
 
 ---
 
-**Fin del Manual**
+**Fin del Manual Actualizado**
 
-*Versión 1.0 | Última actualización: Diciembre 2024*
+*Versión 1.1 | Última actualización: Diciembre 2024*  
+*Nuevas funcionalidades: Completar Revisiones, Importación Masiva, Sistema de Feedback*
