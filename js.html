@@ -154,6 +154,7 @@
         document.getElementById('d-pendientes').innerText = d.pendientes; 
         document.getElementById('d-incidencias').innerText = d.incidencias;
         document.getElementById('d-contratos').innerText = d.contratos;
+        document.getElementById('d-edificios').innerText = d.edificios;
         document.getElementById('d-campus').innerText = d.campus;
 
         const ctx = document.getElementById('mainChart').getContext('2d'); 
@@ -182,6 +183,7 @@
             eventClick: function(info) { const p = info.event.extendedProps; editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar); }
         });
         calendar.render();
+        ocultarLoader();
     }).getDatosDashboard(); 
   }
 
@@ -536,4 +538,14 @@ function ejecutarImportacion() {
     }).procesarCargaMasiva(filas);
   });
 }
+
+function ocultarLoader() {
+    const loader = document.getElementById('app-loader');
+    if(loader) {
+      loader.style.opacity = '0'; // Efecto desvanecer
+      setTimeout(() => {
+        loader.style.display = 'none'; // Quitar del todo tras la animación
+      }, 500);
+    }
+  }
 </script>
