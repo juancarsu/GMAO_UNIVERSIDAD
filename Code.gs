@@ -1,6 +1,6 @@
 // GMAO
 // Universidad de Navarra
-// Versión 1.0
+// Versión 1.2
 // Autor: Juan Carlos Suárez
 //
 // Licencia: Creative Commons Reconocimiento (CC BY) - creativecommons.org
@@ -849,4 +849,46 @@ function getLogsAuditoria() {
     return { fecha: fechaStr, usuario: r[1], accion: r[2], detalles: r[3] };
   });
   return logs;
+}
+
+// ==========================================
+// 19. SISTEMA DE NOVEDADES (CHANGELOG)
+// ==========================================
+function getNovedadesApp() {
+  // Permitimos que cualquiera (Consultas, Tecnicos, Admins) vea esto
+  const data = getSheetData('NOVEDADES');
+  
+  // Devolvemos las filas (excepto cabecera), invertidas para ver las nuevas primero
+  return data.slice(1).reverse().map(r => ({
+    fecha: r[0] ? fechaATexto(r[0]) : "",
+    version: r[1],
+    tipo: r[2],
+    titulo: r[3],
+    descripcion: r[4]
+  }));
+}
+function crearNovedad(d) {
+  verificarPermiso(['ADMIN_ONLY']); // Solo Admins
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  let sheet = ss.getSheetByName('NOVEDADES');
+  
+  if (!sheet) {
+    sheet = ss.insertSheet('NOVEDADES');
+    sheet.appendRow(['FECHA', 'VERSION', 'TIPO', 'TITULO', 'DESCRIPCION']);
+  }
+
+  // TRUCO: Concatenamos "'" al principio de la versión
+  // Esto obliga a Google Sheets a tratar "01.01" como texto y no como 1 de Enero.
+  const versionTexto = "'" + d.version; 
+
+  sheet.appendRow([
+    new Date(),     // Fecha actual
+    versionTexto,   // Versión (Texto forzado)
+    d.tipo, 
+    d.titulo, 
+    d.descripcion
+  ]);
+
+  registrarLog("NUEVA VERSIÓN", "Publicada versión " + d.version);
+  return { success: true };
 }
