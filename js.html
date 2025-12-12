@@ -1,13 +1,13 @@
 <script>
   // ==========================================
-  // VARIABLES GLOBALES
+  // 1. VARIABLES GLOBALES
   // ==========================================
   let myChart, myPieChart, calendar, currentAssetId = null;
   let campusLoaded = false;
   let globalMaintData = [];
   let globalContractData = [];
-  let globalIncidencias = [];
-  let allEdificiosData = []; // Para el filtro de edificios
+  let globalIncidencias = []; 
+  let allEdificiosData = []; 
   let currentActiveAssetId = null;
   let currentBuildingId = null;
   let lastView = 'activos'; 
@@ -15,13 +15,45 @@
   window.currentBuildingAssetsList = [];
 
   // Instancias de Modales
-  let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null; let configModal = null; let userModal = null; let reportModal = null; let edificioModal = null; let campusModal = null;
+  let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null; 
+  let configModal = null; let userModal = null; let reportModal = null; let feedbackModal = null;
+  let edificioModal = null; let campusModal = null;
 
   // ==========================================
-  // INICIALIZACIÓN
+  // 2. HELPERS VISUALES (SWEETALERT2)
+  // ==========================================
+  const Toast = Swal.mixin({
+    toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
+    didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
+  });
+
+  function notificarExito(mensaje) {
+    Toast.fire({ icon: 'success', title: mensaje || '¡Operación exitosa!' });
+  }
+
+  function notificarError(mensaje) {
+    Swal.fire({ icon: 'error', title: 'Ups...', text: mensaje || 'Ha ocurrido un error inesperado.', confirmButtonColor: '#CC0605' });
+  }
+
+  function confirmarAccion(titulo, texto, callback) {
+    Swal.fire({
+      title: titulo || '¿Estás seguro?', text: texto || "Esta acción no se puede deshacer.", icon: 'warning',
+      showCancelButton: true, confirmButtonColor: '#CC0605', cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Sí, proceder', cancelButtonText: 'Cancelar'
+    }).then((result) => { if (result.isConfirmed) callback(); });
+  }
+
+  function setBtnLoading(btnId, loading) { 
+    const btn=document.getElementById(btnId); if(!btn)return; 
+    if(loading){btn.dataset.og=btn.innerText;btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';}
+    else{btn.disabled=false;btn.innerText=btn.dataset.og||'Guardar';} 
+  } 
+
+  // ==========================================
+  // 3. INICIALIZACIÓN
   // ==========================================
   window.onload = function() { 
-      // Cargar seguridad y luego Dashboard
+      // Cargar seguridad y Dashboard
       google.script.run.withSuccessHandler(u => {
           currentUser = u;
           applySecurityUI();
@@ -38,6 +70,7 @@
       if(document.getElementById('configModal')) configModal = new bootstrap.Modal(document.getElementById('configModal'));
       if(document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
       if(document.getElementById('reportModal')) reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
+      if(document.getElementById('feedbackModal')) feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal'));
       if(document.getElementById('edificioModal')) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal'));
       if(document.getElementById('campusModal')) campusModal = new bootstrap.Modal(document.getElementById('campusModal'));
 
@@ -58,14 +91,15 @@
   };
 
   // ==========================================
-  // SEGURIDAD Y UI
+  // 4. SEGURIDAD Y NAVEGACIÓN
   // ==========================================
   function applySecurityUI() {
       const profileDiv = document.querySelector('.user-profile');
       if(profileDiv) { profileDiv.innerHTML = `<i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">${currentUser.nombre}</div><small class="text-muted text-truncate" style="max-width:140px; display:block;">${currentUser.rol}</small></div>`; }
       if (currentUser.rol === 'CONSULTA') {
           document.querySelectorAll('.btn-primary, .btn-success, .btn-outline-danger').forEach(el => {
-              if (!el.getAttribute('onclick') || !el.getAttribute('onclick').includes('openReportModal')) { el.classList.add('d-none'); }
+              const onClickAttr = el.getAttribute('onclick') || "";
+              if (!onClickAttr.includes('openReportModal') && !onClickAttr.includes('openFeedbackModal')) { el.classList.add('d-none'); }
           });
           document.querySelectorAll('input[type="file"]').forEach(el => el.parentElement.classList.add('d-none'));
           const repFoto = document.getElementById('repFoto'); if(repFoto) repFoto.parentElement.classList.remove('d-none');
@@ -73,7 +107,7 @@
       }
       if (currentUser.rol === 'TECNICO') {
           const links = document.querySelectorAll('.menu-link');
-          links.forEach(l => { if(l.getAttribute('onclick').includes('usuarios') || l.getAttribute('onclick').includes('config')) { l.parentElement.classList.add('d-none'); } });
+          links.forEach(l => { const onClickAttr = l.getAttribute('onclick') || ""; if(onClickAttr.includes('usuarios') || onClickAttr.includes('config')) { l.parentElement.classList.add('d-none'); } });
           const btnUser = document.querySelector('button[onclick="openUserModal()"]'); if(btnUser) btnUser.classList.add('d-none');
           const btnConf = document.querySelector('button[onclick="openConfigModal()"]'); if(btnConf) btnConf.classList.add('d-none');
       }
@@ -92,9 +126,6 @@
       }
   }
 
-  // ==========================================
-  // NAVEGACIÓN
-  // ==========================================
   function navTo(viewId, linkEl, event) { 
     if(event) event.preventDefault(); 
     if(linkEl) { document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active')); linkEl.classList.add('active'); } 
@@ -104,7 +135,7 @@
     
     if(viewId==='dashboard') loadDashboard(); 
     if(viewId==='campus') loadCampusList(); 
-    if(viewId==='edificios') loadEdificiosList(); 
+    if(viewId==='edificios') loadEdificiosList();
     if(viewId==='mantenimiento') { loadGlobalMaint(); loadMaintFilters(); } 
     if(viewId==='contratos') { loadGlobalContracts(); loadContractFilters(); } 
     if(viewId==='activos') { const sel = document.getElementById('filterCampus'); if(!sel || sel.options.length <= 1) initFilters(); } 
@@ -114,7 +145,7 @@
   }
 
   // ==========================================
-  // DASHBOARD
+  // 5. DASHBOARD & CALENDARIO
   // ==========================================
   function loadDashboard() { 
     google.script.run.withSuccessHandler(d => { 
@@ -125,257 +156,384 @@
         document.getElementById('d-contratos').innerText = d.contratos;
         document.getElementById('d-campus').innerText = d.campus;
 
-        // 1. Gráfico Lineal
         const ctx = document.getElementById('mainChart').getContext('2d'); 
         if (myChart) myChart.destroy(); 
-        myChart = new Chart(ctx, { type: 'line', data: { labels: d.chartLabels, datasets: [{ label: 'Revisiones', data: d.chartData, borderColor: '#0d6efd', backgroundColor: 'rgba(13, 110, 253, 0.1)', tension: 0.3, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } }); 
+        myChart = new Chart(ctx, { type: 'line', data: { labels: d.chartLabels, datasets: [{ label: 'Revisiones', data: d.chartData, borderColor: '#CC0605', backgroundColor: 'rgba(204, 6, 5, 0.1)', tension: 0.3, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } }); 
         
-        // 2. Gráfico Circular
         const ctxPie = document.getElementById('pieChart').getContext('2d');
         if (myPieChart) myPieChart.destroy();
         myPieChart = new Chart(ctxPie, {
             type: 'doughnut',
-            data: { labels: ['Pendientes', 'Vencidas', 'Al Día'], datasets: [{ data: [d.pendientes, d.vencidas, d.ok], backgroundColor: ['#ffc107', '#dc3545', '#198754'] }] },
+            data: { labels: ['Pendientes', 'Vencidas', 'Al Día'], datasets: [{ data: [d.pendientes, d.vencidas, d.ok], backgroundColor: ['#f59e0b', '#ef4444', '#10b981'] }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
         });
 
-        // 3. CALENDARIO (Configuración mejorada)
         const calendarEl = document.getElementById('calendar');
-        calendarEl.innerHTML = ''; // Limpiar previo
-        
+        calendarEl.innerHTML = ''; 
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'dayGridMonth',
             locale: 'es',
             height: 550,
             headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
             events: d.calendarEvents,
-            
-            // --- ESTAS LÍNEAS SON CLAVE PARA EL CLICK ---
-            selectable: true,      // Permite seleccionar celdas
-            navLinks: false,       // Evita que los días sean enlaces a la vista diaria (opcional)
-            // --------------------------------------------
-
-            // Al hacer clic en un día vacío
-            dateClick: function(info) {
-                console.log("Click en fecha:", info.dateStr); // Para depurar en consola F12
-                mostrarModalRevision(info.dateStr);
-            },
-            
-            // Al hacer clic en un evento (revisión existente)
-            eventClick: function(info) {
-                console.log("Click en evento:", info.event.title);
-                const p = info.event.extendedProps;
-                editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar);
-            }
+            selectable: true, 
+            navLinks: false,
+            dateClick: function(info) { mostrarModalRevision(info.dateStr); },
+            eventClick: function(info) { const p = info.event.extendedProps; editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar); }
         });
         calendar.render();
-
     }).getDatosDashboard(); 
   }
 
   // ==========================================
-  // GESTIÓN DE EDIFICIOS (CORREGIDO)
+  // 6. MANTENIMIENTO GLOBAL
   // ==========================================
-  function loadEdificiosList() { 
-      const sel = document.getElementById('filterCampusEdificios');
-      if(sel && sel.options.length <= 1) {
-          google.script.run.withSuccessHandler(list => {
-              let html = '<option value="">- Todos los Campus -</option>';
-              list.forEach(c => html += `<option value="${c.nombre}">${c.nombre}</option>`);
-              sel.innerHTML = html;
-          }).getListaCampus();
-      }
-
-      const tbody = document.getElementById('tableEdificiosBody');
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>';
+  function loadGlobalMaint() {
+      const tbody = document.getElementById('tableGlobalMaint');
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando plan...</td></tr>';
       
-      google.script.run.withSuccessHandler(d => {
-          allEdificiosData = d;
-          renderEdificiosTable(d);
-      }).getTableData('EDIFICIOS'); 
+      google.script.run.withSuccessHandler(data => {
+          globalMaintData = data; 
+          renderGlobalMaintTable(data);
+      }).getGlobalMaintenance();
   }
 
-  function filterEdificiosList() {
-      const campusVal = document.getElementById('filterCampusEdificios').value;
-      const searchVal = document.getElementById('searchEdificios').value.toLowerCase();
-      const filtered = allEdificiosData.filter(r => {
-          const matchCampus = (campusVal === "") || (r.campus === campusVal);
-          const matchText = r.nombre.toLowerCase().includes(searchVal) || String(r.contacto).toLowerCase().includes(searchVal);
-          return matchCampus && matchText;
-      });
-      renderEdificiosTable(filtered);
-  }
+  function renderGlobalMaintTable(data) {
+      const tbody = document.getElementById('tableGlobalMaint');
+      if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No hay revisiones pendientes.</td></tr>';
+          return;
+      }
+      let html = '';
+      data.forEach((r, index) => {
+          let dotClass = 'bg-secondary';
+          if (r.color === 'rojo') dotClass = 'bg-rojo';
+          if (r.color === 'amarillo') dotClass = 'bg-amarillo';
+          if (r.color === 'verde') dotClass = 'bg-verde';
+          
+          let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
+          let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
 
-  function renderEdificiosTable(data) {
-      const tbody = document.getElementById('tableEdificiosBody');
-      if(!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-5">No hay coincidencias</td></tr>'; return; }
-      let h = '';
-      data.forEach(r => {
-          h += `<tr>
-              <td class="ps-4 fw-bold"><a href="#" class="text-decoration-none" onclick="openBuildingDetail('${r.id}'); return false;">${r.nombre}</a></td>
-              <td><span class="badge bg-light text-dark border">${r.campus}</span></td>
-              <td>${r.contacto}</td>
-              <td class="text-end pe-4"><div class="btn-group">
-                  <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')" title="Ver Ficha"><i class="bi bi-eye"></i></button>
-                  <button class="btn btn-sm btn-light border text-secondary" onclick="openEdificioModal('${r.id}', '${r.nombre}', '${r.campus}', '${r.contacto}')" title="Editar"><i class="bi bi-pencil"></i></button>
-                  <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
-              </div></td>
+          html += `<tr>
+              <td class="text-center ps-4 text-muted small">${index + 1}</td>
+              <td><div class="fw-bold">${r.edificio}</div><small class="text-muted">Campus ${r.campusId || '-'}</small></td>
+              <td>${r.activo}</td>
+              <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
+              <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
+              <td class="text-end pe-4">
+                  <div class="btn-group">
+                      <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
+                      <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
+                  </div>
+              </td>
           </tr>`;
       });
-      tbody.innerHTML = h;
+      tbody.innerHTML = html;
       refreshSecurityIcons();
   }
 
-  function openEdificioModal(id, nombre, nombreCampus, contacto) {
-      if(!edificioModal) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal'));
-      const sel = document.getElementById('edifCampus');
-      google.script.run.withSuccessHandler(list => {
-          let html = '<option value="">- Seleccione Campus -</option>';
-          list.forEach(c => {
-              let isSel = (nombreCampus && c.nombre === nombreCampus) ? 'selected' : '';
-              html += `<option value="${c.id}" ${isSel}>${c.nombre}</option>`;
-          });
-          sel.innerHTML = html;
-      }).getListaCampus();
+  function marcarHecho(idRevision) {
+    Swal.fire({
+        title: '¿Completar revisión?',
+        text: "Se marcará como realizada y desaparecerá de la lista de pendientes.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#198754', // Verde éxito
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, completar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            google.script.run.withSuccessHandler(res => {
+                if(res.success) {
+                    notificarExito("¡Revisión completada!");
+                    // Recargamos la lista según donde estemos
+                    if(document.getElementById('view-mantenimiento') && !document.getElementById('view-mantenimiento').classList.contains('d-none')) {
+                        loadGlobalMaint();
+                    } else if (currentAssetId) {
+                        loadMaint();
+                    }
+                    loadDashboard(); // Actualizar contadores
+                } else {
+                    notificarError(res.error);
+                }
+            }).completarRevision(idRevision);
+        }
+    });
+}
 
-      if(id) {
-          document.getElementById('edificioModalTitle').innerText = 'Editar Edificio';
-          document.getElementById('edifId').value = id;
-          document.getElementById('edifNombre').value = nombre;
-          document.getElementById('edifContacto').value = contacto;
-      } else {
-          document.getElementById('edificioModalTitle').innerText = 'Nuevo Edificio';
-          document.getElementById('edifId').value = '';
-          document.getElementById('edifNombre').value = '';
-          document.getElementById('edifCampus').value = '';
-          document.getElementById('edifContacto').value = '';
+  // --- FILTROS MANTENIMIENTO ---
+  function loadMaintFilters() {
+      const selCampus = document.getElementById('maintFilterCampus');
+      if (selCampus && selCampus.options.length <= 1) {
+          google.script.run.withSuccessHandler(list => {
+              let html = '<option value="">Todos los Campus</option>';
+              list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+              selCampus.innerHTML = html;
+          }).getListaCampus();
       }
-      edificioModal.show();
   }
 
-  function submitEdificio() {
-      const id = document.getElementById('edifId').value;
-      const nombre = document.getElementById('edifNombre').value;
-      const idCampus = document.getElementById('edifCampus').value;
-      const contacto = document.getElementById('edifContacto').value;
-      if(!nombre || !idCampus) return alert("Nombre y Campus obligatorios");
-      setBtnLoading('btnEdifSubmit', true);
-      const finish = (res) => {
-          setBtnLoading('btnEdifSubmit', false);
-          if(res.success) { edificioModal.hide(); loadEdificiosList(); } else { alert("Error: " + res.error); }
-      };
-      if(id) { google.script.run.withSuccessHandler(finish).updateEdificio({ id, nombre, idCampus, contacto }); } 
-      else { google.script.run.withSuccessHandler(finish).crearEdificio({ nombre, idCampus, contacto }); }
+  function loadEdificiosMaintFilter(idCampus) {
+      const selEdif = document.getElementById('maintFilterEdificio');
+      selEdif.innerHTML = '<option>Cargando...</option>';
+      if (!idCampus) {
+          selEdif.innerHTML = '<option value="">Todos los Edificios</option>';
+          setMaintFilter('edificio', '');
+          return;
+      }
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">Todos los Edificios</option>';
+          list.forEach(e => html += `<option value="${e.id}">${e.nombre}</option>`);
+          selEdif.innerHTML = html;
+          setMaintFilter('edificio', '');
+      }).getEdificiosPorCampus(idCampus);
   }
 
-  function deleteEdificio(id) {
-      if(!confirm("¿Eliminar edificio?")) return;
-      google.script.run.withSuccessHandler(res => { if(res.success) loadEdificiosList(); else alert("Error: " + res.error); }).eliminarEdificio(id);
+  function setMaintFilter(tipoFiltro, valor, btn) {
+      if (btn) {
+          btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+      }
+      const fCampus = document.getElementById('maintFilterCampus').value;
+      const fEdificio = document.getElementById('maintFilterEdificio').value;
+      
+      let fColor = 'all';
+      const colorBtns = document.getElementById('filterGroupColor').querySelectorAll('button.active');
+      if(colorBtns.length > 0 && colorBtns[0].innerText !== 'Todas') {
+          if(colorBtns[0].classList.contains('btn-outline-danger')) fColor = 'rojo';
+          if(colorBtns[0].classList.contains('btn-outline-warning')) fColor = 'amarillo';
+          if(colorBtns[0].classList.contains('btn-outline-success')) fColor = 'verde';
+      }
+      
+      // Filtro Tipo básico
+      let fType = 'all';
+      const typeBtns = document.getElementById('filterGroupType').querySelectorAll('button.active');
+      if(typeBtns.length > 0) {
+           const txt = typeBtns[0].getAttribute('onclick');
+           if(txt.includes('Legal')) fType = 'Legal';
+           if(txt.includes('Periódica')) fType = 'Periódica';
+           if(txt.includes('Reparación')) fType = 'Reparación';
+           if(txt.includes('Extraordinaria')) fType = 'Extraordinaria';
+      }
+
+      const filtered = globalMaintData.filter(item => {
+          const matchCampus = fCampus === "" || String(item.campusId) === String(fCampus);
+          const matchEdif = fEdificio === "" || String(item.edificioId) === String(fEdificio);
+          const matchColor = fColor === 'all' || item.color === fColor;
+          const matchType = fType === 'all' || item.tipo === fType;
+          return matchCampus && matchEdif && matchColor && matchType;
+      });
+      renderGlobalMaintTable(filtered);
   }
+
+  // --- MODAL REVISIÓN DESDE CALENDARIO ---
+  function mostrarModalRevision(dateStr) {
+      if(!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+      document.getElementById('revId').value = "";
+      document.getElementById('revTipo').value = "Legal";
+      document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0];
+      document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
+      document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
+      
+      // Habilitar selectores
+      document.getElementById('assetSelector').classList.remove('d-none');
+      const selC = document.getElementById('maintCampus');
+      if(selC.options.length <= 1) {
+           google.script.run.withSuccessHandler(list => {
+              let html = '<option value="">- Campus -</option>';
+              list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+              selC.innerHTML = html;
+          }).getListaCampus();
+      }
+      // Reset selects
+      document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
+      document.getElementById('maintEdificio').disabled = true;
+      document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
+      document.getElementById('maintActivo').disabled = true;
+      currentAssetId = null; 
+      maintModal.show();
+  }
+  
+  function loadEdificiosModalMaint(idCampus) {
+      const sel = document.getElementById('maintEdificio');
+      sel.innerHTML = '<option>Cargando...</option>'; sel.disabled = true;
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">- Edificio -</option>';
+          list.forEach(e => html += `<option value="${e.id}">${e.nombre}</option>`);
+          sel.innerHTML = html; sel.disabled = false;
+      }).getEdificiosPorCampus(idCampus);
+  }
+  
+  function loadActivosModalMaint(idEdificio) {
+       const sel = document.getElementById('maintActivo');
+      sel.innerHTML = '<option>Cargando...</option>'; sel.disabled = true;
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">- Activo -</option>';
+          list.forEach(a => html += `<option value="${a.id}">${a.nombre} (${a.tipo})</option>`);
+          sel.innerHTML = html; sel.disabled = false;
+      }).getActivosPorEdificio(idEdificio);
+  }
+
+  // --- CONTRATOS GLOBAL ---
+  function loadGlobalContracts() {
+      const tbody = document.getElementById('tableGlobalContracts');
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>';
+      google.script.run.withSuccessHandler(d => {
+           globalContractData = d;
+           renderGlobalContractsTable(d);
+      }).obtenerContratosGlobal();
+  }
+  function renderGlobalContractsTable(d) {
+       const tbody = document.getElementById('tableGlobalContracts');
+       if(!d || !d.length) { tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted">Sin contratos</td></tr>'; return; }
+       let h=''; d.forEach(c=>{ 
+           let color = c.color==='rojo'?'bg-danger':(c.color==='amarillo'?'bg-warning text-dark':'bg-success');
+           h+=`<tr><td><span class="badge ${color}">${c.estado}</span></td><td><div class="fw-bold text-truncate" style="max-width:200px;">${c.nombreEntidad}</div></td><td>${c.proveedor}</td><td>${c.ref}</td><td>${c.fin}</td><td class="text-end"><button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}', '${c.inicio}', '${c.fin}', '${c.estadoDB}', '${c.proveedor}', '${c.ref}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
+       });
+       tbody.innerHTML=h;
+  }
+  function mostrarModalContrato() {
+      if(!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
+      document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+      document.getElementById('contId').value = '';
+      document.getElementById('contProv').value = '';
+      document.getElementById('contRef').value = '';
+      contractModal.show();
+  }
+  function loadContractFilters() { loadMaintFilters(); } 
+  function loadEdificiosContractFilter(id) { loadEdificiosMaintFilter(id); }
 
   // ==========================================
-  // GESTIÓN DE INCIDENCIAS
+  // 7. GESTIÓN INCIDENCIAS & FEEDBACK
   // ==========================================
-  function loadIncidencias() { const tbody = document.getElementById('tableIncidenciasBody'); tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-danger"></div> Cargando incidencias...</td></tr>'; google.script.run.withSuccessHandler(list => { globalIncidencias = list; renderIncidencias(list); }).getIncidencias(); }
+  function loadIncidencias() { const tbody = document.getElementById('tableIncidenciasBody'); tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-danger"></div> Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { globalIncidencias = list; renderIncidencias(list); }).getIncidencias(); }
   function filterIncidencias(estado, btn) { if(btn) { btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); } if(estado === 'all') renderIncidencias(globalIncidencias); else renderIncidencias(globalIncidencias.filter(i => i.estado === estado)); }
   function renderIncidencias(list) { const tbody = document.getElementById('tableIncidenciasBody'); if(!list.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No hay incidencias.</td></tr>'; return; } let html = ''; list.forEach(i => { let badgeColor = i.estado === 'RESUELTA' ? 'bg-success' : (i.estado === 'EN PROCESO' ? 'bg-primary' : 'bg-danger'); let prioColor = i.prioridad === 'URGENTE' ? 'text-danger fw-bold' : ''; let fotoBtn = i.urlFoto ? `<a href="${i.urlFoto}" target="_blank" class="btn btn-sm btn-outline-secondary ms-1" title="Ver Foto"><i class="bi bi-image"></i></a>` : ''; let editBtn = i.estado !== 'RESUELTA' ? `<button class="btn btn-sm btn-light border text-secondary me-1" onclick="editIncidencia('${i.id}')" title="Editar datos"><i class="bi bi-pencil"></i></button>` : ''; let actionBtn = i.estado !== 'RESUELTA' ? `<div class="btn-group">${editBtn}<button class="btn btn-sm btn-outline-primary" onclick="updateIncidencia('${i.id}', 'EN PROCESO')" title="En Proceso"><i class="bi bi-play-fill"></i></button><button class="btn btn-sm btn-success" onclick="updateIncidencia('${i.id}', 'RESUELTA')" title="Resolver"><i class="bi bi-check-lg"></i></button></div>` : '<span class="text-success small"><i class="bi bi-check-circle"></i> Cerrada</span>'; html += `<tr><td class="ps-4"><span class="badge ${badgeColor}">${i.estado}</span></td><td class="${prioColor}">${i.prioridad}</td><td><div class="fw-bold">${i.nombreOrigen}</div><small class="text-muted">${i.tipoOrigen}</small></td><td>${i.descripcion} ${fotoBtn}</td><td><div class="small">${i.fecha}</div><small class="text-muted">${i.solicitante}</small></td><td class="text-end pe-4">${actionBtn}</td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }
-  function updateIncidencia(id, nuevoEstado) { if(!confirm("¿Cambiar estado a " + nuevoEstado + "?")) return; google.script.run.withSuccessHandler(res => { if(res.success) loadIncidencias(); else alert("Error: " + res.error); }).actualizarEstadoIncidencia(id, nuevoEstado); }
+  function updateIncidencia(id, nuevoEstado) { confirmarAccion(`¿Marcar como ${nuevoEstado}?`, "", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Estado actualizado"); loadIncidencias(); } else notificarError(res.error); }).actualizarEstadoIncidencia(id, nuevoEstado); }); }
   function openReportModal() { if(!reportModal) reportModal = new bootstrap.Modal(document.getElementById('reportModal')); document.getElementById('repId').value = ""; document.getElementById('repDesc').value = ''; document.getElementById('repFoto').disabled = false; document.querySelector('#reportModal .modal-title').innerHTML = '<i class="bi bi-exclamation-circle"></i> Reportar Avería'; const btn = document.getElementById('btnReportSubmit'); btn.innerText = 'Enviar Reporte'; btn.disabled = false; clearReportImage(); const repCampus = document.getElementById('repCampus'); if(repCampus.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = '<option value="">Seleccione Campus...</option>'; list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`); repCampus.innerHTML = html; }).getListaCampus(); } document.getElementById('repEdificio').innerHTML = '<option value="">Seleccione Edificio...</option>'; document.getElementById('repEdificio').disabled = true; document.getElementById('repActivo').innerHTML = '<option value="">(Opcional) Selecciona Activo...</option>'; document.getElementById('repActivo').disabled = true; reportModal.show(); }
   function editIncidencia(id) { if(!reportModal) reportModal = new bootstrap.Modal(document.getElementById('reportModal')); reportModal.show(); const overlay = document.getElementById('repLoadingOverlay'); overlay.classList.remove('d-none'); const btn = document.getElementById('btnReportSubmit'); btn.innerText = 'Guardar Cambios'; btn.disabled = true; clearReportImage(); document.getElementById('repId').value = id; document.querySelector('#reportModal .modal-title').innerHTML = '<i class="bi bi-pencil-square"></i> Editar Incidencia'; document.getElementById('repFoto').disabled = true; google.script.run.withSuccessHandler(data => { document.getElementById('repDesc').value = data.descripcion; document.getElementById('repPrio').value = data.prioridad; if (data.urlFoto) { const previewBox = document.getElementById('repFotoPreview'); const img = document.getElementById('imgPreview'); img.src = data.urlFoto; previewBox.classList.remove('d-none'); } const repCampus = document.getElementById('repCampus'); google.script.run.withSuccessHandler(list => { let html = '<option value="">Seleccione Campus...</option>'; list.forEach(c => { let isSel = (String(c.id) === String(data.idCampus)) ? 'selected' : ''; html += `<option value="${c.id}" ${isSel}>${c.nombre}</option>`; }); repCampus.innerHTML = html; if(data.idCampus) { loadEdificiosReport(data.idCampus, data.idEdificio, data.idActivo); } else { overlay.classList.add('d-none'); btn.disabled = false; } }).getListaCampus(); }).getIncidenciaDetalle(id); }
   function loadEdificiosReport(idCampus, idEdifToSelect, nextAssetId) { const sel = document.getElementById('repEdificio'); const overlay = document.getElementById('repLoadingOverlay'); const btn = document.getElementById('btnReportSubmit'); sel.innerHTML = '<option>Cargando...</option>'; sel.disabled = true; document.getElementById('repActivo').innerHTML = '<option value="">(Opcional) Selecciona Activo...</option>'; document.getElementById('repActivo').disabled = true; if(!idCampus) { sel.innerHTML = '<option value="">Seleccione Edificio...</option>'; return; } google.script.run.withSuccessHandler(list => { let html = '<option value="">Seleccione Edificio...</option>'; list.forEach(e => { let isSel = (String(e.id) === String(idEdifToSelect)) ? 'selected' : ''; html += `<option value="${e.id}" ${isSel}>${e.nombre}</option>`; }); sel.innerHTML = html; sel.disabled = false; if(idEdifToSelect) { loadActivosReport(idEdifToSelect, nextAssetId); } else { if(overlay) overlay.classList.add('d-none'); btn.disabled = false; } }).getEdificiosPorCampus(idCampus); }
   function loadActivosReport(idEdificio, idAssetToSelect) { const sel = document.getElementById('repActivo'); const overlay = document.getElementById('repLoadingOverlay'); const btn = document.getElementById('btnReportSubmit'); sel.innerHTML = '<option>Cargando...</option>'; sel.disabled = true; if(!idEdificio) return; google.script.run.withSuccessHandler(list => { let html = '<option value="">(Opcional) Selecciona Activo...</option>'; list.forEach(a => { let isSel = (String(a.id) === String(idAssetToSelect)) ? 'selected' : ''; html += `<option value="${a.id}" ${isSel}>${a.nombre}</option>`; }); sel.innerHTML = html; sel.disabled = false; if(overlay) overlay.classList.add('d-none'); btn.disabled = false; }).getActivosPorEdificio(idEdificio); }
   function previewReportImage() { const input = document.getElementById('repFoto'); const previewBox = document.getElementById('repFotoPreview'); const img = document.getElementById('imgPreview'); if (input.files && input.files[0]) { const reader = new FileReader(); reader.onload = function(e) { img.src = e.target.result; previewBox.classList.remove('d-none'); }; reader.readAsDataURL(input.files[0]); } else { clearReportImage(); } }
   function clearReportImage() { const input = document.getElementById('repFoto'); const previewBox = document.getElementById('repFotoPreview'); if(input) input.value = ''; if(previewBox) previewBox.classList.add('d-none'); if(document.getElementById('imgPreview')) document.getElementById('imgPreview').src = ''; }
-  function submitReport() { const idIncidencia = document.getElementById('repId').value; const idCampus = document.getElementById('repCampus').value; const idEdificio = document.getElementById('repEdificio').value; const idActivo = document.getElementById('repActivo').value; const desc = document.getElementById('repDesc').value; const prio = document.getElementById('repPrio').value; const fotoInput = document.getElementById('repFoto'); if(!idEdificio) return alert("Por favor, indica al menos el edificio."); if(!desc) return alert("Describe brevemente el problema."); let idOrigen = idActivo || idEdificio; let tipoOrigen = idActivo ? 'ACTIVO' : 'EDIFICIO'; let nombreOrigen = ""; if(idActivo) { nombreOrigen = document.getElementById('repActivo').options[document.getElementById('repActivo').selectedIndex].text; } else { nombreOrigen = document.getElementById('repEdificio').options[document.getElementById('repEdificio').selectedIndex].text; } setBtnLoading('btnReportSubmit', true); const finish = (res) => { setBtnLoading('btnReportSubmit', false); if(res.success) { reportModal.hide(); alert(idIncidencia ? "Incidencia actualizada." : "¡Avería reportada correctamente!"); if(!document.getElementById('view-incidencias').classList.contains('d-none')) { loadIncidencias(); } } else { alert("Error: " + res.error); } }; const payload = { id: idIncidencia, tipoOrigen: tipoOrigen, idOrigen: idOrigen, nombreOrigen: nombreOrigen, descripcion: desc, prioridad: prio }; if (idIncidencia) { google.script.run.withSuccessHandler(finish).updateIncidenciaData(payload); } else { payload.fotoBase64 = null; payload.mimeType = null; payload.nombreArchivo = null; if(fotoInput.files.length > 0) { const file = fotoInput.files[0]; const r = new FileReader(); r.onload = function(e) { payload.fotoBase64 = e.target.result.split(',')[1]; payload.mimeType = file.type; payload.nombreArchivo = file.name; google.script.run.withSuccessHandler(finish).crearIncidencia(payload); }; r.readAsDataURL(file); } else { google.script.run.withSuccessHandler(finish).crearIncidencia(payload); } } }
+  function submitReport() { const idIncidencia = document.getElementById('repId').value; const idCampus = document.getElementById('repCampus').value; const idEdificio = document.getElementById('repEdificio').value; const idActivo = document.getElementById('repActivo').value; const desc = document.getElementById('repDesc').value; const prio = document.getElementById('repPrio').value; const fotoInput = document.getElementById('repFoto'); if(!idEdificio) return notificarError("Por favor, indica al menos el edificio."); if(!desc) return notificarError("Describe brevemente el problema."); let idOrigen = idActivo || idEdificio; let tipoOrigen = idActivo ? 'ACTIVO' : 'EDIFICIO'; let nombreOrigen = ""; if(idActivo) { nombreOrigen = document.getElementById('repActivo').options[document.getElementById('repActivo').selectedIndex].text; } else { nombreOrigen = document.getElementById('repEdificio').options[document.getElementById('repEdificio').selectedIndex].text; } setBtnLoading('btnReportSubmit', true); const finish = (res) => { setBtnLoading('btnReportSubmit', false); if(res.success) { reportModal.hide(); notificarExito(idIncidencia ? "Incidencia actualizada." : "¡Avería reportada!"); if(!document.getElementById('view-incidencias').classList.contains('d-none')) { loadIncidencias(); } } else { notificarError(res.error); } }; const payload = { id: idIncidencia, tipoOrigen: tipoOrigen, idOrigen: idOrigen, nombreOrigen: nombreOrigen, descripcion: desc, prioridad: prio }; if (idIncidencia) { google.script.run.withSuccessHandler(finish).updateIncidenciaData(payload); } else { payload.fotoBase64 = null; payload.mimeType = null; payload.nombreArchivo = null; if(fotoInput.files.length > 0) { const file = fotoInput.files[0]; const r = new FileReader(); r.onload = function(e) { payload.fotoBase64 = e.target.result.split(',')[1]; payload.mimeType = file.type; payload.nombreArchivo = file.name; google.script.run.withSuccessHandler(finish).crearIncidencia(payload); }; r.readAsDataURL(file); } else { google.script.run.withSuccessHandler(finish).crearIncidencia(payload); } } }
+  function openFeedbackModal() { if(!feedbackModal) feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal')); document.getElementById('feedTipo').value = 'Sugerencia'; document.getElementById('feedMsg').value = ''; feedbackModal.show(); }
+  function submitFeedback() { const tipo = document.getElementById('feedTipo').value; const msg = document.getElementById('feedMsg').value; if (!msg || msg.trim().length < 5) return notificarError("Escribe un mensaje válido."); const btn = document.getElementById('btnFeedSubmit'); const originalText = btn.innerText; btn.disabled = true; btn.innerText = "Enviando..."; google.script.run.withSuccessHandler(res => { btn.disabled = false; btn.innerText = originalText; if (res.success) { feedbackModal.hide(); notificarExito("¡Gracias por tu mensaje!"); } else { notificarError(res.error); } }).enviarFeedback({ tipo: tipo, mensaje: msg }); }
 
   // ==========================================
-  // FUNCIONES VISTAS PREVIAS (MANTENIMIENTO, ACTIVOS...)
+  // 8. FUNCIONES CAMPUS, EDIFICIOS, ACTIVOS
   // ==========================================
   function updateMaintFormVisibility() { const tipo = document.getElementById('revTipo').value; const secLegal = document.getElementById('secLegal'); const secRecur = document.getElementById('secRecur'); if(!secLegal || !secRecur) return; secLegal.classList.add('d-none'); secRecur.classList.add('d-none'); if (tipo === 'Legal') { secLegal.classList.remove('d-none'); secRecur.classList.remove('d-none'); } else if (tipo === 'Periódica') { secRecur.classList.remove('d-none'); } }
   function autoFillFrequency() { const sel = document.getElementById('revNorma'); const option = sel.options[sel.selectedIndex]; if (option && option.dataset.dias) { document.getElementById('revFreq').value = option.dataset.dias; document.getElementById('revRecur').checked = true; document.getElementById('secRecurOptions').classList.remove('d-none'); } }
-
-  // ACTIVO DETALLE
-  function openAssetDetail(id, fromView) { currentAssetId = id; currentActiveAssetId = id; if (fromView) lastView = fromView; else lastView = 'activos'; document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none')); document.getElementById('view-asset-detail').classList.remove('d-none'); toggleEditInfo(false); document.getElementById('detail-name').innerText = "Cargando..."; google.script.run.withSuccessHandler(info => { document.getElementById('detail-name').innerText = info.nombre; document.getElementById('detail-type').innerText = info.tipo; document.getElementById('d-nombre-val').innerText = info.nombre; document.getElementById('d-tipo-val').innerText = info.tipo; document.getElementById('d-marca-val').innerText = info.marca; document.getElementById('d-fecha-val').innerText = info.fechaAlta; document.getElementById('edit-nombre').value = info.nombre; document.getElementById('edit-marca').value = info.marca; loadDocs(); loadMaint(); loadContracts(); }).getAssetInfo(id); } function closeAssetDetail() { currentAssetId = null; currentActiveAssetId = null; document.getElementById('view-asset-detail').classList.add('d-none'); if (lastView === 'edificio' && currentBuildingId) { document.getElementById('view-building-detail').classList.remove('d-none'); } else { document.getElementById('view-activos').classList.remove('d-none'); } } function openBuildingDetail(id) { currentBuildingId = id; document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none')); document.getElementById('view-building-detail').classList.remove('d-none'); document.getElementById('b-detail-name').innerText = "Cargando..."; google.script.run.withSuccessHandler(info => { document.getElementById('b-detail-name').innerText = info.nombre; document.getElementById('b-detail-campus').innerText = info.campus; document.getElementById('bd-nombre').innerText = info.nombre; document.getElementById('bd-campus').innerText = info.campus; document.getElementById('bd-contacto').innerText = info.contacto; loadBuildingDocs(); }).getBuildingInfo(id); } function closeBuildingDetail() { currentBuildingId = null; document.getElementById('view-building-detail').classList.add('d-none'); document.getElementById('view-edificios').classList.remove('d-none'); } function loadBuildingDocs() { if(!currentBuildingId) return; const tbody = document.getElementById('buildingDocsBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentación asociada</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3"><i class="bi bi-file-earmark-pdf text-danger me-2"></i><a href="${d.url}" target="_blank" class="text-decoration-none text-dark">${d.nombre}</a></td><td>${d.fecha}</td><td class="small text-muted">Usuario</td><td class="text-end pe-3"><button class="btn btn-sm btn-outline-danger" onclick="deleteDocBuilding('${d.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentBuildingId, 'EDIFICIO'); } function uploadBuildingFile() { const file = document.getElementById('fileInputBuilding').files[0]; if(!file || !currentBuildingId) return alert("Selecciona archivo"); const st = document.getElementById('uploadStatusBuilding'); st.innerText = 'Subiendo...'; const r = new FileReader(); r.onload = function(e){ const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { st.innerText = 'Subido'; document.getElementById('fileInputBuilding').value = ''; loadBuildingDocs(); }).subirArchivo(content, file.name, file.type, currentBuildingId, 'EDIFICIO'); }; r.readAsDataURL(file); } function deleteDocBuilding(id) { if(confirm("¿Eliminar documento?")) google.script.run.withSuccessHandler(() => loadBuildingDocs()).eliminarDocumento(id); }
-  function showModalObra() { if(!obraModal) obraModal = new bootstrap.Modal(document.getElementById('obraModal')); document.getElementById('obraNombre').value = ''; document.getElementById('obraDesc').value = ''; document.getElementById('obraFecha').value = ''; document.getElementById('obraFileInit').value = ''; obraModal.show(); } function submitObra() { const n = document.getElementById('obraNombre').value; const d = document.getElementById('obraDesc').value; const f = document.getElementById('obraFecha').value; const fileInput = document.getElementById('obraFileInit'); if(!n) return alert("Nombre obligatorio"); setBtnLoading('btnObraSubmit', true); google.script.run.withSuccessHandler(res => { if(res.success) { if(fileInput.files.length > 0) { const file = fileInput.files[0]; const r = new FileReader(); r.onload = function(e) { const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(uploadRes => { finishSubmitObra(); }).subirArchivo(content, file.name, file.type, res.newId, 'OBRA'); }; r.readAsDataURL(file); } else { finishSubmitObra(); } } else { alert("Error: " + res.error); setBtnLoading('btnObraSubmit', false); } }).crearObra({ idEdificio: currentBuildingId, nombre: n, descripcion: d, fechaInicio: f }); } function finishSubmitObra() { setBtnLoading('btnObraSubmit', false); if(obraModal) obraModal.hide(); loadBuildingObras(); } function finalizarObraJS(id) { const hoy = new Date().toISOString().split('T')[0]; const fechaFin = prompt("Fecha fin (YYYY-MM-DD):", hoy); if (fechaFin) google.script.run.withSuccessHandler(res => { if(res.success) loadBuildingObras(); else alert("Error: " + res.error); }).finalizarObra(id, fechaFin); } function loadBuildingObras() { if(!currentBuildingId) return; const container = document.getElementById('buildingObrasList'); container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary"></div></div>'; google.script.run.withSuccessHandler(obras => { if(!obras.length) { container.innerHTML = '<div class="col-12 text-center text-muted fst-italic">No hay obras registradas.</div>'; return; } let html = ''; obras.forEach(o => { let clipClass = o.hasDocs ? 'text-primary' : 'text-muted'; let btnFinalizar = o.estado !== 'FINALIZADA' ? `<button class="btn btn-sm btn-outline-success me-2" onclick="finalizarObraJS('${o.id}')"><i class="bi bi-check-circle"></i> Finalizar</button>` : ''; let badgeColor = o.estado === 'FINALIZADA' ? 'bg-success' : 'bg-warning text-dark'; html += `<div class="col-md-6"><div class="card h-100 border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between"><h5 class="card-title fw-bold text-primary">${o.nombre}</h5><span class="badge ${badgeColor} align-self-start">${o.estado}</span></div><p class="card-text small text-muted mb-2">${o.descripcion}</p><div class="d-flex align-items-center text-muted small mb-3"><i class="bi bi-calendar-event me-2"></i> Inicio: ${o.fecha}</div><div class="border-top pt-2"><div class="d-flex justify-content-between align-items-center mb-2"><strong class="small"><i class="bi bi-paperclip ${clipClass}"></i> Evidencias</strong><label class="btn btn-sm btn-light border py-0" style="font-size:0.8rem;">+ <input type="file" hidden onchange="uploadObraDoc(this, '${o.id}')"></label></div><div id="obra-docs-${o.id}" class="small"><button class="btn btn-link p-0 text-decoration-none small" onclick="toggleObraDocs('${o.id}')">Ver documentos</button></div></div></div><div class="card-footer bg-white border-top-0 text-end">${btnFinalizar}<button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')"><i class="bi bi-trash"></i></button></div></div></div>`; }); container.innerHTML = html; refreshSecurityIcons(); }).getObrasPorEdificio(currentBuildingId); } function uploadObraDoc(input, idObra) { const file = input.files[0]; if(!file) return; const container = document.getElementById('obra-docs-' + idObra); container.innerHTML = '<span class="text-muted">Subiendo...</span>'; const r = new FileReader(); r.onload = function(e){ const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { loadBuildingObras(); }).subirArchivo(content, file.name, file.type, idObra, 'OBRA'); }; r.readAsDataURL(file); } function toggleObraDocs(idObra) { const container = document.getElementById('obra-docs-' + idObra); container.innerHTML = '<div class="spinner-border spinner-border-sm"></div>'; google.script.run.withSuccessHandler(docs => { if(!docs.length) { container.innerHTML = '<span class="text-muted fst-italic">Vacío</span>'; return; } let h = '<ul class="list-unstyled mb-0">'; docs.forEach(d => { h += `<li class="d-flex justify-content-between align-items-center mb-1"><a href="${d.url}" target="_blank" class="text-truncate" style="max-width:200px;">${d.nombre}</a><i class="bi bi-x text-danger" style="cursor:pointer;" onclick="deleteDocBuilding('${d.id}')"></i></li>`; }); h += '</ul>'; container.innerHTML = h; }).obtenerDocs(idObra, 'OBRA'); } function deleteObra(id) { if(confirm("¿Borrar obra?")) google.script.run.withSuccessHandler(()=>loadBuildingObras()).eliminarObra(id); } function loadBuildingAssets() { if(!currentBuildingId) return; const tbody = document.getElementById('buildingAssetsBody'); const select = document.getElementById('filterAssetTypeBuilding'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin activos</td></tr>'; return; } const tiposUnicos = [...new Set(list.map(item => item.tipo))].sort(); let options = '<option value="">- Todos los tipos -</option>'; tiposUnicos.forEach(t => options += `<option value="${t}">${t}</option>`); select.innerHTML = options; renderBuildingAssetsTable(list); window.currentBuildingAssetsList = list; }).getActivosPorEdificio(currentBuildingId); } function filterBuildingAssets() { const tipo = document.getElementById('filterAssetTypeBuilding').value; const list = window.currentBuildingAssetsList || []; if (!tipo) renderBuildingAssetsTable(list); else renderBuildingAssetsTable(list.filter(a => a.tipo === tipo)); } function renderBuildingAssetsTable(list) { const tbody = document.getElementById('buildingAssetsBody'); if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay coincidencias</td></tr>'; return; } let html = ''; list.forEach(a => { html += `<tr><td class="ps-3 fw-bold">${a.nombre}</td><td><span class="badge bg-light text-dark border">${a.tipo}</span></td><td>${a.marca}</td><td class="text-end pe-3"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}', 'edificio')">Ir a Activo</button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }
-  function loadMaint() { if(!currentAssetId) return; const tbody = document.getElementById('maintTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay mantenimiento programado</td></tr>'; return; } let html = ''; list.forEach(p => { let dotClass = 'bg-secondary'; if (p.color === 'rojo') dotClass = 'bg-rojo'; if (p.color === 'amarillo') dotClass = 'bg-amarillo'; if (p.color === 'verde') dotClass = 'bg-verde'; let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos"></i>' : ''; let calIcon = p.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-2" title="Sync Calendar"></i>' : ''; html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td>${p.tipo} ${clipIcon} ${calIcon}</td><td>${p.fechaProxima}</td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editRevision('${p.id}', '${p.tipo}', '${p.fechaISO}', null, ${p.hasCalendar})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteRevision('${p.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerPlanMantenimiento(currentAssetId); }
-  function deleteRevision(id) { if(!confirm("¿Borrar?")) return; google.script.run.withSuccessHandler(() => { loadMaint(); }).eliminarRevision(id); }
-  function editRevision(id, tipo, fecha, activoId, hasCalendar) { document.getElementById('maintModalTitle').innerText='Editar Revisión'; document.getElementById('revId').value=id; document.getElementById('revTipo').value=tipo; document.getElementById('revFecha').value=fecha; const chk = document.getElementById('revCalendar'); if(hasCalendar) chk.checked = true; else chk.checked = false; if (activoId) currentActiveAssetId = activoId; document.getElementById('revRecur').checked = false; document.getElementById('revFreq').value = "365"; document.getElementById('revEnd').value = ""; const revNorma = document.getElementById('revNorma'); if(revNorma) revNorma.value = ""; document.getElementById('secRecurOptions').classList.add('d-none'); const assetSelector = document.getElementById('assetSelector'); if(assetSelector) assetSelector.classList.add('d-none'); updateMaintFormVisibility(); loadRevDocs(id); if(maintModal) maintModal.show(); }
-  function submitRevision() { const id = document.getElementById('revId').value; const tipo = document.getElementById('revTipo').value; const fecha = document.getElementById('revFecha').value; const isRecursiva = document.getElementById('revRecur').checked; const diasFreq = document.getElementById('revFreq').value; const fechaFin = document.getElementById('revEnd').value; const syncCalendar = document.getElementById('revCalendar').checked; let activeAssetId = currentAssetId || currentActiveAssetId; if (!activeAssetId) { const sel = document.getElementById('maintActivo'); if(sel) activeAssetId = sel.value; } if(!activeAssetId) return alert("Debes seleccionar un activo."); if(!tipo || !fecha) return alert("Rellena todos los campos."); if(isRecursiva && !fechaFin) return alert("Indica fecha límite."); setBtnLoading('btnMaintSubmit', true); const cb = (r) => { setBtnLoading('btnMaintSubmit', false); if(maintModal) maintModal.hide(); if (r.success) { if (currentAssetId) loadMaint(); else loadGlobalMaint(); loadDashboard(); } else { alert("Error: " + r.error); } }; const fail = (e) => { setBtnLoading('btnMaintSubmit', false); alert("Error: " + e.message); }; const payload = { idActivo: activeAssetId, idPlan: id, tipo: tipo, fechaProx: fecha, esRecursiva: isRecursiva, diasFreq: diasFreq, fechaFin: fechaFin, syncCalendar: syncCalendar }; if (id) { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).updateRevision(payload); } else { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).crearRevision(payload); } }
-  function loadRevDocs(idRevision) { const container = document.getElementById('revDocsList'); container.innerHTML = '<div class="text-center text-muted"><span class="spinner-border spinner-border-sm"></span></div>'; google.script.run.withSuccessHandler(docs => { if (!docs || docs.length === 0) { container.innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin evidencias adjuntas</div>'; return; } let html = '<ul class="list-group list-group-flush bg-transparent">'; docs.forEach(d => { html += `<li class="list-group-item bg-transparent d-flex justify-content-between align-items-center p-1"><a href="${d.url}" target="_blank" class="text-decoration-none text-truncate" style="max-width: 250px;"><i class="bi bi-file-earmark-text text-danger"></i> ${d.nombre}</a><button class="btn btn-sm text-danger py-0" onclick="deleteRevDoc('${d.id}')">&times;</button></li>`; }); html += '</ul>'; container.innerHTML = html; }).obtenerDocs(idRevision, 'REVISION'); }
-  function uploadRevDoc() { const idRevision = document.getElementById('revId').value; const fileInput = document.getElementById('revFileInput'); const file = fileInput.files[0]; const status = document.getElementById('revUploadStatus'); if (!idRevision) return alert("Primero debes guardar la revisión."); if (!file) return alert("Selecciona un archivo."); status.innerText = "Subiendo..."; const btn = event.target; btn.disabled = true; const r = new FileReader(); r.onload = function(e) { const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { btn.disabled = false; status.innerText = ""; fileInput.value = ""; if (res.success) { loadRevDocs(idRevision); } else { alert("Error: " + res.error); } }).subirArchivo(content, file.name, file.type, idRevision, 'REVISION'); }; r.readAsDataURL(file); }
-  function deleteRevDoc(idDoc) { if(!confirm("¿Eliminar?")) return; google.script.run.withSuccessHandler(res => { if(res.success) { const idRev = document.getElementById('revId').value; loadRevDocs(idRev); } }).eliminarDocumento(idDoc); }
-  
-  // CONFIG Y USUARIOS (Y CAMPUS/EDIFICIOS RESTANTES)
-  function loadConfigList() { const tbody = document.getElementById('tableConfigBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list || list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No hay tipos definidos. Crea el primero.</td></tr>'; return; } let html = ''; list.forEach(item => { html += `<tr><td class="ps-4 fw-bold">${item.nombre}</td><td><span class="badge bg-light text-dark border">${item.normativa || '-'}</span></td><td>${item.dias ? item.dias + ' días' : '-'}</td><td class="text-end pe-4"><button class="btn btn-sm btn-light border me-1" onclick="openConfigModal('${item.id}', '${item.nombre}', '${item.normativa}', '${item.dias}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('${item.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).getConfigCatalogo(); }
-  function openConfigModal(id, nombre, norma, dias) { if(!configModal) configModal = new bootstrap.Modal(document.getElementById('configModal')); if(id) { document.getElementById('configModalTitle').innerText = 'Editar Tipo'; document.getElementById('confId').value = id; document.getElementById('confNombre').value = nombre; document.getElementById('confNorma').value = (norma === 'undefined' || !norma) ? '' : norma; document.getElementById('confDias').value = (dias === 'undefined' || !dias) ? '' : dias; } else { document.getElementById('configModalTitle').innerText = 'Nuevo Tipo'; document.getElementById('confId').value = ''; document.getElementById('confNombre').value = ''; document.getElementById('confNorma').value = ''; document.getElementById('confDias').value = ''; } configModal.show(); }
-  function submitConfig() { const id = document.getElementById('confId').value; const nombre = document.getElementById('confNombre').value; const norma = document.getElementById('confNorma').value; const dias = document.getElementById('confDias').value; if(!nombre) return alert("Nombre obligatorio."); setBtnLoading('btnConfigSubmit', true); const payload = { id: id, nombre: nombre, normativa: norma, dias: dias }; google.script.run.withSuccessHandler(res => { setBtnLoading('btnConfigSubmit', false); if(res.success) { configModal.hide(); loadConfigList(); } else { alert("Error: " + res.error); } }).saveConfigCatalogo(payload); }
-  function deleteConfig(id) { if(!confirm("¿Estás seguro?")) return; google.script.run.withSuccessHandler(res => { if(res.success) loadConfigList(); else alert("Error: " + res.error); }).deleteConfigCatalogo(id); }
-  function loadUserList() { const tbody = document.getElementById('tableUsersBody'); tbody.innerHTML = '<tr><td colspan="5" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list || list.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay usuarios.</td></tr>'; return; } let html = ''; list.forEach(u => { let badgeRol = u.rol === 'ADMIN' ? 'bg-danger' : (u.rol === 'TECNICO' ? 'bg-primary' : 'bg-secondary'); let iconAvisos = u.avisos === 'SI' ? '<i class="bi bi-bell-fill text-warning"></i>' : '<i class="bi bi-bell-slash text-muted"></i>'; html += `<tr><td class="ps-4 fw-bold">${u.nombre}</td><td>${u.email}</td><td><span class="badge ${badgeRol}">${u.rol}</span></td><td class="text-center fs-5">${iconAvisos}</td><td class="text-end pe-4"><button class="btn btn-sm btn-light border me-1" onclick="openUserModal('${u.id}', '${u.nombre}', '${u.email}', '${u.rol}', '${u.avisos}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).getListaUsuarios(); }
-  function openUserModal(id, nombre, email, rol, avisos) { if(!userModal) userModal = new bootstrap.Modal(document.getElementById('userModal')); if(id) { document.getElementById('userModalTitle').innerText = 'Editar Usuario'; document.getElementById('userId').value = id; document.getElementById('userNombre').value = nombre; document.getElementById('userEmail').value = email; document.getElementById('userRol').value = rol; document.getElementById('userAvisos').value = avisos; } else { document.getElementById('userModalTitle').innerText = 'Nuevo Usuario'; document.getElementById('userId').value = ''; document.getElementById('userNombre').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userRol').value = 'TECNICO'; document.getElementById('userAvisos').value = 'NO'; } userModal.show(); }
-  function submitUser() { const id = document.getElementById('userId').value; const nombre = document.getElementById('userNombre').value; const email = document.getElementById('userEmail').value; const rol = document.getElementById('userRol').value; const avisos = document.getElementById('userAvisos').value; if(!nombre || !email) return alert("Nombre y Email obligatorios"); setBtnLoading('btnUserSubmit', true); const payload = { id, nombre, email, rol, avisos }; google.script.run.withSuccessHandler(res => { setBtnLoading('btnUserSubmit', false); if(res.success) { userModal.hide(); loadUserList(); } else { alert("Error: " + res.error); } }).saveUsuario(payload); }
-  function deleteUser(id) { if(!confirm("¿Borrar usuario?")) return; google.script.run.withSuccessHandler(res => { if(res.success) loadUserList(); else alert("Error: " + res.error); }).deleteUsuario(id); }
   function loadCampusList() { const tbody = document.getElementById('tableCampusBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(d => { if(!d.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay campus registrados.</td></tr>'; return; } let h = ''; d.forEach(r => { h += `<tr><td class="ps-4 fw-bold text-primary">${r.nombre}</td><td>${r.provincia}</td><td><small>${r.direccion}</small></td><td class="text-end pe-4"><button class="btn btn-sm btn-light border me-1" onclick="openCampusModal('${r.id}', '${r.nombre}', '${r.provincia}', '${r.direccion}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteCampus('${r.id}')" title="Borrar"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = h; refreshSecurityIcons(); }).getTableData('CAMPUS'); } 
   function openCampusModal(id, nombre, prov, dir) { if(!campusModal) campusModal = new bootstrap.Modal(document.getElementById('campusModal')); if(id) { document.getElementById('campusModalTitle').innerText = 'Editar Campus'; document.getElementById('campId').value = id; document.getElementById('campNombre').value = nombre; document.getElementById('campProv').value = prov; document.getElementById('campDir').value = dir; } else { document.getElementById('campusModalTitle').innerText = 'Nuevo Campus'; document.getElementById('campId').value = ''; document.getElementById('campNombre').value = ''; document.getElementById('campProv').value = ''; document.getElementById('campDir').value = ''; } campusModal.show(); } 
-  function submitCampus() { const id = document.getElementById('campId').value; const nombre = document.getElementById('campNombre').value; const prov = document.getElementById('campProv').value; const dir = document.getElementById('campDir').value; if(!nombre) return alert("Nombre obligatorio"); setBtnLoading('btnCampusSubmit', true); const finish = (res) => { setBtnLoading('btnCampusSubmit', false); if(res.success) { campusModal.hide(); loadCampusList(); } else { alert("Error: " + res.error); } }; if(id) { google.script.run.withSuccessHandler(finish).updateCampus({ id:id, nombre:nombre, provincia:prov, direccion:dir }); } else { google.script.run.withSuccessHandler(finish).crearCampus({ nombre:nombre, provincia:prov, direccion:dir }); } } 
-  function deleteCampus(id) { if(!confirm("¿Borrar Campus?")) return; google.script.run.withSuccessHandler(res => { if(res.success) loadCampusList(); else alert("Error: " + res.error); }).eliminarCampus(id); }
+  function submitCampus() { const id = document.getElementById('campId').value; const nombre = document.getElementById('campNombre').value; const prov = document.getElementById('campProv').value; const dir = document.getElementById('campDir').value; if(!nombre) return notificarError("Nombre obligatorio"); setBtnLoading('btnCampusSubmit', true); const finish = (res) => { setBtnLoading('btnCampusSubmit', false); if(res.success) { campusModal.hide(); notificarExito("Campus guardado"); loadCampusList(); } else { notificarError(res.error); } }; if(id) { google.script.run.withSuccessHandler(finish).updateCampus({ id:id, nombre:nombre, provincia:prov, direccion:dir }); } else { google.script.run.withSuccessHandler(finish).crearCampus({ nombre:nombre, provincia:prov, direccion:dir }); } } 
+  function deleteCampus(id) { confirmarAccion("¿Eliminar Campus?", "Se borrará todo el contenido asociado.", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Campus eliminado"); loadCampusList(); } else notificarError(res.error); }).eliminarCampus(id); }); }
+  function loadEdificiosList() { const sel = document.getElementById('filterCampusEdificios'); if(sel && sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = '<option value="">- Todos los Campus -</option>'; list.forEach(c => html += `<option value="${c.nombre}">${c.nombre}</option>`); sel.innerHTML = html; }).getListaCampus(); } const tbody = document.getElementById('tableEdificiosBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando edificios...</td></tr>'; google.script.run.withSuccessHandler(d => { allEdificiosData = d; renderEdificiosTable(d); }).getTableData('EDIFICIOS'); }
+  function filterEdificiosList() { const campusVal = document.getElementById('filterCampusEdificios').value; const searchVal = document.getElementById('searchEdificios').value.toLowerCase(); const filtered = allEdificiosData.filter(r => { const matchCampus = (campusVal === "") || (r.campus === campusVal); const matchText = r.nombre.toLowerCase().includes(searchVal) || String(r.contacto).toLowerCase().includes(searchVal); return matchCampus && matchText; }); renderEdificiosTable(filtered); }
+  function renderEdificiosTable(data) { const tbody = document.getElementById('tableEdificiosBody'); if(!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-5">No hay coincidencias</td></tr>'; return; } let h = ''; data.forEach(r => { h += `<tr><td class="ps-4 fw-bold"><a href="#" class="text-decoration-none" onclick="openBuildingDetail('${r.id}'); return false;">${r.nombre}</a></td><td><span class="badge bg-light text-dark border">${r.campus}</span></td><td>${r.contacto}</td><td class="text-end pe-4"><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')" title="Ver Ficha"><i class="bi bi-eye"></i></button><button class="btn btn-sm btn-light border text-secondary" onclick="openEdificioModal('${r.id}', '${r.nombre}', '${r.campus}', '${r.contacto}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = h; refreshSecurityIcons(); }
+  function openEdificioModal(id, nombre, nombreCampus, contacto) { if(!edificioModal) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal')); const sel = document.getElementById('edifCampus'); google.script.run.withSuccessHandler(list => { let html = '<option value="">- Seleccione Campus -</option>'; list.forEach(c => { let isSel = (nombreCampus && c.nombre === nombreCampus) ? 'selected' : ''; html += `<option value="${c.id}" ${isSel}>${c.nombre}</option>`; }); sel.innerHTML = html; }).getListaCampus(); if(id) { document.getElementById('edificioModalTitle').innerText = 'Editar Edificio'; document.getElementById('edifId').value = id; document.getElementById('edifNombre').value = nombre; document.getElementById('edifContacto').value = contacto; } else { document.getElementById('edificioModalTitle').innerText = 'Nuevo Edificio'; document.getElementById('edifId').value = ''; document.getElementById('edifNombre').value = ''; document.getElementById('edifCampus').value = ''; document.getElementById('edifContacto').value = ''; } edificioModal.show(); }
+  function submitEdificio() { const id = document.getElementById('edifId').value; const nombre = document.getElementById('edifNombre').value; const idCampus = document.getElementById('edifCampus').value; const contacto = document.getElementById('edifContacto').value; if(!nombre || !idCampus) return notificarError("Nombre y Campus obligatorios"); setBtnLoading('btnEdifSubmit', true); const finish = (res) => { setBtnLoading('btnEdifSubmit', false); if(res.success) { edificioModal.hide(); notificarExito("Edificio guardado"); loadEdificiosList(); } else { notificarError(res.error); } }; if(id) { google.script.run.withSuccessHandler(finish).updateEdificio({ id, nombre, idCampus, contacto }); } else { google.script.run.withSuccessHandler(finish).crearEdificio({ nombre, idCampus, contacto }); } }
+  function deleteEdificio(id) { confirmarAccion("¿Eliminar edificio?", "Se eliminarán sus activos asociados.", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Eliminado"); loadEdificiosList(); } else notificarError(res.error); }).eliminarEdificio(id); }); }
   function loadEdificios(id) { const s=document.getElementById('filterEdificio'); const tableActivos=document.getElementById('tableActivos'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; tableActivos.innerHTML='<tr><td colspan="4" class="text-center py-5 text-muted">Selecciona un edificio</td></tr>'; document.getElementById('filterSearch').disabled=true; document.getElementById('filterSearch').value=''; if(!id) { s.innerHTML='<option value="">- Seleccione -</option>'; return; } google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
   function loadEdificiosModal(id) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!id)return; google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
   function loadActivos(id) { document.getElementById('filterSearch').disabled=false; document.getElementById('filterSearch').value=''; const tb=document.getElementById('tableActivos'); tb.innerHTML='<tr><td colspan="4" class="text-center py-5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(l=>{if(!l.length){tb.innerHTML='<tr><td colspan="4" class="text-center py-5">Vacío</td></tr>';return;}let h='';l.forEach(i=>h+=`<tr><td class="fw-bold"><i class="bi bi-box-seam text-primary me-2"></i>${i.nombre}</td><td><span class="badge bg-light text-dark border">${i.tipo}</span></td><td>${i.marca}</td><td class="text-end pe-4"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${i.id}')">Ver Ficha</button></td></tr>`);tb.innerHTML=h; refreshSecurityIcons(); }).getActivosPorEdificio(id); }
   function filterAssets() { const f=document.getElementById('filterSearch').value.toLowerCase(); const rows=document.getElementById('tableActivos').getElementsByTagName('tr'); for(let i=0;i<rows.length;i++){ rows[i].style.display = (rows[i].innerText.toLowerCase().indexOf(f)>-1) ? "" : "none"; } }
   function mostrarModalCrear(t) { if(myModal) { document.getElementById('createForm').reset(); document.getElementById('modalType').value=t; document.getElementById('modalTitle').innerText='Crear '+t; const ex=document.getElementById('extraFields'); ex.innerHTML=''; if(t==='CAMPUS') ex.innerHTML=`<div class="mb-2"><label>Provincia</label><input id="fProv" class="form-control"></div><div class="mb-2"><label>Dirección</label><input id="fDir" class="form-control"></div>`; else if(t==='EDIFICIO') { ex.innerHTML=`<div class="mb-2"><label>Campus</label><select id="fCampus" class="form-select"><option>Cargando...</option></select></div><div class="mb-2"><label>Contacto</label><input id="fCont" class="form-control"></div>`; google.script.run.withSuccessHandler(l=>{let h='';l.forEach(i=>{h+=`<option value="${i.id}">${i.nombre}</option>`});document.getElementById('fCampus').innerHTML=h;}).getListaCampus(); } else if(t==='ACTIVO') { ex.innerHTML=`<div class="mb-2"><label>1. Campus</label><select id="fCampusModal" class="form-select" onchange="loadEdificiosModal(this.value)"><option value="">Cargando...</option></select></div><div class="mb-2"><label>2. Edificio</label><select id="fEdificioModal" class="form-select" disabled><option value="">- Seleccione Campus -</option></select></div><div class="mb-2"><label>Tipo Instalación</label><select id="fTipo" class="form-select" disabled><option>Cargando...</option></select></div><div class="mb-2"><label>Marca</label><input id="fMarca" class="form-control"></div>`; google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>{h+=`<option value="${i.id}">${i.nombre}</option>`});document.getElementById('fCampusModal').innerHTML=h;}).getListaCampus(); google.script.run.withSuccessHandler(ts=>{let o='<option value="">- Seleccione -</option>';ts.forEach(t=>{o+=`<option value="${t.id}">${t.nombre}</option>`});document.getElementById('fTipo').innerHTML=o;document.getElementById('fTipo').disabled=false;}).getCatalogoInstalaciones(); } myModal.show(); } }
-  function submitCreate() { const t=document.getElementById('modalType').value, n=document.getElementById('fNombre').value, btnId='btnCreateSubmit'; setBtnLoading(btnId, true); const cb=(r)=>{setBtnLoading(btnId, false); if(r.success){if(myModal) myModal.hide(); navTo(t.toLowerCase()=='activo'?'activos':t.toLowerCase()=='edificio'?'edificios':'campus',null,null);}else alert("Error");}; if(t==='CAMPUS') google.script.run.withSuccessHandler(cb).crearCampus({nombre:n, provincia:document.getElementById('fProv').value, direccion:document.getElementById('fDir').value}); else if(t==='EDIFICIO') google.script.run.withSuccessHandler(cb).crearEdificio({nombre:n, idCampus:document.getElementById('fCampus').value, contacto:document.getElementById('fCont').value}); else if(t==='ACTIVO') { const idEd=document.getElementById('fEdificioModal').value; const tipo=document.getElementById('fTipo').value; if(!idEd||!tipo){alert("Completa todos los campos"); setBtnLoading(btnId,false); return;} google.script.run.withSuccessHandler(cb).crearActivo({nombre:n, idEdificio:idEd, tipo:tipo, marca:document.getElementById('fMarca').value}); } }
-  let searchTimeout = null; function handleGlobalSearch(e) { if (e.key === 'Escape') { closeSearchResults(); return; } const txt = document.getElementById('globalSearchInput').value; if (searchTimeout) clearTimeout(searchTimeout); if (txt.length < 3) { closeSearchResults(); return; } searchTimeout = setTimeout(() => { executeGlobalSearch(); }, 300); } function executeGlobalSearch() { const txt = document.getElementById('globalSearchInput').value; if(!txt) return; const resContainer = document.getElementById('globalSearchResults'); resContainer.innerHTML = '<div class="list-group-item text-center text-muted small"><span class="spinner-border spinner-border-sm"></span> Buscando...</div>'; resContainer.classList.remove('d-none'); google.script.run.withSuccessHandler(resultados => { if (resultados.length === 0) { resContainer.innerHTML = '<div class="list-group-item text-center text-muted small">No hay coincidencias</div>'; } else { let html = ''; resultados.forEach(r => { let icon = r.tipo === 'ACTIVO' ? '<i class="bi bi-box-seam text-primary"></i>' : '<i class="bi bi-building text-success"></i>'; html += `<button type="button" class="list-group-item list-group-item-action small" onclick="goToResult('${r.id}', '${r.tipo}')"><div class="d-flex w-100 justify-content-between align-items-center"><strong class="mb-1 text-truncate" style="max-width: 150px;">${icon} ${r.texto}</strong></div><small class="text-muted d-block text-truncate">${r.subtexto}</small></button>`; }); resContainer.innerHTML = html; } }).buscarGlobal(txt); } function closeSearchResults() { const resContainer = document.getElementById('globalSearchResults'); if(resContainer) { resContainer.classList.add('d-none'); resContainer.innerHTML = ''; } } function goToResult(id, tipo) { closeSearchResults(); document.getElementById('globalSearchInput').value = ''; if (tipo === 'ACTIVO') { navTo('activos'); openAssetDetail(id); } else if (tipo === 'EDIFICIO') { navTo('edificios'); openBuildingDetail(id); } } document.addEventListener('click', function(e) { const container = document.querySelector('.input-group'); const results = document.getElementById('globalSearchResults'); if (container && !container.contains(e.target) && results && !results.contains(e.target)) { closeSearchResults(); } });
-  function setBtnLoading(btnId, loading) { const btn=document.getElementById(btnId); if(!btn)return; if(loading){btn.dataset.og=btn.innerText;btn.disabled=true;btn.innerHTML='<span class="spinner-border spinner-border-sm"></span>';}else{btn.disabled=false;btn.innerText=btn.dataset.og||'Guardar';} } 
-  function toggleEditInfo(editable) { if(editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if(sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } } function saveAssetInfo() { const newData = { id: currentAssetId, nombre: document.getElementById('edit-nombre').value, marca: document.getElementById('edit-marca').value, tipo: document.getElementById('edit-tipo').value }; const btnSave = document.querySelector('#btn-save-info button'); setBtnLoading('btn-save-info button', true); google.script.run.withSuccessHandler(res => { btnSave.disabled = false; btnSave.innerText = "Guardar"; if(res.success) { openAssetDetail(currentAssetId); } else { alert("Error al guardar: " + res.error); } }).updateAsset(newData); } function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { if(!confirm("¿Borrar?")) return; document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { loadDocs(); } }).eliminarDocumento(idDoc); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return alert("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } function submitContract() { const id = document.getElementById('contId').value; const datos = { id:id, idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value, estado:document.getElementById('contEstado').value }; if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return alert("Campos incompletos"); setBtnLoading('btnContSubmit', true); const cb = () => { setBtnLoading('btnContSubmit', false); if(contractModal) contractModal.hide(); if (currentAssetId) loadContracts(); else loadGlobalContracts(); }; if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos); else google.script.run.withSuccessHandler(cb).crearContrato(datos); } function deleteContract(id) { if(confirm("¿Borrar contrato?")) google.script.run.withSuccessHandler(cb => { if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }
-  function mostrarModalRevision(dateStr) {
-      if(!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
-      
-      // Limpieza del formulario
-      document.getElementById('maintModalTitle').innerText = 'Programar Nueva Revisión';
-      document.getElementById('revId').value = "";
-      document.getElementById('revTipo').value = "Periódica";
-      
-      // Asignar fecha pulsada
-      if (dateStr) {
-          document.getElementById('revFecha').value = dateStr;
-      } else {
-          document.getElementById('revFecha').value = new Date().toISOString().split('T')[0];
-      }
-      
-      // Reseteos varios
-      document.getElementById('revCalendar').checked = true;
-      document.getElementById('revRecur').checked = false;
-      document.getElementById('secRecurOptions').classList.add('d-none');
-      document.getElementById('revFreq').value = 365;
-      document.getElementById('revEnd').value = "";
-      document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
-      document.getElementById('revFileInput').value = "";
-      document.getElementById('revUploadStatus').innerText = "";
+  function submitCreate() { const t=document.getElementById('modalType').value, n=document.getElementById('fNombre').value, btnId='btnCreateSubmit'; setBtnLoading(btnId, true); const cb=(r)=>{setBtnLoading(btnId, false); if(r.success){if(myModal) myModal.hide(); notificarExito("Creado correctamente"); navTo(t.toLowerCase()=='activo'?'activos':t.toLowerCase()=='edificio'?'edificios':'campus',null,null);}else notificarError(r.error);}; if(t==='CAMPUS') google.script.run.withSuccessHandler(cb).crearCampus({nombre:n, provincia:document.getElementById('fProv').value, direccion:document.getElementById('fDir').value}); else if(t==='EDIFICIO') google.script.run.withSuccessHandler(cb).crearEdificio({nombre:n, idCampus:document.getElementById('fCampus').value, contacto:document.getElementById('fCont').value}); else if(t==='ACTIVO') { const idEd=document.getElementById('fEdificioModal').value; const tipo=document.getElementById('fTipo').value; if(!idEd||!tipo){notificarError("Completa todos los campos"); setBtnLoading(btnId,false); return;} google.script.run.withSuccessHandler(cb).crearActivo({nombre:n, idEdificio:idEd, tipo:tipo, marca:document.getElementById('fMarca').value}); } }
+  
+  let searchTimeout = null; 
+  function handleGlobalSearch(e) { if (e.key === 'Escape') { closeSearchResults(); return; } const txt = document.getElementById('globalSearchInput').value; if (searchTimeout) clearTimeout(searchTimeout); if (txt.length < 3) { closeSearchResults(); return; } searchTimeout = setTimeout(() => { executeGlobalSearch(); }, 300); } 
+  function executeGlobalSearch() { const txt = document.getElementById('globalSearchInput').value; if(!txt) return; const resContainer = document.getElementById('globalSearchResults'); resContainer.innerHTML = '<div class="list-group-item text-center text-muted small"><span class="spinner-border spinner-border-sm"></span> Buscando...</div>'; resContainer.classList.remove('d-none'); google.script.run.withSuccessHandler(resultados => { if (resultados.length === 0) { resContainer.innerHTML = '<div class="list-group-item text-center text-muted small">No hay coincidencias</div>'; } else { let html = ''; resultados.forEach(r => { let icon = r.tipo === 'ACTIVO' ? '<i class="bi bi-box-seam text-primary"></i>' : '<i class="bi bi-building text-success"></i>'; html += `<button type="button" class="list-group-item list-group-item-action small" onclick="goToResult('${r.id}', '${r.tipo}')"><div class="d-flex w-100 justify-content-between align-items-center"><strong class="mb-1 text-truncate" style="max-width: 150px;">${icon} ${r.texto}</strong></div><small class="text-muted d-block text-truncate">${r.subtexto}</small></button>`; }); resContainer.innerHTML = html; } }).buscarGlobal(txt); } 
+  function closeSearchResults() { const resContainer = document.getElementById('globalSearchResults'); if(resContainer) { resContainer.classList.add('d-none'); resContainer.innerHTML = ''; } } 
+  function goToResult(id, tipo) { closeSearchResults(); document.getElementById('globalSearchInput').value = ''; if (tipo === 'ACTIVO') { navTo('activos'); openAssetDetail(id); } else if (tipo === 'EDIFICIO') { navTo('edificios'); openBuildingDetail(id); } } 
+  document.addEventListener('click', function(e) { const container = document.querySelector('.input-group'); const results = document.getElementById('globalSearchResults'); if (container && !container.contains(e.target) && results && !results.contains(e.target)) { closeSearchResults(); } });
+  
+  function initFilters() { const sel = document.getElementById('filterCampus'); if (campusLoaded || (sel && sel.options.length > 1)) return; if (sel) { google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);sel.innerHTML=h; campusLoaded=true;}).getListaCampus(); } }
+  function openAssetDetail(id, fromView) { currentAssetId = id; currentActiveAssetId = id; if (fromView) lastView = fromView; else lastView = 'activos'; document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none')); document.getElementById('view-asset-detail').classList.remove('d-none'); toggleEditInfo(false); document.getElementById('detail-name').innerText = "Cargando..."; google.script.run.withSuccessHandler(info => { document.getElementById('detail-name').innerText = info.nombre; document.getElementById('detail-type').innerText = info.tipo; document.getElementById('d-nombre-val').innerText = info.nombre; document.getElementById('d-tipo-val').innerText = info.tipo; document.getElementById('d-marca-val').innerText = info.marca; document.getElementById('d-fecha-val').innerText = info.fechaAlta; document.getElementById('edit-nombre').value = info.nombre; document.getElementById('edit-marca').value = info.marca; loadDocs(); loadMaint(); loadContracts(); }).getAssetInfo(id); } function closeAssetDetail() { currentAssetId = null; currentActiveAssetId = null; document.getElementById('view-asset-detail').classList.add('d-none'); if (lastView === 'edificio' && currentBuildingId) { document.getElementById('view-building-detail').classList.remove('d-none'); } else { document.getElementById('view-activos').classList.remove('d-none'); } } function openBuildingDetail(id) { currentBuildingId = id; document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none')); document.getElementById('view-building-detail').classList.remove('d-none'); document.getElementById('b-detail-name').innerText = "Cargando..."; google.script.run.withSuccessHandler(info => { document.getElementById('b-detail-name').innerText = info.nombre; document.getElementById('b-detail-campus').innerText = info.campus; document.getElementById('bd-nombre').innerText = info.nombre; document.getElementById('bd-campus').innerText = info.campus; document.getElementById('bd-contacto').innerText = info.contacto; loadBuildingDocs(); }).getBuildingInfo(id); } function closeBuildingDetail() { currentBuildingId = null; document.getElementById('view-building-detail').classList.add('d-none'); document.getElementById('view-edificios').classList.remove('d-none'); } function loadBuildingDocs() { if(!currentBuildingId) return; const tbody = document.getElementById('buildingDocsBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentación asociada</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3"><i class="bi bi-file-earmark-pdf text-danger me-2"></i><a href="${d.url}" target="_blank" class="text-decoration-none text-dark">${d.nombre}</a></td><td>${d.fecha}</td><td class="small text-muted">Usuario</td><td class="text-end pe-3"><button class="btn btn-sm btn-outline-danger" onclick="deleteDocBuilding('${d.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentBuildingId, 'EDIFICIO'); } function uploadBuildingFile() { const file = document.getElementById('fileInputBuilding').files[0]; if(!file || !currentBuildingId) return notificarError("Selecciona archivo"); const st = document.getElementById('uploadStatusBuilding'); st.innerText = 'Subiendo...'; const r = new FileReader(); r.onload = function(e){ const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { st.innerText = 'Subido'; document.getElementById('fileInputBuilding').value = ''; notificarExito("Documento subido"); loadBuildingDocs(); }).subirArchivo(content, file.name, file.type, currentBuildingId, 'EDIFICIO'); }; r.readAsDataURL(file); } function deleteDocBuilding(id) { confirmarAccion("¿Eliminar documento?", "", () => { google.script.run.withSuccessHandler(() => { notificarExito("Eliminado"); loadBuildingDocs(); }).eliminarDocumento(id); }); }
+  function showModalObra() { if(!obraModal) obraModal = new bootstrap.Modal(document.getElementById('obraModal')); document.getElementById('obraNombre').value = ''; document.getElementById('obraDesc').value = ''; document.getElementById('obraFecha').value = ''; document.getElementById('obraFileInit').value = ''; obraModal.show(); } function submitObra() { const n = document.getElementById('obraNombre').value; const d = document.getElementById('obraDesc').value; const f = document.getElementById('obraFecha').value; const fileInput = document.getElementById('obraFileInit'); if(!n) return notificarError("Nombre obligatorio"); setBtnLoading('btnObraSubmit', true); google.script.run.withSuccessHandler(res => { if(res.success) { if(fileInput.files.length > 0) { const file = fileInput.files[0]; const r = new FileReader(); r.onload = function(e) { const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(uploadRes => { finishSubmitObra(); }).subirArchivo(content, file.name, file.type, res.newId, 'OBRA'); }; r.readAsDataURL(file); } else { finishSubmitObra(); } } else { notificarError(res.error); setBtnLoading('btnObraSubmit', false); } }).crearObra({ idEdificio: currentBuildingId, nombre: n, descripcion: d, fechaInicio: f }); } function finishSubmitObra() { setBtnLoading('btnObraSubmit', false); if(obraModal) obraModal.hide(); notificarExito("Obra registrada"); loadBuildingObras(); } function finalizarObraJS(id) { const hoy = new Date().toISOString().split('T')[0]; const fechaFin = prompt("Fecha fin (YYYY-MM-DD):", hoy); if (fechaFin) google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Obra finalizada"); loadBuildingObras(); } else notificarError(res.error); }).finalizarObra(id, fechaFin); } function loadBuildingObras() { if(!currentBuildingId) return; const container = document.getElementById('buildingObrasList'); container.innerHTML = '<div class="col-12 text-center py-4"><div class="spinner-border text-primary"></div></div>'; google.script.run.withSuccessHandler(obras => { if(!obras.length) { container.innerHTML = '<div class="col-12 text-center text-muted fst-italic">No hay obras registradas.</div>'; return; } let html = ''; obras.forEach(o => { let clipClass = o.hasDocs ? 'text-primary' : 'text-muted'; let btnFinalizar = o.estado !== 'FINALIZADA' ? `<button class="btn btn-sm btn-outline-success me-2" onclick="finalizarObraJS('${o.id}')"><i class="bi bi-check-circle"></i> Finalizar</button>` : ''; let badgeColor = o.estado === 'FINALIZADA' ? 'bg-success' : 'bg-warning text-dark'; html += `<div class="col-md-6"><div class="card h-100 border shadow-sm"><div class="card-body"><div class="d-flex justify-content-between"><h5 class="card-title fw-bold text-primary">${o.nombre}</h5><span class="badge ${badgeColor} align-self-start">${o.estado}</span></div><p class="card-text small text-muted mb-2">${o.descripcion}</p><div class="d-flex align-items-center text-muted small mb-3"><i class="bi bi-calendar-event me-2"></i> Inicio: ${o.fecha}</div><div class="border-top pt-2"><div class="d-flex justify-content-between align-items-center mb-2"><strong class="small"><i class="bi bi-paperclip ${clipClass}"></i> Evidencias</strong><label class="btn btn-sm btn-light border py-0" style="font-size:0.8rem;">+ <input type="file" hidden onchange="uploadObraDoc(this, '${o.id}')"></label></div><div id="obra-docs-${o.id}" class="small"><button class="btn btn-link p-0 text-decoration-none small" onclick="toggleObraDocs('${o.id}')">Ver documentos</button></div></div></div><div class="card-footer bg-white border-top-0 text-end">${btnFinalizar}<button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')"><i class="bi bi-trash"></i></button></div></div></div>`; }); container.innerHTML = html; refreshSecurityIcons(); }).getObrasPorEdificio(currentBuildingId); } function uploadObraDoc(input, idObra) { const file = input.files[0]; if(!file) return; const container = document.getElementById('obra-docs-' + idObra); container.innerHTML = '<span class="text-muted">Subiendo...</span>'; const r = new FileReader(); r.onload = function(e){ const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { loadBuildingObras(); }).subirArchivo(content, file.name, file.type, idObra, 'OBRA'); }; r.readAsDataURL(file); } function toggleObraDocs(idObra) { const container = document.getElementById('obra-docs-' + idObra); container.innerHTML = '<div class="spinner-border spinner-border-sm"></div>'; google.script.run.withSuccessHandler(docs => { if(!docs.length) { container.innerHTML = '<span class="text-muted fst-italic">Vacío</span>'; return; } let h = '<ul class="list-unstyled mb-0">'; docs.forEach(d => { h += `<li class="d-flex justify-content-between align-items-center mb-1"><a href="${d.url}" target="_blank" class="text-truncate" style="max-width:200px;">${d.nombre}</a><i class="bi bi-x text-danger" style="cursor:pointer;" onclick="deleteDocBuilding('${d.id}')"></i></li>`; }); h += '</ul>'; container.innerHTML = h; }).obtenerDocs(idObra, 'OBRA'); } function deleteObra(id) { confirmarAccion("¿Borrar obra?", "", () => { google.script.run.withSuccessHandler(()=>loadBuildingObras()).eliminarObra(id); }); } function loadBuildingAssets() { if(!currentBuildingId) return; const tbody = document.getElementById('buildingAssetsBody'); const select = document.getElementById('filterAssetTypeBuilding'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin activos</td></tr>'; return; } const tiposUnicos = [...new Set(list.map(item => item.tipo))].sort(); let options = '<option value="">- Todos los tipos -</option>'; tiposUnicos.forEach(t => options += `<option value="${t}">${t}</option>`); select.innerHTML = options; renderBuildingAssetsTable(list); window.currentBuildingAssetsList = list; }).getActivosPorEdificio(currentBuildingId); } function filterBuildingAssets() { const tipo = document.getElementById('filterAssetTypeBuilding').value; const list = window.currentBuildingAssetsList || []; if (!tipo) renderBuildingAssetsTable(list); else renderBuildingAssetsTable(list.filter(a => a.tipo === tipo)); } function renderBuildingAssetsTable(list) { const tbody = document.getElementById('buildingAssetsBody'); if(!list.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay coincidencias</td></tr>'; return; } let html = ''; list.forEach(a => { html += `<tr><td class="ps-3 fw-bold">${a.nombre}</td><td><span class="badge bg-light text-dark border">${a.tipo}</span></td><td>${a.marca}</td><td class="text-end pe-3"><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}', 'edificio')">Ir a Activo</button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }
+  function loadMaint() { if(!currentAssetId) return; const tbody = document.getElementById('maintTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay mantenimiento programado</td></tr>'; return; } let html = ''; list.forEach(p => { let dotClass = 'bg-secondary'; if (p.color === 'rojo') dotClass = 'bg-rojo'; if (p.color === 'amarillo') dotClass = 'bg-amarillo'; if (p.color === 'verde') dotClass = 'bg-verde'; let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos"></i>' : ''; let calIcon = p.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-2" title="Sync Calendar"></i>' : ''; html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td>${p.tipo} ${clipIcon} ${calIcon}</td><td>${p.fechaProxima}</td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editRevision('${p.id}', '${p.tipo}', '${p.fechaISO}', null, ${p.hasCalendar})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteRevision('${p.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerPlanMantenimiento(currentAssetId); }
+  function deleteRevision(id) { confirmarAccion("¿Eliminar revisión?", "", () => { google.script.run.withSuccessHandler(() => { notificarExito("Revisión eliminada"); loadMaint(); }).eliminarRevision(id); }); }
+  function editRevision(id, tipo, fecha, activoId, hasCalendar) { document.getElementById('maintModalTitle').innerText='Editar Revisión'; document.getElementById('revId').value=id; document.getElementById('revTipo').value=tipo; document.getElementById('revFecha').value=fecha; const chk = document.getElementById('revCalendar'); if(hasCalendar) chk.checked = true; else chk.checked = false; if (activoId) currentActiveAssetId = activoId; document.getElementById('revRecur').checked = false; document.getElementById('revFreq').value = "365"; document.getElementById('revEnd').value = ""; const revNorma = document.getElementById('revNorma'); if(revNorma) revNorma.value = ""; document.getElementById('secRecurOptions').classList.add('d-none'); const assetSelector = document.getElementById('assetSelector'); if(assetSelector) assetSelector.classList.add('d-none'); updateMaintFormVisibility(); loadRevDocs(id); if(maintModal) maintModal.show(); }
+  function submitRevision() { const id = document.getElementById('revId').value; const tipo = document.getElementById('revTipo').value; const fecha = document.getElementById('revFecha').value; const isRecursiva = document.getElementById('revRecur').checked; const diasFreq = document.getElementById('revFreq').value; const fechaFin = document.getElementById('revEnd').value; const syncCalendar = document.getElementById('revCalendar').checked; let activeAssetId = currentAssetId || currentActiveAssetId; if (!activeAssetId) { const sel = document.getElementById('maintActivo'); if(sel) activeAssetId = sel.value; } if(!activeAssetId) return notificarError("Debes seleccionar un activo."); if(!tipo || !fecha) return notificarError("Rellena todos los campos."); if(isRecursiva && !fechaFin) return notificarError("Indica fecha límite."); setBtnLoading('btnMaintSubmit', true); const cb = (r) => { setBtnLoading('btnMaintSubmit', false); if(maintModal) maintModal.hide(); if (r.success) { notificarExito("Revisión guardada"); if (currentAssetId) loadMaint(); else loadGlobalMaint(); loadDashboard(); } else { notificarError(r.error); } }; const fail = (e) => { setBtnLoading('btnMaintSubmit', false); notificarError(e.message); }; const payload = { idActivo: activeAssetId, idPlan: id, tipo: tipo, fechaProx: fecha, esRecursiva: isRecursiva, diasFreq: diasFreq, fechaFin: fechaFin, syncCalendar: syncCalendar }; if (id) { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).updateRevision(payload); } else { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).crearRevision(payload); } }
+  function loadRevDocs(idRevision) { const container = document.getElementById('revDocsList'); container.innerHTML = '<div class="text-center text-muted"><span class="spinner-border spinner-border-sm"></span></div>'; google.script.run.withSuccessHandler(docs => { if (!docs || docs.length === 0) { container.innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin evidencias adjuntas</div>'; return; } let html = '<ul class="list-group list-group-flush bg-transparent">'; docs.forEach(d => { html += `<li class="list-group-item bg-transparent d-flex justify-content-between align-items-center p-1"><a href="${d.url}" target="_blank" class="text-decoration-none text-truncate" style="max-width: 250px;"><i class="bi bi-file-earmark-text text-danger"></i> ${d.nombre}</a><button class="btn btn-sm text-danger py-0" onclick="deleteRevDoc('${d.id}')">&times;</button></li>`; }); html += '</ul>'; container.innerHTML = html; }).obtenerDocs(idRevision, 'REVISION'); }
+  function uploadRevDoc() { const idRevision = document.getElementById('revId').value; const fileInput = document.getElementById('revFileInput'); const file = fileInput.files[0]; const status = document.getElementById('revUploadStatus'); if (!idRevision) return notificarError("Primero guarda la revisión."); if (!file) return notificarError("Selecciona un archivo."); status.innerText = "Subiendo..."; const btn = event.target; btn.disabled = true; const r = new FileReader(); r.onload = function(e) { const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { btn.disabled = false; status.innerText = ""; fileInput.value = ""; if (res.success) { notificarExito("Subido"); loadRevDocs(idRevision); } else { notificarError(res.error); } }).subirArchivo(content, file.name, file.type, idRevision, 'REVISION'); }; r.readAsDataURL(file); }
+  function deleteRevDoc(idDoc) { confirmarAccion("¿Eliminar archivo?", "", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Eliminado"); const idRev = document.getElementById('revId').value; loadRevDocs(idRev); } }).eliminarDocumento(idDoc); }); }
+  function loadConfigList() { const tbody = document.getElementById('tableConfigBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list || list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">No hay tipos definidos. Crea el primero.</td></tr>'; return; } let html = ''; list.forEach(item => { html += `<tr><td class="ps-4 fw-bold">${item.nombre}</td><td><span class="badge bg-light text-dark border">${item.normativa || '-'}</span></td><td>${item.dias ? item.dias + ' días' : '-'}</td><td class="text-end pe-4"><button class="btn btn-sm btn-light border me-1" onclick="openConfigModal('${item.id}', '${item.nombre}', '${item.normativa}', '${item.dias}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteConfig('${item.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).getConfigCatalogo(); }
+  function openConfigModal(id, nombre, norma, dias) { if(!configModal) configModal = new bootstrap.Modal(document.getElementById('configModal')); if(id) { document.getElementById('configModalTitle').innerText = 'Editar Tipo'; document.getElementById('confId').value = id; document.getElementById('confNombre').value = nombre; document.getElementById('confNorma').value = (norma === 'undefined' || !norma) ? '' : norma; document.getElementById('confDias').value = (dias === 'undefined' || !dias) ? '' : dias; } else { document.getElementById('configModalTitle').innerText = 'Nuevo Tipo'; document.getElementById('confId').value = ''; document.getElementById('confNombre').value = ''; document.getElementById('confNorma').value = ''; document.getElementById('confDias').value = ''; } configModal.show(); }
+  function submitConfig() { const id = document.getElementById('confId').value; const nombre = document.getElementById('confNombre').value; const norma = document.getElementById('confNorma').value; const dias = document.getElementById('confDias').value; if(!nombre) return notificarError("Nombre obligatorio."); setBtnLoading('btnConfigSubmit', true); const payload = { id: id, nombre: nombre, normativa: norma, dias: dias }; google.script.run.withSuccessHandler(res => { setBtnLoading('btnConfigSubmit', false); if(res.success) { configModal.hide(); notificarExito("Guardado"); loadConfigList(); } else { notificarError(res.error); } }).saveConfigCatalogo(payload); }
+  function deleteConfig(id) { confirmarAccion("¿Borrar tipo?", "", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Borrado"); loadConfigList(); } else notificarError(res.error); }).deleteConfigCatalogo(id); }); }
+  function loadUserList() { const tbody = document.getElementById('tableUsersBody'); tbody.innerHTML = '<tr><td colspan="5" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if(!list || list.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay usuarios.</td></tr>'; return; } let html = ''; list.forEach(u => { let badgeRol = u.rol === 'ADMIN' ? 'bg-danger' : (u.rol === 'TECNICO' ? 'bg-primary' : 'bg-secondary'); let iconAvisos = u.avisos === 'SI' ? '<i class="bi bi-bell-fill text-warning"></i>' : '<i class="bi bi-bell-slash text-muted"></i>'; html += `<tr><td class="ps-4 fw-bold">${u.nombre}</td><td>${u.email}</td><td><span class="badge ${badgeRol}">${u.rol}</span></td><td class="text-center fs-5">${iconAvisos}</td><td class="text-end pe-4"><button class="btn btn-sm btn-light border me-1" onclick="openUserModal('${u.id}', '${u.nombre}', '${u.email}', '${u.rol}', '${u.avisos}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteUser('${u.id}')"><i class="bi bi-trash"></i></button></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).getListaUsuarios(); }
+  function openUserModal(id, nombre, email, rol, avisos) { if(!userModal) userModal = new bootstrap.Modal(document.getElementById('userModal')); if(id) { document.getElementById('userModalTitle').innerText = 'Editar Usuario'; document.getElementById('userId').value = id; document.getElementById('userNombre').value = nombre; document.getElementById('userEmail').value = email; document.getElementById('userRol').value = rol; document.getElementById('userAvisos').value = avisos; } else { document.getElementById('userModalTitle').innerText = 'Nuevo Usuario'; document.getElementById('userId').value = ''; document.getElementById('userNombre').value = ''; document.getElementById('userEmail').value = ''; document.getElementById('userRol').value = 'TECNICO'; document.getElementById('userAvisos').value = 'NO'; } userModal.show(); }
+  function submitUser() { const id = document.getElementById('userId').value; const nombre = document.getElementById('userNombre').value; const email = document.getElementById('userEmail').value; const rol = document.getElementById('userRol').value; const avisos = document.getElementById('userAvisos').value; if(!nombre || !email) return notificarError("Nombre y Email obligatorios"); setBtnLoading('btnUserSubmit', true); const payload = { id, nombre, email, rol, avisos }; google.script.run.withSuccessHandler(res => { setBtnLoading('btnUserSubmit', false); if(res.success) { userModal.hide(); notificarExito("Usuario guardado"); loadUserList(); } else { notificarError(res.error); } }).saveUsuario(payload); }
+  function deleteUser(id) { confirmarAccion("¿Borrar usuario?", "", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Usuario eliminado"); loadUserList(); } else notificarError(res.error); }).deleteUsuario(id); }); }
+  function toggleEditInfo(editable) { if(editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if(sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } } function saveAssetInfo() { const newData = { id: currentAssetId, nombre: document.getElementById('edit-nombre').value, marca: document.getElementById('edit-marca').value, tipo: document.getElementById('edit-tipo').value }; const btnSave = document.querySelector('#btn-save-info button'); setBtnLoading('btn-save-info button', true); google.script.run.withSuccessHandler(res => { btnSave.disabled = false; btnSave.innerText = "Guardar"; if(res.success) { notificarExito("Info actualizada"); openAssetDetail(currentAssetId); } else { notificarError(res.error); } }).updateAsset(newData); } function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { confirmarAccion("¿Eliminar documento?", "", () => { document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { notificarExito("Eliminado"); loadDocs(); } }).eliminarDocumento(idDoc); }); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return notificarError("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; notificarExito("Documento subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } function submitContract() { const id = document.getElementById('contId').value; const datos = { id:id, idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value, estado:document.getElementById('contEstado').value }; if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return notificarError("Campos incompletos"); setBtnLoading('btnContSubmit', true); const cb = () => { setBtnLoading('btnContSubmit', false); if(contractModal) contractModal.hide(); notificarExito("Contrato guardado"); if (currentAssetId) loadContracts(); else loadGlobalContracts(); }; if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos); else google.script.run.withSuccessHandler(cb).crearContrato(datos); } function deleteContract(id) { confirmarAccion("¿Eliminar contrato?", "", () => { google.script.run.withSuccessHandler(cb => { notificarExito("Eliminado"); if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }); }
 
-      // Mostrar selector de activos (porque venimos del calendario, no de un activo concreto)
-      const assetSelector = document.getElementById('assetSelector');
-      if (assetSelector) {
-          assetSelector.classList.remove('d-none');
-          currentActiveAssetId = null; 
-          
-          // Resetear desplegables
-          document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
-          document.getElementById('maintEdificio').disabled = true;
-          document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
-          document.getElementById('maintActivo').disabled = true;
-          
-          // Cargar Campus si está vacío
-          const selCampus = document.getElementById('maintCampus');
-          if (selCampus && selCampus.options.length <= 1) {
-              google.script.run.withSuccessHandler(list => {
-                  let html = '<option value="">- Seleccione Campus -</option>';
-                  list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
-                  selCampus.innerHTML = html;
-              }).getListaCampus();
-          }
+  // ==========================================
+// FUNCIÓN IMPORTACIÓN MASIVA
+// ==========================================
+let importModal = null;
+
+function openImportModal() {
+  if(!importModal) importModal = new bootstrap.Modal(document.getElementById('importModal'));
+  document.getElementById('importData').value = '';
+  document.getElementById('importLog').innerText = '';
+  importModal.show();
+}
+
+function ejecutarImportacion() {
+  const texto = document.getElementById('importData').value;
+  if (!texto.trim()) return notificarError("El área de texto está vacía.");
+
+  // Parsear texto (detecta tabulaciones de Excel)
+  const lineas = texto.split('\n');
+  const filas = [];
+  
+  lineas.forEach(linea => {
+    if (linea.trim()) {
+      // Excel usa tabulaciones (\t) cuando copias celdas
+      const celdas = linea.split('\t');
+      // Si solo hay 1 celda, a veces es separador por punto y coma
+      if(celdas.length === 1 && linea.includes(';')) {
+         filas.push(linea.split(';'));
+      } else {
+         filas.push(celdas);
       }
+    }
+  });
+
+  if (filas.length === 0) return notificarError("No se han detectado datos válidos.");
+
+  confirmarAccion(`¿Importar ${filas.length} activos?`, "Asegúrate de que los Campus y Edificios ya existen.", () => {
+    setBtnLoading('btnImportRun', true);
+    document.getElementById('importLog').innerText = "Procesando... esto puede tardar unos segundos.";
+    
+    google.script.run.withSuccessHandler(res => {
+      setBtnLoading('btnImportRun', false);
       
-      updateMaintFormVisibility();
-      maintModal.show();
-  }
+      if (res.success) {
+        let msg = `¡Éxito! Se han creado ${res.procesados} activos.`;
+        if (res.errores.length > 0) {
+          msg += ` Hubo ${res.errores.length} errores. Revisa el log.`;
+          // Mostrar errores en pantalla
+          let logHtml = '<ul class="mb-0 ps-3">';
+          res.errores.forEach(e => logHtml += `<li>${e}</li>`);
+          logHtml += '</ul>';
+          document.getElementById('importLog').innerHTML = logHtml;
+          notificarError("Importación parcial. Revisa los errores.");
+        } else {
+          importModal.hide();
+          notificarExito(msg);
+          // Recargar la tabla si hay un edificio seleccionado
+          const filtroEdif = document.getElementById('filterEdificio').value;
+          if(filtroEdif) loadActivos(filtroEdif);
+          loadDashboard();
+        }
+      } else {
+        notificarError(res.error);
+      }
+    }).procesarCargaMasiva(filas);
+  });
+}
 </script>
