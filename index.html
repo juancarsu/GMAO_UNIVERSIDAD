@@ -27,6 +27,17 @@
 </head>
 <body>
 
+  <div class="mobile-header">
+    <div class="d-flex align-items-center">
+      <button class="btn-hamburger me-3" onclick="toggleSidebar()">
+        <i class="bi bi-list"></i>
+      </button>
+      <span class="mobile-logo">GMAO Universidad</span>
+    </div>
+    </div>
+
+  <div id="sidebarOverlay" class="sidebar-overlay" onclick="toggleSidebar()"></div>
+
   <div id="app-loader" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">
     <div class="text-center">
       <div class="spinner-border text-danger mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
