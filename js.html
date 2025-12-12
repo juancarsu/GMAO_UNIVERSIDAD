@@ -151,6 +151,12 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
   }
 
   function navTo(viewId, linkEl, event) { 
+
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    if (sidebar.classList.contains('active')) {
+        toggleSidebar();
+    }
     if(event) event.preventDefault(); 
     if(linkEl) { document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active')); linkEl.classList.add('active'); } 
     document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none')); 
@@ -1053,5 +1059,17 @@ function renderMarkers(data = null) {
         notificarError(res.error);
       }
     }).crearNovedad(datos);
+  }
+
+  // ==========================================
+  // FUNCIÓN MENÚ MÓVIL
+  // ==========================================
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebarOverlay');
+    
+    // Alternar la clase .active definida en tu CSS
+    sidebar.classList.toggle('active');
+    overlay.classList.toggle('active');
   }
 </script>
