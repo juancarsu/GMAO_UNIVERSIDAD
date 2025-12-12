@@ -22,6 +22,19 @@
   // ==========================================
   // 2. HELPERS VISUALES (SWEETALERT2)
   // ==========================================
+
+  // ==========================================
+  // GESTIÓN MENÚ MÓVIL
+  // ==========================================
+  function toggleSidebar() {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    
+    // Si tiene la clase 'active', se la quitamos, si no, se la ponemos
+    sb.classList.toggle('active');
+    ov.classList.toggle('active');
+  }
+
   const Toast = Swal.mixin({
     toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
     didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
@@ -157,6 +170,13 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
     if(viewId==='config') loadConfigList(); 
     if(viewId==='usuarios') loadUserList(); 
     if(viewId==='incidencias') loadIncidencias(); 
+
+    if (window.innerWidth <= 768) {
+       const sb = document.getElementById('sidebar');
+       if(sb.classList.contains('active')) {
+           toggleSidebar(); // Cierra el menú
+       }
+    }
   }
 
   // ==========================================
