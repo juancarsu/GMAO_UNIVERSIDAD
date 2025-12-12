@@ -259,13 +259,43 @@
   .btn-light { background: #fff; border: 1px solid #e5e7eb; color: var(--text-main); }
   .btn-light:hover { background: #f9fafb; border-color: #d1d5db; }
 
-  /* FAB ROJO (El de incidencias) */
-  .rounded-circle.shadow-lg {
-    background-color: var(--primary-color) !important;
-    border-color: var(--primary-color) !important;
-    box-shadow: 0 10px 25px -5px rgba(204, 6, 5, 0.5) !important;
-    transition: transform 0.2s;
+  /* --- BOTONES FLOTANTES (FAB) --- */
+  .btn-fab {
+    position: fixed;
+    right: 30px;
+    width: 60px;
+    height: 60px;
+    z-index: 2000;
+    border-radius: 50% !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+    border: none;
   }
+  
+  .btn-fab:hover { transform: scale(1.1); }
+
+  /* FAB Principal (Rojo - Incidencias) */
+  .btn-fab-red {
+    bottom: 30px;
+    background-color: var(--primary-color);
+    color: white;
+    box-shadow: 0 10px 25px -5px rgba(204, 6, 5, 0.5);
+  }
+  .btn-fab-red:hover { background-color: var(--primary-hover); color: white; }
+
+  /* FAB Secundario (Feedback) */
+  .btn-fab-secondary {
+    bottom: 100px; /* Situado encima del rojo */
+    width: 50px;   /* Un poco más pequeño */
+    height: 50px;
+    right: 35px;   /* Alineado al centro del de abajo */
+    background-color: white;
+    color: var(--text-muted);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .btn-fab-secondary:hover { color: var(--primary-color); background-color: #fff; }
   .rounded-circle.shadow-lg:hover { transform: scale(1.1); background-color: var(--primary-hover) !important; }
 
   /* --- MODALES --- */
@@ -324,4 +354,80 @@
   .dot.bg-rojo { background-color: #ef4444; box-shadow: 0 0 0 2px #fee2e2; }
   .dot.bg-amarillo { background-color: #f59e0b; box-shadow: 0 0 0 2px #fef3c7; }
   .dot.bg-verde { background-color: #10b981; box-shadow: 0 0 0 2px #d1fae5; }
+
+  /* --- RESPONSIVE / MÓVIL --- */
+  
+  /* Por defecto, ocultamos elementos móviles en escritorio */
+  .mobile-header, .sidebar-overlay { display: none; }
+
+  @media (max-width: 768px) {
+    /* 1. Ajustar el Sidebar para que esté oculto por defecto */
+    #sidebar {
+      transform: translateX(-100%); /* Lo sacamos de la pantalla a la izquierda */
+      transition: transform 0.3s ease-in-out;
+      width: 280px;
+      z-index: 1050; /* Por encima de todo */
+      box-shadow: 2px 0 10px rgba(0,0,0,0.2);
+    }
+
+    /* Clase para mostrarlo cuando se active */
+    #sidebar.active {
+      transform: translateX(0);
+    }
+
+    /* 2. El contenido principal ocupa todo el ancho */
+    #main-content {
+      margin-left: 0;
+      padding: 20px;
+      padding-top: 80px; /* Espacio para la barra superior móvil */
+    }
+
+    /* 3. Barra superior móvil */
+    .mobile-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: white;
+      padding: 0 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      z-index: 1040;
+    }
+
+    .mobile-logo {
+      font-weight: 800;
+      color: var(--primary-color);
+      font-size: 1.1rem;
+    }
+
+    .btn-hamburger {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: var(--text-main);
+      padding: 0;
+    }
+
+    /* 4. Overlay (Fondo oscuro al abrir menú) */
+    .sidebar-overlay {
+      display: none; /* Oculto por defecto */
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 1045; /* Debajo del sidebar, encima del contenido */
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    
+    .sidebar-overlay.active {
+      display: block;
+      opacity: 1;
+    }
+    
+    /* Ajustes menores para botones flotantes en móvil */
+    .btn-fab { bottom: 80px; right: 20px; }
+    .btn-fab-secondary { bottom: 150px; right: 25px; }
+  }
 </style>
