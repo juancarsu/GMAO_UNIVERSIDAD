@@ -76,6 +76,12 @@
           <i class="bi bi-shield-lock menu-icon"></i> Auditoría
         </a>
       </li>
+      <li class="menu-item" id="menu-feedback">
+        <a href="#" class="menu-link" onclick="navTo('feedback', this, event)">
+          <i class="bi bi-inbox menu-icon"></i> Buzón
+          <span id="badge-feedback" class="badge bg-danger rounded-pill ms-auto d-none">0</span>
+        </a>
+      </li>
       
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Cargando...</div><small class="text-muted">...</small></div></div>
@@ -249,6 +255,19 @@
         </div>
       </div>
     </div>
+
+    <div id="view-feedback" class="view-section d-none">
+  <div class="page-header">
+    <h1 class="page-title">Buzón de Sugerencias</h1>
+    <button class="btn btn-outline-secondary btn-sm" onclick="loadFeedbackList()">
+      <i class="bi bi-arrow-clockwise"></i> Refrescar
+    </button>
+  </div>
+
+  <div class="row" id="feedbackContainer">
+    <div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div></div>
+  </div>
+  </div>
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="modalTitle">Nuevo</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="createForm"><input type="hidden" id="modalType"><input type="hidden" id="modalParentId"><div class="mb-3"><label>Nombre</label><input type="text" class="form-control" id="fNombre" required></div><div id="extraFields"></div></form></div><div class="modal-footer"><button type="button" class="btn btn-primary" id="btnCreateSubmit" onclick="submitCreate()">Guardar</button></div></div></div></div>
