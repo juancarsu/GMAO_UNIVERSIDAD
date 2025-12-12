@@ -57,6 +57,11 @@
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('incidencias', this, event)"><i class="bi bi-exclamation-triangle menu-icon"></i> Incidencias</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
       <li class="menu-divider" style="border-top: 1px solid #eee; margin: 10px 0;"></li>
+      <li class="menu-item mt-3">
+        <a href="#" class="menu-link" onclick="openChangelogModal(event)" style="color: var(--primary-color);">
+          <i class="bi bi-gift-fill menu-icon"></i> Novedades
+        </a>
+      </li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('config', this, event)"><i class="bi bi-gear menu-icon"></i> Configuración</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('usuarios', this, event)"><i class="bi bi-people menu-icon"></i> Usuarios</a></li>
       <li class="menu-item" id="menu-logs">
@@ -64,6 +69,7 @@
           <i class="bi bi-shield-lock menu-icon"></i> Auditoría
         </a>
       </li>
+      
     </ul>
     <div class="user-profile"><i class="bi bi-person-circle me-2 fs-5"></i><div><div class="fw-bold">Cargando...</div><small class="text-muted">...</small></div></div>
   </aside>
@@ -346,6 +352,64 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
         <button type="button" class="btn btn-primary" id="btnImportRun" onclick="ejecutarImportacion()">Procesar Importación</button>
+      </div>
+    </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="changelogModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-light">
+        <h5 class="modal-title fw-bold"><i class="bi bi-stars text-warning me-2"></i>Lo nuevo en la App</h5>
+        
+        <button id="btnNewVersion" class="btn btn-sm btn-primary ms-auto me-2 d-none" onclick="openNewVersionModal()">
+          <i class="bi bi-plus-lg"></i> Nueva
+        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="timeline" id="changelogContainer"></div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <div class="modal fade" id="newVersionModal" tabindex="-1" style="z-index: 1060;">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-primary border-2">
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title">Publicar Nueva Versión</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row mb-3">
+          <div class="col-6">
+            <label class="form-label fw-bold">Versión</label>
+            <input type="text" class="form-control" id="nvVersion" placeholder="Ej. 01.05">
+            <div class="form-text small">Se guardará como texto exacto.</div>
+          </div>
+          <div class="col-6">
+             <label class="form-label fw-bold">Tipo</label>
+             <select class="form-select" id="nvTipo">
+               <option value="MEJORA">Mejora / Feature</option>
+               <option value="CORRECCION">Corrección / Bug</option>
+               <option value="NUEVO">Lanzamiento</option>
+             </select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Título Corto</label>
+          <input type="text" class="form-control" id="nvTitulo" placeholder="Ej. Filtros de búsqueda mejorados">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Descripción detallada</label>
+          <textarea class="form-control" id="nvDesc" rows="4" placeholder="Detalla qué ha cambiado..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="btnNvSubmit" onclick="submitNewVersion()">Publicar Versión</button>
       </div>
     </div>
   </div>
