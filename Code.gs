@@ -1,12 +1,3 @@
-// GMAO
-// Universidad de Navarra
-// Versión 1.0
-// Autor: Juan Carlos Suárez
-//
-// Licencia: Creative Commons Reconocimiento (CC BY) - creativecommons.org
-// Puedes usar, copiar, modificar y distribuir este código (sin fines comerciales),
-// siempre que cites a Juan Carlos Suárez como autor original.
-
 // ==========================================
 // 1. CONFIGURACIÓN Y ROUTING
 // ==========================================
@@ -272,10 +263,18 @@ function getInfoParaCalendar(idActivo) {
 }
 
 function obtenerPlanMantenimiento(idActivo) {
-  const data = getSheetData('PLAN_MANTENIMIENTO'); const docsData = getSheetData('DOCS_HISTORICO');
-  const docsMap = {}; for(let j=1; j<docsData.length; j++) if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
-  const planes = []; const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const data = getSheetData('PLAN_MANTENIMIENTO'); 
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const docsMap = {}; 
+  for(let j=1; j<docsData.length; j++) if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true;
+  
+  const planes = []; 
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
   for(let i=1; i<data.length; i++) {
+    // FILTRO NUEVO: Si está realizada, saltar
+    if (data[i][6] === 'REALIZADA') continue; 
+
     if(String(data[i][1]) === String(idActivo)) {
       let f = data[i][4]; let color = 'gris'; let fechaStr = "-"; let fechaISO = "";
       if (f instanceof Date) { f.setHours(0,0,0,0); const diff = Math.ceil((f.getTime() - hoy.getTime()) / (86400000)); if (diff < 0) color = 'rojo'; else if (diff <= 30) color = 'amarillo'; else color = 'verde'; fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy"); fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"); }
@@ -287,12 +286,20 @@ function obtenerPlanMantenimiento(idActivo) {
 }
 
 function getGlobalMaintenance() {
-  const planes = getSheetData('PLAN_MANTENIMIENTO'); const activos = getSheetData('ACTIVOS'); const edificios = getSheetData('EDIFICIOS'); const docsData = getSheetData('DOCS_HISTORICO');
+  const planes = getSheetData('PLAN_MANTENIMIENTO'); 
+  const activos = getSheetData('ACTIVOS'); 
+  const edificios = getSheetData('EDIFICIOS'); 
+  const docsData = getSheetData('DOCS_HISTORICO');
   const docsMap = {}; for(let j=1; j<docsData.length; j++) { if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true; }
   const mapEdificios = {}; edificios.slice(1).forEach(r => mapEdificios[r[0]] = { nombre: r[2], idCampus: r[1] });
   const mapActivos = {}; activos.slice(1).forEach(r => { const edificioInfo = mapEdificios[r[1]] || {}; mapActivos[r[0]] = { nombre: r[3], idEdif: r[1], idCampus: edificioInfo.idCampus || null }; });
+  
   const result = []; const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
   for(let i=1; i<planes.length; i++) {
+    // FILTRO NUEVO: Si está realizada, saltar
+    if (planes[i][6] === 'REALIZADA') continue;
+
     const idActivo = planes[i][1]; const activoInfo = mapActivos[idActivo];
     if(activoInfo) {
        const nombreEdificio = mapEdificios[activoInfo.idEdif] ? mapEdificios[activoInfo.idEdif].nombre : "-";
@@ -346,6 +353,25 @@ function updateRevision(d) {
     return { success: true }; 
 }
 
+function completarRevision(id) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(id)) {
+      // La columna 7 (índice 6) es el ESTADO. Lo cambiamos de 'ACTIVO' a 'REALIZADA'
+      sheet.getRange(i+1, 7).setValue("REALIZADA"); 
+      
+      // Opcional: Si tenía evento de calendario, se podría borrar o actualizar, 
+      // pero por ahora lo dejamos así para mantener el histórico.
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Revisión no encontrada" };
+}
+
 function eliminarRevision(idPlan) { 
   verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO'); const data = sheet.getDataRange().getValues(); 
@@ -384,101 +410,48 @@ function updateContrato(datos) { verificarPermiso(['WRITE']); const ss = Spreads
 function eliminarContrato(id) { verificarPermiso(['DELETE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
 
 // ==========================================
-// 9. DASHBOARD Y CRUD GENERAL (ACTUALIZADO V5)
+// 9. DASHBOARD Y CRUD GENERAL (V5)
 // ==========================================
 function getDatosDashboard() { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
   const hoy = new Date(); hoy.setHours(0,0,0,0);
-  
-  // 1. MANTENIMIENTO
   const dataMant = getSheetData('PLAN_MANTENIMIENTO');
   const activos = getSheetData('ACTIVOS');
+  const mapActivos = {}; activos.slice(1).forEach(r => mapActivos[r[0]] = r[3]);
   
-  // Mapa de nombres de activos para el calendario
-  const mapActivos = {};
-  activos.slice(1).forEach(r => mapActivos[r[0]] = r[3]); // ID -> Nombre
-
-  let revPend = 0, revVenc = 0, revOk = 0; 
-  const calendarEvents = [];
-
-  // Gráfico Lineal (Meses)
+  let revPend = 0, revVenc = 0, revOk = 0; const calendarEvents = [];
   const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const countsMap = {}; const chartLabels = []; const chartData = [];
   let dIter = new Date(hoy.getFullYear(), hoy.getMonth(), 1); 
-  for (let k = 0; k < 6; k++) { 
-    let key = mesesNombres[dIter.getMonth()] + " " + dIter.getFullYear(); 
-    countsMap[key] = 0; chartLabels.push(key); 
-    dIter.setMonth(dIter.getMonth() + 1); 
-  }
-
+  for (let k = 0; k < 6; k++) { let key = mesesNombres[dIter.getMonth()] + " " + dIter.getFullYear(); countsMap[key] = 0; chartLabels.push(key); dIter.setMonth(dIter.getMonth() + 1); }
+  
   for(let i=1; i<dataMant.length; i++) { 
+    // FILTRO NUEVO: Si está realizada, no cuenta para las estadísticas
+    if (dataMant[i][6] === 'REALIZADA') continue;
+
     const f = dataMant[i][4]; 
     if(f instanceof Date) { 
-      f.setHours(0,0,0,0); 
-      const diff = Math.ceil((f.getTime() - hoy.getTime()) / 86400000); 
+      f.setHours(0,0,0,0); const diff = Math.ceil((f.getTime() - hoy.getTime()) / 86400000); 
       let status = 'verde';
-      
-      if(diff < 0) { revVenc++; status = 'rojo'; }
-      else if(diff <= 30) { revPend++; status = 'amarillo'; }
-      else { revOk++; status = 'verde'; }
-      
-      // Datos para gráfico lineal
-      let key = mesesNombres[f.getMonth()] + " " + f.getFullYear(); 
-      if (countsMap.hasOwnProperty(key)) { countsMap[key]++; }
-      
-      // Datos para Calendario
+      if(diff < 0) { revVenc++; status = 'rojo'; } else if(diff <= 30) { revPend++; status = 'amarillo'; } else { revOk++; status = 'verde'; }
+      let key = mesesNombres[f.getMonth()] + " " + f.getFullYear(); if (countsMap.hasOwnProperty(key)) { countsMap[key]++; }
       let nombreActivo = mapActivos[dataMant[i][1]] || 'Activo';
       let colorEvento = (status === 'rojo') ? '#dc3545' : (status === 'amarillo' ? '#ffc107' : '#198754');
       let textColor = (status === 'amarillo') ? '#000' : '#fff';
-      
       calendarEvents.push({
-        id: dataMant[i][0], // ID Plan
-        title: `${dataMant[i][2]} - ${nombreActivo}`,
-        start: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"),
-        backgroundColor: colorEvento,
-        borderColor: colorEvento,
-        textColor: textColor,
-        extendedProps: {
-           id: dataMant[i][0],
-           tipo: dataMant[i][2],
-           fechaISO: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"),
-           idActivo: dataMant[i][1],
-           hasCalendar: (dataMant[i].length > 7 && dataMant[i][7]) ? true : false
-        }
+        id: dataMant[i][0], title: `${dataMant[i][2]} - ${nombreActivo}`, start: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        backgroundColor: colorEvento, borderColor: colorEvento, textColor: textColor,
+        extendedProps: { id: dataMant[i][0], tipo: dataMant[i][2], fechaISO: Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"), idActivo: dataMant[i][1], hasCalendar: (dataMant[i].length > 7 && dataMant[i][7]) ? true : false }
       });
     } 
   } 
-  
   chartLabels.forEach(lbl => { chartData.push(countsMap[lbl]); });
-
-  // 2. OTROS CONTEOS
-  const dataCont = getSheetData('CONTRATOS'); 
-  let contCount = (dataCont.length > 1) ? dataCont.length - 1 : 0;
-  
-  const dataInc = getSheetData('INCIDENCIAS');
-  let incCount = 0;
-  // Contamos solo pendientes o en proceso
-  for(let i=1; i<dataInc.length; i++) {
-     if(dataInc[i][6] !== 'RESUELTA') incCount++;
-  }
-
+  const dataCont = getSheetData('CONTRATOS'); let contCount = (dataCont.length > 1) ? dataCont.length - 1 : 0;
+  const dataInc = getSheetData('INCIDENCIAS'); let incCount = 0; for(let i=1; i<dataInc.length; i++) { if(dataInc[i][6] !== 'RESUELTA') incCount++; }
   const cAct = (activos.length > 1) ? activos.length - 1 : 0; 
   const cEdif = (getSheetData('EDIFICIOS').length - 1) || 0;
   const cCampus = (getSheetData('CAMPUS').length - 1) || 0;
-
-  return { 
-    activos: cAct, 
-    edificios: cEdif, 
-    pendientes: revPend, 
-    vencidas: revVenc, 
-    ok: revOk, 
-    contratos: contCount,
-    incidencias: incCount,
-    campus: cCampus,
-    chartLabels: chartLabels, 
-    chartData: chartData,
-    calendarEvents: calendarEvents // <--- Nuevo para el calendario
-  }; 
+  return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
 
 function crearCampus(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); return {success:true}; }
@@ -498,28 +471,6 @@ function deleteConfigCatalogo(id) { verificarPermiso(['ADMIN_ONLY']); const ss =
 function getListaUsuarios() { const data = getSheetData('USUARIOS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1], email: r[2], rol: r[3], avisos: r[4] })); }
 function saveUsuario(u) { verificarPermiso(['ADMIN_ONLY']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('USUARIOS'); if (!u.nombre || !u.email) return { success: false, error: "Datos incompletos" }; if (u.id) { const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(u.id)) { sheet.getRange(i+1, 2).setValue(u.nombre); sheet.getRange(i+1, 3).setValue(u.email); sheet.getRange(i+1, 4).setValue(u.rol); sheet.getRange(i+1, 5).setValue(u.avisos); return { success: true }; } } return { success: false, error: "Usuario no encontrado" }; } else { sheet.appendRow([Utilities.getUuid(), u.nombre, u.email, u.rol, u.avisos]); return { success: true }; } }
 function deleteUsuario(id) { verificarPermiso(['ADMIN_ONLY']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('USUARIOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Usuario no encontrado" }; }
-
-// ==========================================
-// 11. NOTIFICACIONES AUTOMÁTICAS
-// ==========================================
-function enviarResumenSemanal() {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheetUsers = ss.getSheetByName('USUARIOS');
-  if(!sheetUsers) return;
-  const usuarios = sheetUsers.getDataRange().getValues().slice(1);
-  const emailsDestino = usuarios.filter(u => String(u[4]).toUpperCase() === 'SI' && u[2]).map(u => u[2]).join(",");
-  if(!emailsDestino) return;
-  const mantenimiento = getGlobalMaintenance(); 
-  const mantCriticos = mantenimiento.filter(m => m.color === 'rojo' || m.color === 'amarillo');
-  const contratos = obtenerContratosGlobal(); 
-  const contCriticos = contratos.filter(c => c.color === 'rojo' || c.color === 'amarillo');
-  if (mantCriticos.length === 0 && contCriticos.length === 0) return;
-  let html = `<div style="font-family: Arial, sans-serif; color: #333;"><h2 style="color: #0d6efd;">Resumen GMAO</h2><p>Estado de activos y contratos:</p>`;
-  if (mantCriticos.length > 0) { html += `<h3>🔧 Revisiones Pendientes (${mantCriticos.length})</h3><ul>`; mantCriticos.forEach(m => { html += `<li><b>${m.color === 'rojo' ? 'VENCIDO' : 'PRÓXIMO'}:</b> ${m.activo} (${m.edificio}) - ${m.tipo} - ${m.fecha}</li>`; }); html += `</ul>`; }
-  if (contCriticos.length > 0) { html += `<h3>📄 Contratos por Vencer (${contCriticos.length})</h3><ul>`; contCriticos.forEach(c => { html += `<li><b>${c.estado}:</b> ${c.proveedor} (${c.fin})</li>`; }); html += `</ul>`; }
-  html += `<p style="color: #666; font-size: 12px;">Generado automáticamente.</p></div>`;
-  MailApp.sendEmail({ to: emailsDestino, subject: `[GMAO] Alerta: ${mantCriticos.length + contCriticos.length} incidencias`, htmlBody: html });
-}
 
 // ==========================================
 // 12. GESTIÓN DE INCIDENCIAS
@@ -608,77 +559,162 @@ function updateIncidenciaData(d) {
 }
 
 // ==========================================
-// 13. GESTIÓN DE CAMPUS (EDITAR/BORRAR)
+// 15. SISTEMA DE FEEDBACK
 // ==========================================
+function enviarFeedback(datos) {
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    let sheet = ss.getSheetByName('FEEDBACK');
+    if (!sheet) { sheet = ss.insertSheet('FEEDBACK'); sheet.appendRow(['ID', 'FECHA', 'USUARIO', 'TIPO', 'MENSAJE', 'ESTADO']); }
+    const usuario = getMyRole().email || "Anónimo"; 
+    sheet.appendRow([Utilities.getUuid(), new Date(), usuario, datos.tipo, datos.mensaje, 'NUEVO']);
+    return { success: true };
+  } catch (e) { return { success: false, error: e.toString() }; }
+}
 
+// ==========================================
+// 16. EDICIÓN Y BORRADO (CAMPUS Y EDIFICIOS)
+// ==========================================
 function updateCampus(d) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('CAMPUS');
-  const data = sheet.getDataRange().getValues();
-  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CAMPUS'); const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(d.id)) {
-      sheet.getRange(i+1, 2).setValue(d.nombre);
-      sheet.getRange(i+1, 3).setValue(d.provincia);
-      sheet.getRange(i+1, 4).setValue(d.direccion);
-      // Nota: No cambiamos la carpeta de Drive (Columna 5) para no romper enlaces
-      return { success: true };
+      sheet.getRange(i+1, 2).setValue(d.nombre); sheet.getRange(i+1, 3).setValue(d.provincia); sheet.getRange(i+1, 4).setValue(d.direccion); return { success: true };
     }
   }
-  return { success: false, error: "Campus no encontrado" };
+  return { success: false, error: "No encontrado" };
 }
 
 function eliminarCampus(id) {
-  verificarPermiso(['DELETE']); // Solo Admin
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('CAMPUS');
-  const data = sheet.getDataRange().getValues();
-  
-  // Opcional: Verificar si tiene edificios antes de borrar para evitar huérfanos
-  
-  for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(id)) {
-      sheet.deleteRow(i+1);
-      return { success: true };
-    }
-  }
-  return { success: false, error: "Campus no encontrado" };
+  verificarPermiso(['DELETE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CAMPUS'); const data = sheet.getDataRange().getValues();
+  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } }
+  return { success: false, error: "No encontrado" };
 }
-
-// ==========================================
-// 14. GESTIÓN DE EDIFICIOS (EDITAR/BORRAR)
-// ==========================================
 
 function updateEdificio(d) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('EDIFICIOS');
-  const data = sheet.getDataRange().getValues();
-  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('EDIFICIOS'); const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(d.id)) {
-      // Col B: ID_Campus, Col C: Nombre, Col D: Contacto
-      sheet.getRange(i+1, 2).setValue(d.idCampus);
-      sheet.getRange(i+1, 3).setValue(d.nombre);
-      sheet.getRange(i+1, 4).setValue(d.contacto);
-      return { success: true };
+      sheet.getRange(i+1, 2).setValue(d.idCampus); sheet.getRange(i+1, 3).setValue(d.nombre); sheet.getRange(i+1, 4).setValue(d.contacto); return { success: true };
     }
   }
-  return { success: false, error: "Edificio no encontrado" };
+  return { success: false, error: "No encontrado" };
 }
 
 function eliminarEdificio(id) {
   verificarPermiso(['DELETE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('EDIFICIOS'); const data = sheet.getDataRange().getValues();
+  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } }
+  return { success: false, error: "No encontrado" };
+}
+
+// ==========================================
+// 17. CARGA MASIVA DE ACTIVOS (VERSIÓN CON CARPETAS PROPIAS)
+// ==========================================
+function procesarCargaMasiva(filas) {
+  verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const sheet = ss.getSheetByName('EDIFICIOS');
-  const data = sheet.getDataRange().getValues();
+  const sheetActivos = ss.getSheetByName('ACTIVOS');
   
-  for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(id)) {
-      sheet.deleteRow(i+1);
-      return { success: true };
+  // 1. Cargar mapas de IDs para búsqueda rápida
+  const campusData = getSheetData('CAMPUS');
+  const edifData = getSheetData('EDIFICIOS');
+  
+  const mapaCampus = {}; // Nombre -> ID
+  campusData.slice(1).forEach(r => mapaCampus[String(r[1]).trim().toLowerCase()] = r[0]);
+  
+  const mapaEdificios = {}; // NombreEdificio + IDCampus -> ID
+  edifData.slice(1).forEach(r => {
+    const key = String(r[2]).trim().toLowerCase() + "_" + String(r[1]);
+    mapaEdificios[key] = r[0]; // ID del edificio
+  });
+
+  const nuevosActivos = [];
+  const errores = [];
+  const folderCache = {}; // Cacheamos la ID de la carpeta PADRE del edificio (no la del activo)
+
+  // 2. Procesar fila a fila
+  // Importante: Usamos un bucle for tradicional para manejar mejor los tiempos si hay muchos
+  for (let index = 0; index < filas.length; index++) {
+    const fila = filas[index];
+    if (fila.length < 4) continue; // Saltar filas incompletas
+
+    const nombreCampus = String(fila[0]).trim();
+    const nombreEdif = String(fila[1]).trim();
+    const tipo = String(fila[2]).trim();
+    const nombreActivo = String(fila[3]).trim();
+    const marca = fila[4] ? String(fila[4]).trim() : "-";
+
+    // 3. Resolver IDs
+    const idCampus = mapaCampus[nombreCampus.toLowerCase()];
+    if (!idCampus) {
+      errores.push(`Fila ${index + 1}: Campus '${nombreCampus}' no existe.`);
+      continue;
     }
+
+    const idEdificio = mapaEdificios[nombreEdif.toLowerCase() + "_" + idCampus];
+    if (!idEdificio) {
+      errores.push(`Fila ${index + 1}: Edificio '${nombreEdif}' no encontrado en ese Campus.`);
+      continue;
+    }
+
+    // 4. Localizar la carpeta "Madre" del Edificio (donde se guardan los activos)
+    let idCarpetaPadreEdificio = folderCache[idEdificio];
+    if (!idCarpetaPadreEdificio) {
+      for(let k=1; k<edifData.length; k++) {
+        if(String(edifData[k][0]) === String(idEdificio)) {
+          // La columna 6 (índice 5) en EDIFICIOS es la carpeta "aId" (Assets Folder)
+          idCarpetaPadreEdificio = edifData[k][5]; 
+          folderCache[idEdificio] = idCarpetaPadreEdificio;
+          break;
+        }
+      }
+    }
+
+    // 5. CREAR CARPETA INDIVIDUAL PARA EL ACTIVO
+    // Esto hace que cada activo tenga su propio espacio, igual que al crear manual.
+    let idCarpetaActivo = "";
+    if (idCarpetaPadreEdificio) {
+      try {
+        // Usamos tu función helper existente 'crearCarpeta'
+        // DriveApp puede ser lento, así que esto añade tiempo de proceso.
+        idCarpetaActivo = crearCarpeta(nombreActivo, idCarpetaPadreEdificio);
+      } catch (e) {
+        // Si falla Drive (raro), guardamos el error pero creamos el activo sin carpeta para no perder datos
+        errores.push(`Fila ${index + 1}: Activo creado pero falló al crear carpeta Drive (${e.message}).`);
+      }
+    } else {
+       errores.push(`Fila ${index + 1}: No se encontró carpeta del edificio. Activo creado sin carpeta.`);
+    }
+
+    // 6. Añadir a la lista
+    nuevosActivos.push([
+      Utilities.getUuid(),
+      idEdificio,
+      tipo,
+      nombreActivo,
+      marca,
+      new Date(),
+      idCarpetaActivo // ¡Aquí va la ID nueva específica para este activo!
+    ]);
   }
-  return { success: false, error: "Edificio no encontrado" };
+
+  // 7. Volcar a la hoja de cálculo
+  if (nuevosActivos.length > 0) {
+    sheetActivos.getRange(
+      sheetActivos.getLastRow() + 1, 
+      1, 
+      nuevosActivos.length, 
+      nuevosActivos[0].length
+    ).setValues(nuevosActivos);
+  }
+
+  return { 
+    success: true, 
+    procesados: nuevosActivos.length, 
+    errores: errores 
+  };
 }
