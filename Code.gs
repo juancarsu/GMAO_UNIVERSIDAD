@@ -154,6 +154,7 @@ function crearObra(d) {
   const idCarpetaObra = crearCarpeta(nombreCarpeta, idCarpetaEdificio);
   const newId = Utilities.getUuid();
   ss.getSheetByName('OBRAS').appendRow([newId, d.idEdificio, d.nombre, d.descripcion, textoAFecha(d.fechaInicio), null, "EN CURSO", idCarpetaObra]);
+  registrarLog("CREAR OBRA", "Nombre: " + d.nombre + " | Edificio ID: " + d.idEdificio);
   return { success: true, newId: newId };
 }
 
@@ -165,7 +166,9 @@ function finalizarObra(idObra, fechaFin) {
   const fechaObj = textoAFecha(fechaFin);
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(idObra)) {
-      sheet.getRange(i+1, 6).setValue(fechaObj); sheet.getRange(i+1, 7).setValue("FINALIZADA"); return { success: true };
+      sheet.getRange(i+1, 6).setValue(fechaObj); sheet.getRange(i+1, 7).setValue("FINALIZADA"); 
+      registrarLog("FINALIZAR OBRA", "ID Obra: " + idObra + " | Fecha Fin: " + fechaFin);
+      return { success: true };
     }
   }
   return { success: false, error: "Obra no encontrada" };
@@ -177,7 +180,9 @@ function eliminarObra(id) {
   const sheet = ss.getSheetByName('OBRAS');
   const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; }
+    if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); 
+    registrarLog("ELIMINAR OBRA", "ID Obra eliminada: " + id);
+    return { success: true }; }
   }
   return { success: false, error: "Obra no encontrada" };
 }
@@ -338,6 +343,7 @@ function crearRevision(d) {
         sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventIdLoop]); contador++;
       }
     }
+    registrarLog("CREAR REVISION", "Activo: " + d.idActivo + " | Tipo: " + d.tipo);
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
@@ -359,6 +365,7 @@ function updateRevision(d) {
             break;
         } 
     } 
+    registrarLog("EDITAR REVISION", "ID Revisión: " + d.idPlan + " | Nueva Fecha: " + d.fechaProx);
     return { success: true }; 
 }
 
@@ -375,9 +382,11 @@ function completarRevision(id) {
       
       // Opcional: Si tenía evento de calendario, se podría borrar o actualizar, 
       // pero por ahora lo dejamos así para mantener el histórico.
+      registrarLog("COMPLETAR REVISION", "Revisión finalizada ID: " + id);
       return { success: true };
     }
   }
+  
   return { success: false, error: "Revisión no encontrada" };
 }
 
@@ -387,9 +396,12 @@ function eliminarRevision(idPlan) {
   for(let i=1; i<data.length; i++){ 
     if(String(data[i][0]) === String(idPlan)) { 
        let currentEventId = (data[i].length > 7) ? data[i][7] : null; if (currentEventId) { gestionarEventoCalendario('BORRAR', {}, currentEventId); }
-       sheet.deleteRow(i+1); return { success: true }; 
+       sheet.deleteRow(i+1); 
+       registrarLog("ELIMINAR REVISION", "ID Eliminado: " + idPlan);
+       return { success: true }; 
     } 
   } 
+  
   return { success: false, error: "Plan no encontrado" }; 
 }
 
@@ -414,9 +426,9 @@ function obtenerContratosGlobal() {
   }
   return result.sort((a, b) => { if (a.fin === "-") return 1; if (b.fin === "-") return -1; return a.fin.localeCompare(b.fin); });
 }
-function crearContrato(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, textoAFecha(d.fechaIni), textoAFecha(d.fechaFin), d.estado]); return { success: true }; }
-function updateContrato(datos) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(datos.id)) { sheet.getRange(i+1, 4).setValue(datos.proveedor); sheet.getRange(i+1, 5).setValue(datos.ref); sheet.getRange(i+1, 6).setValue(textoAFecha(datos.fechaIni)); sheet.getRange(i+1, 7).setValue(textoAFecha(datos.fechaFin)); sheet.getRange(i+1, 8).setValue(datos.estado); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
-function eliminarContrato(id) { verificarPermiso(['DELETE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
+function crearContrato(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, textoAFecha(d.fechaIni), textoAFecha(d.fechaFin), d.estado]); registrarLog("CREAR CONTRATO", "Proveedor: " + d.proveedor + " | Ref: " + d.ref); return { success: true }; }
+function updateContrato(datos) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(datos.id)) { sheet.getRange(i+1, 4).setValue(datos.proveedor); sheet.getRange(i+1, 5).setValue(datos.ref); sheet.getRange(i+1, 6).setValue(textoAFecha(datos.fechaIni)); sheet.getRange(i+1, 7).setValue(textoAFecha(datos.fechaFin)); sheet.getRange(i+1, 8).setValue(datos.estado); registrarLog("EDITAR CONTRATO", "Proveedor: " + datos.proveedor + " | ID: " + datos.id); return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
+function eliminarContrato(id) { verificarPermiso(['DELETE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); const data = sheet.getDataRange().getValues(); for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); registrarLog("ELIMINAR_CONTRATO", "ID Contrato eliminado: " + id);;return { success: true }; } } return { success: false, error: "Contrato no encontrado" }; }
 
 // ==========================================
 // 9. DASHBOARD Y CRUD GENERAL (V5)
@@ -463,11 +475,57 @@ function getDatosDashboard() {
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
 
-function crearCampus(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); return {success:true}; }
-function crearEdificio(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const cData = getSheetData('CAMPUS'); let pId; for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4]; const fId = crearCarpeta(d.nombre, pId); const aId = crearCarpeta("Activos", fId); ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId]); return {success:true}; }
+function crearCampus(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); registrarLog("CREAR CAMPUS", "Nombre: " + d.nombre); return {success:true}; }
+
+function crearEdificio(d) { 
+  verificarPermiso(['WRITE']); 
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const cData = getSheetData('CAMPUS'); 
+  let pId; 
+  for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4]; 
+  
+  const fId = crearCarpeta(d.nombre, pId); 
+  const aId = crearCarpeta("Activos", fId); 
+  
+  // Añadimos d.lat y d.lng al final
+  ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId, d.lat, d.lng]); 
+  
+  registrarLog("CREAR EDIFICIO", "Nombre: " + d.nombre); // Auditoría
+  return {success:true}; 
+}
+
 function crearActivo(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const eData = getSheetData('EDIFICIOS'); let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5]; const fId = crearCarpeta(d.nombre, pId); const id = Utilities.getUuid(); const cats = getSheetData('CAT_INSTALACIONES'); let nombreTipo = d.tipo; for(let i=1; i<cats.length; i++) { if(String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; } } ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]); return {success:true}; }
+
 function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
-function getTableData(tipo) { const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); if (tipo === 'CAMPUS') { const data = getSheetData('CAMPUS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1], provincia: r[2], direccion: r[3] })); } if (tipo === 'EDIFICIOS') { const data = getSheetData('EDIFICIOS'); const dataC = getSheetData('CAMPUS'); const mapCampus = {}; dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]); return data.slice(1).map(r => ({ id: r[0], campus: mapCampus[r[1]] || '-', nombre: r[2], contacto: r[3] })); } return []; }
+
+function getTableData(tipo) { 
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  if (tipo === 'CAMPUS') { 
+    const data = getSheetData('CAMPUS'); 
+    return data.slice(1).map(r => ({ 
+      id: r[0], 
+      nombre: r[1], 
+      provincia: r[2], 
+      direccion: r[3] })); 
+  } 
+  if (tipo === 'EDIFICIOS') { 
+    const data = getSheetData('EDIFICIOS'); 
+    const dataC = getSheetData('CAMPUS'); 
+    const mapCampus = {}; 
+    dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]); 
+    // Ahora leemos también col 6 (LAT) y 7 (LNG) -> índices del array
+    return data.slice(1).map(r => ({ 
+      id: r[0], 
+      campus: mapCampus[r[1]] || '-', 
+      nombre: r[2], 
+      contacto: r[3],
+      lat: r[6], // Nueva columna
+      lng: r[7]  // Nueva columna
+    })); 
+  } 
+  return []; 
+}
+
 function buscarGlobal(texto) { if (!texto || texto.length < 3) return []; texto = texto.toLowerCase(); const resultados = []; const activos = getSheetData('ACTIVOS'); for(let i=1; i<activos.length; i++) { const r = activos[i]; if (String(r[3]).toLowerCase().includes(texto) || String(r[2]).toLowerCase().includes(texto) || String(r[4]).toLowerCase().includes(texto)) { resultados.push({ id: r[0], tipo: 'ACTIVO', texto: r[3], subtexto: r[2] + (r[4] ? " - " + r[4] : "") }); } } const edificios = getSheetData('EDIFICIOS'); for(let i=1; i<edificios.length; i++) { const r = edificios[i]; if (String(r[2]).toLowerCase().includes(texto)) { resultados.push({ id: r[0], tipo: 'EDIFICIO', texto: r[2], subtexto: 'Edificio' }); } } return resultados.slice(0, 10); }
 
 // ==========================================
@@ -589,25 +647,41 @@ function updateCampus(d) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CAMPUS'); const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(d.id)) {
-      sheet.getRange(i+1, 2).setValue(d.nombre); sheet.getRange(i+1, 3).setValue(d.provincia); sheet.getRange(i+1, 4).setValue(d.direccion); return { success: true };
+      sheet.getRange(i+1, 2).setValue(d.nombre); sheet.getRange(i+1, 3).setValue(d.provincia); sheet.getRange(i+1, 4).setValue(d.direccion); 
+      registrarLog("EDITAR CAMPUS", "Nombre: " + d.nombre + " | ID: " + d.id);
+      return { success: true };
     }
   }
+  
   return { success: false, error: "No encontrado" };
 }
 
 function eliminarCampus(id) {
   verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CAMPUS'); const data = sheet.getDataRange().getValues();
-  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } }
+  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); 
+  registrarLog("ELIMINAR CAMPUS", "ID Campus eliminado: " + id);  
+  return { success: true }; } }
   return { success: false, error: "No encontrado" };
 }
 
 function updateEdificio(d) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('EDIFICIOS'); const data = sheet.getDataRange().getValues();
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const sheet = ss.getSheetByName('EDIFICIOS'); 
+  const data = sheet.getDataRange().getValues();
+  
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(d.id)) {
-      sheet.getRange(i+1, 2).setValue(d.idCampus); sheet.getRange(i+1, 3).setValue(d.nombre); sheet.getRange(i+1, 4).setValue(d.contacto); return { success: true };
+      sheet.getRange(i+1, 2).setValue(d.idCampus); 
+      sheet.getRange(i+1, 3).setValue(d.nombre); 
+      sheet.getRange(i+1, 4).setValue(d.contacto); 
+      // Guardamos Lat/Lng en columnas 7 y 8
+      sheet.getRange(i+1, 7).setValue(d.lat); 
+      sheet.getRange(i+1, 8).setValue(d.lng);
+
+      registrarLog("EDITAR EDIFICIO", "Nombre: " + d.nombre + " | ID: " + d.id);
+      return { success: true };
     }
   }
   return { success: false, error: "No encontrado" };
@@ -616,7 +690,9 @@ function updateEdificio(d) {
 function eliminarEdificio(id) {
   verificarPermiso(['DELETE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('EDIFICIOS'); const data = sheet.getDataRange().getValues();
-  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); return { success: true }; } }
+  for(let i=1; i<data.length; i++){ if(String(data[i][0]) === String(id)) { sheet.deleteRow(i+1); 
+  registrarLog("ELIMINAR_EDIFICIO", "ID Edificio eliminado: " + id);
+  return { success: true }; } }
   return { success: false, error: "No encontrado" };
 }
 
@@ -720,10 +796,57 @@ function procesarCargaMasiva(filas) {
       nuevosActivos[0].length
     ).setValues(nuevosActivos);
   }
-
+  registrarLog("IMPORTACIÓN MASIVA", "Se importaron " + nuevosActivos.length + " activos.");
   return { 
     success: true, 
     procesados: nuevosActivos.length, 
     errores: errores 
   };
+}
+
+// ==========================================
+// 18. SISTEMA DE AUDITORÍA (LOGS)
+// ==========================================
+
+// Función principal para registrar acciones
+function registrarLog(accion, detalles) {
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    let sheet = ss.getSheetByName('LOGS');
+    
+    // Si no existe la hoja, la crea y la oculta para que no moleste
+    if (!sheet) {
+      sheet = ss.insertSheet('LOGS');
+      sheet.appendRow(['FECHA', 'USUARIO', 'ACCIÓN', 'DETALLES']);
+      sheet.setColumnWidth(1, 150); // Fecha
+      sheet.setColumnWidth(2, 200); // Usuario
+      sheet.setColumnWidth(3, 150); // Acción
+      sheet.setColumnWidth(4, 400); // Detalles
+      sheet.hideSheet(); // Ocultar visualmente en el Spreadsheet
+    }
+    
+    const usuario = Session.getActiveUser().getEmail();
+    const fecha = new Date();
+    
+    // Guardamos el log
+    sheet.appendRow([fecha, usuario, accion, detalles]);
+    
+  } catch (e) {
+    console.error("Error al registrar log: " + e.toString());
+  }
+}
+
+// Función para que el Admin vea los logs en la App
+function getLogsAuditoria() {
+  verificarPermiso(['ADMIN_ONLY']); // ¡Solo Admins!
+  const data = getSheetData('LOGS');
+  // Devolvemos los últimos 100 registros (invertimos el orden para ver los nuevos primero)
+  const logs = data.slice(1).reverse().slice(0, 100).map(r => {
+    let fechaStr = "-";
+    if (r[0] instanceof Date) {
+      fechaStr = Utilities.formatDate(r[0], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm:ss");
+    }
+    return { fecha: fechaStr, usuario: r[1], accion: r[2], detalles: r[3] };
+  });
+  return logs;
 }
