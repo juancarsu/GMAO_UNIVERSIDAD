@@ -14,6 +14,7 @@
   let currentUser = { rol: 'CONSULTA', nombre: 'Cargando...' };
   let mapInstance = null; // Para guardar el mapa
   let markersLayer = null;
+  let changelogModal = null;
   window.currentBuildingAssetsList = [];
 
   // Instancias de Modales
@@ -948,5 +949,109 @@ function renderMarkers(data = null) {
         mapInstance.fitBounds(newMarkersGroup.getBounds().pad(0.2));
       } catch(e) { console.log("Zoom auto ajustado"); }
     }
+  }
+  // ==========================================
+  // GESTIÓN DE NOVEDADES (CHANGELOG)
+  // ==========================================
+  let newVersionModal = null; // Variable global nueva
+
+  function openChangelogModal(e) {
+    if(e) e.preventDefault();
+    if(!changelogModal) changelogModal = new bootstrap.Modal(document.getElementById('changelogModal'));
+    
+    // LOGICA AÑADIDA: Mostrar botón solo si es ADMIN
+    const btnNew = document.getElementById('btnNewVersion');
+    if (currentUser && currentUser.rol === 'ADMIN') {
+      btnNew.classList.remove('d-none');
+    } else {
+      btnNew.classList.add('d-none');
+    }
+    
+    const container = document.getElementById('changelogContainer');
+    container.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    
+    changelogModal.show();
+    
+    google.script.run.withSuccessHandler(data => {
+      if(!data || data.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted fst-italic">No hay noticias recientes.</div>';
+        return;
+      }
+      
+      let html = '';
+      data.forEach(item => {
+        let badgeHtml = '';
+        let dotColor = '#6b7280';
+        const tipo = String(item.tipo).toUpperCase();
+        
+        if(tipo.includes('NUEVO') || tipo.includes('LANZAMIENTO')) {
+          badgeHtml = '<span class="badge badge-new ms-2">NUEVO</span>';
+          dotColor = '#10b981';
+        } else if(tipo.includes('CORRECC') || tipo.includes('BUG')) {
+          badgeHtml = '<span class="badge badge-fix ms-2">FIX</span>';
+          dotColor = '#ef4444';
+        } else {
+          badgeHtml = '<span class="badge badge-improvement ms-2">MEJORA</span>';
+          dotColor = '#3b82f6';
+        }
+
+        html += `
+          <div class="timeline-item">
+            <div class="timeline-dot" style="border-color: ${dotColor};"></div>
+            <div class="timeline-date">${item.fecha} <span class="text-muted mx-1">•</span> <small class="fw-bold">${item.version}</small></div>
+            <div class="timeline-title">${item.titulo} ${badgeHtml}</div>
+            <div class="timeline-desc">${item.descripcion}</div>
+          </div>
+        `;
+      });
+      container.innerHTML = html;
+    }).getNovedadesApp();
+  }
+
+  // --- FUNCIONES NUEVAS PARA AÑADIR ---
+
+  function openNewVersionModal() {
+    // Cerramos el modal de listado para que no se solapen
+    if(changelogModal) changelogModal.hide();
+    
+    if(!newVersionModal) newVersionModal = new bootstrap.Modal(document.getElementById('newVersionModal'));
+    
+    // Limpiar campos
+    document.getElementById('nvVersion').value = '';
+    document.getElementById('nvTitulo').value = '';
+    document.getElementById('nvDesc').value = '';
+    document.getElementById('nvTipo').value = 'MEJORA';
+    
+    newVersionModal.show();
+  }
+
+  function submitNewVersion() {
+    const ver = document.getElementById('nvVersion').value;
+    const tit = document.getElementById('nvTitulo').value;
+    const desc = document.getElementById('nvDesc').value;
+    const tipo = document.getElementById('nvTipo').value;
+    
+    if(!ver || !tit || !desc) return notificarError("Por favor completa todos los campos.");
+    
+    setBtnLoading('btnNvSubmit', true);
+    
+    const datos = {
+      version: ver,
+      titulo: tit,
+      descripcion: desc,
+      tipo: tipo
+    };
+    
+    google.script.run.withSuccessHandler(res => {
+      setBtnLoading('btnNvSubmit', false);
+      if(res.success) {
+        if(newVersionModal) newVersionModal.hide();
+        notificarExito("Versión publicada correctamente");
+        // Volvemos a abrir el listado para ver la novedad
+        setTimeout(() => openChangelogModal(), 500);
+      } else {
+        notificarError(res.error);
+      }
+    }).crearNovedad(datos);
   }
 </script>
