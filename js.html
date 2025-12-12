@@ -29,6 +29,7 @@
     toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
     didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
   });
+  
 
   function notificarExito(mensaje) {
     Toast.fire({ icon: 'success', title: mensaje || '¡Operación exitosa!' });
@@ -77,6 +78,14 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
           applySecurityUI();
           loadDashboard(); 
       }).getMyRole();
+
+      if (u.rol === 'ADMIN') {
+        // Cargar en segundo plano para ver si hay notificaciones
+        google.script.run.withSuccessHandler(list => {
+            const nuevos = list.filter(i => i.estado === 'NUEVO').length;
+            updateBadgeFeedback(nuevos);
+        }).getFeedbackList();
+      }
 
       initFilters(); 
       
@@ -134,6 +143,8 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
         // ... otros ocultamientos ...
         const btnLogs = document.getElementById('menu-logs');
         if(btnLogs) btnLogs.classList.add('d-none');
+        const btnFeed = document.getElementById('menu-feedback');
+        if(btnFeed) btnFeed.classList.add('d-none');
       }
   }
 
@@ -173,6 +184,7 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
     if(viewId==='usuarios') loadUserList(); 
     if(viewId==='incidencias') loadIncidencias(); 
     if(viewId==='logs') loadLogsList();
+    if(viewId==='feedback') loadFeedbackList();
   }
 
   function loadLogsList() {
@@ -260,37 +272,43 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
   }
 
   function renderGlobalMaintTable(data) {
-      const tbody = document.getElementById('tableGlobalMaint');
-      if (!data || data.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No hay revisiones pendientes.</td></tr>';
-          return;
-      }
-      let html = '';
-      data.forEach((r, index) => {
-          let dotClass = 'bg-secondary';
-          if (r.color === 'rojo') dotClass = 'bg-rojo';
-          if (r.color === 'amarillo') dotClass = 'bg-amarillo';
-          if (r.color === 'verde') dotClass = 'bg-verde';
-          
-          let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
-          let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
+    const tbody = document.getElementById('tableGlobalMaint');
+    if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No hay revisiones pendientes.</td></tr>';
+        return;
+    }
+    let html = '';
+    data.forEach((r, index) => {
+        let dotClass = 'bg-secondary';
+        if (r.color === 'rojo') dotClass = 'bg-rojo';
+        if (r.color === 'amarillo') dotClass = 'bg-amarillo';
+        if (r.color === 'verde') dotClass = 'bg-verde';
+        
+        let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
+        let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
 
-          html += `<tr>
-              <td class="text-center ps-4 text-muted small">${index + 1}</td>
-              <td><div class="fw-bold">${r.edificio}</div><small class="text-muted">Campus ${r.campusId || '-'}</small></td>
-              <td>${r.activo}</td>
-              <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
-              <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
-              <td class="text-end pe-4">
-                  <div class="btn-group">
-                      <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
-                      <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
-                  </div>
-              </td>
-          </tr>`;
-      });
-      tbody.innerHTML = html;
-      refreshSecurityIcons();
+        // DEBUG: Si r.campusNombre viene vacío, pondrá "Sin datos"
+        const nombreCampusVisual = r.campusNombre || 'Sin datos';
+
+        html += `<tr>
+            <td class="text-center ps-4 text-muted small">${index + 1}</td>
+            <td>
+                <div class="fw-bold">${r.edificio}</div>
+                <small class="text-muted"><i class="bi bi-bank me-1"></i>${nombreCampusVisual}</small>
+            </td>
+            <td>${r.activo}</td>
+            <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
+            <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
+            <td class="text-end pe-4">
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    });
+    tbody.innerHTML = html;
+    refreshSecurityIcons();
   }
 
   function marcarHecho(idRevision) {
@@ -1071,5 +1089,92 @@ function renderMarkers(data = null) {
     // Alternar la clase .active definida en tu CSS
     sidebar.classList.toggle('active');
     overlay.classList.toggle('active');
+  }
+
+  // ==========================================
+// GESTIÓN DE FEEDBACK (ADMIN)
+// ==========================================
+
+function loadFeedbackList() {
+  const container = document.getElementById('feedbackContainer');
+  container.innerHTML = '<div class="col-12 text-center py-5"><div class="spinner-border text-primary"></div> Cargando buzón...</div>';
+  
+  google.script.run.withSuccessHandler(list => {
+    if(!list || list.length === 0) {
+      container.innerHTML = '<div class="col-12 text-center text-muted fst-italic py-5"><i class="bi bi-mailbox fs-1 d-block mb-3"></i>El buzón está vacío</div>';
+      updateBadgeFeedback(0);
+      return;
+    }
+    
+    let html = '';
+    let unreadCount = 0;
+    
+    list.forEach(item => {
+      if(item.estado === 'NUEVO') unreadCount++;
+      
+      // Estilos según estado
+      let cardBorder = item.estado === 'NUEVO' ? 'border-primary border-2' : 'border-light';
+      let bgHeader = item.estado === 'NUEVO' ? 'bg-primary text-white' : 'bg-light text-muted';
+      let iconTipo = item.tipo === 'Error' ? '<i class="bi bi-bug-fill"></i>' : '<i class="bi bi-lightbulb-fill"></i>';
+      
+      // Botones de acción
+      let buttons = '';
+      if(item.estado !== 'ARCHIVADO') {
+         buttons += `<button class="btn btn-sm btn-outline-secondary me-2" onclick="setFeedbackState('${item.id}', 'ARCHIVADO')" title="Marcar leído/archivar"><i class="bi bi-check2-all"></i> Archivar</button>`;
+      }
+      buttons += `<button class="btn btn-sm btn-outline-danger" onclick="setFeedbackState('${item.id}', 'DELETE')" title="Eliminar"><i class="bi bi-trash"></i></button>`;
+
+      html += `
+      <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card h-100 shadow-sm ${cardBorder}">
+          <div class="card-header ${bgHeader} d-flex justify-content-between align-items-center">
+             <span class="fw-bold">${iconTipo} ${item.tipo}</span>
+             <small style="font-size:0.75rem">${item.fecha}</small>
+          </div>
+          <div class="card-body">
+            <h6 class="card-subtitle mb-2 text-primary small">${item.usuario}</h6>
+            <p class="card-text bg-light p-2 rounded fst-italic">"${item.mensaje}"</p>
+            <div class="mt-3 text-end">
+               ${buttons}
+            </div>
+          </div>
+          <div class="card-footer bg-white border-0 text-muted small">
+            Estado: <strong>${item.estado}</strong>
+          </div>
+        </div>
+      </div>`;
+    });
+    
+    container.innerHTML = html;
+    updateBadgeFeedback(unreadCount);
+    
+  }).getFeedbackList();
+}
+
+  function setFeedbackState(id, estado) {
+    // Efecto visual rápido
+    const btn = event.target; 
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    google.script.run.withSuccessHandler(res => {
+      if(res.success) {
+        loadFeedbackList(); // Recargamos para ver cambios y actualizar contador
+        notificarExito(estado === 'DELETE' ? "Mensaje eliminado" : "Mensaje archivado");
+      } else {
+        notificarError(res.error);
+      }
+    }).updateFeedbackStatus(id, estado);
+  }
+
+  function updateBadgeFeedback(count) {
+    const badge = document.getElementById('badge-feedback');
+    if(!badge) return;
+    if(count > 0) {
+      badge.innerText = count;
+      badge.classList.remove('d-none');
+    } else {
+      badge.classList.add('d-none');
+    }
   }
 </script>
