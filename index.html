@@ -27,6 +27,14 @@
 </head>
 <body>
 
+  <div id="app-loader" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">
+    <div class="text-center">
+      <div class="spinner-border text-danger mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+      <h2 class="fw-bold" style="color: #1f2937; letter-spacing: -1px;">GMAO Servicio de Obras y Mantenimiento</h2>
+      <p class="text-muted small">Cargando entorno...</p>
+    </div>
+  </div>
+
   <aside id="sidebar">
     <div class="sidebar-header"><i class="bi bi-building-check me-2"></i> GMAO Universidad</div>
     <div class="px-3 mb-3">
@@ -62,8 +70,16 @@
         <div class="stat-card" onclick="navTo('mantenimiento', null, null)"><div class="stat-icon bg-yellow-light"><i class="bi bi-clock"></i></div><div class="stat-value" id="d-pendientes">--</div><div class="stat-label">Pendientes</div></div>
         <div class="stat-card" onclick="navTo('incidencias', null, null)"><div class="stat-icon bg-blue-light"><i class="bi bi-cone-striped"></i></div><div class="stat-value" id="d-incidencias">--</div><div class="stat-label">Incidencias</div></div>
         <div class="stat-card" onclick="navTo('contratos', null, null)"><div class="stat-icon bg-green-light"><i class="bi bi-file-earmark-check"></i></div><div class="stat-value" id="d-contratos">--</div><div class="stat-label">Contratos</div></div>
-        <div class="stat-card" onclick="navTo('campus', null, null)"><div class="stat-icon bg-light text-secondary"><i class="bi bi-bank"></i></div><div class="stat-value" id="d-campus">--</div><div class="stat-label">Campus</div></div>
-      </div>
+        <div class="stat-card" onclick="navTo('edificios', null, null)">
+        <div class="stat-icon" style="background-color: #e0e7ff; color: #4338ca;">
+          <i class="bi bi-building"></i>
+        </div>
+          <div class="stat-value" id="d-edificios">--</div>
+          <div class="stat-label">Edificios</div>
+        </div>
+        <div class="stat-card" onclick="navTo('campus', null, null)">
+          <div class="stat-icon bg-light text-secondary"><i class="bi bi-bank"></i></div><div class="stat-value" id="d-campus">--</div><div class="stat-label">Campus</div></div>
+        </div>
 
       <div class="mb-4">
          <h5 class="mb-3">Calendario de Revisiones</h5>
