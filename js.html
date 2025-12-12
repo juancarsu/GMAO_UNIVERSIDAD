@@ -12,6 +12,8 @@
   let currentBuildingId = null;
   let lastView = 'activos'; 
   let currentUser = { rol: 'CONSULTA', nombre: 'Cargando...' };
+  let mapInstance = null; // Para guardar el mapa
+  let markersLayer = null;
   window.currentBuildingAssetsList = [];
 
   // Instancias de Modales
@@ -22,19 +24,6 @@
   // ==========================================
   // 2. HELPERS VISUALES (SWEETALERT2)
   // ==========================================
-
-  // ==========================================
-  // GESTIÓN MENÚ MÓVIL
-  // ==========================================
-  function toggleSidebar() {
-    const sb = document.getElementById('sidebar');
-    const ov = document.getElementById('sidebarOverlay');
-    
-    // Si tiene la clase 'active', se la quitamos, si no, se la ponemos
-    sb.classList.toggle('active');
-    ov.classList.toggle('active');
-  }
-
   const Toast = Swal.mixin({
     toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
     didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
@@ -139,6 +128,12 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
           const btnUser = document.querySelector('button[onclick="openUserModal()"]'); if(btnUser) btnUser.classList.add('d-none');
           const btnConf = document.querySelector('button[onclick="openConfigModal()"]'); if(btnConf) btnConf.classList.add('d-none');
       }
+
+      if (currentUser.rol !== 'ADMIN') {
+        // ... otros ocultamientos ...
+        const btnLogs = document.getElementById('menu-logs');
+        if(btnLogs) btnLogs.classList.add('d-none');
+      }
   }
 
   function refreshSecurityIcons() {
@@ -170,13 +165,35 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
     if(viewId==='config') loadConfigList(); 
     if(viewId==='usuarios') loadUserList(); 
     if(viewId==='incidencias') loadIncidencias(); 
+    if(viewId==='logs') loadLogsList();
+  }
 
-    if (window.innerWidth <= 768) {
-       const sb = document.getElementById('sidebar');
-       if(sb.classList.contains('active')) {
-           toggleSidebar(); // Cierra el menú
-       }
+  function loadLogsList() {
+  const tbody = document.getElementById('tableLogsBody');
+  tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-secondary"></div> Cargando auditoría...</td></tr>';
+
+  google.script.run.withSuccessHandler(logs => {
+    if (!logs || logs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-5">El registro está vacío.</td></tr>';
+      return;
     }
+    let html = '';
+    logs.forEach(r => {
+      // Colores según acción para que sea visual
+      let badgeClass = 'bg-light text-dark border';
+      if (r.accion.includes('ELIMINAR')) badgeClass = 'bg-danger text-white';
+      if (r.accion.includes('GUARDAR') || r.accion.includes('CREAR')) badgeClass = 'bg-success text-white';
+      if (r.accion.includes('IMPORTACIÓN')) badgeClass = 'bg-primary text-white';
+
+      html += `<tr>
+        <td class="ps-4 small text-muted font-monospace">${r.fecha}</td>
+        <td class="fw-bold text-primary">${r.usuario}</td>
+        <td><span class="badge ${badgeClass}">${r.accion}</span></td>
+        <td class="small text-muted text-truncate" style="max-width: 400px;" title="${r.detalles}">${r.detalles}</td>
+      </tr>`;
+    });
+      tbody.innerHTML = html;
+    }).getLogsAuditoria();
   }
 
   // ==========================================
@@ -468,40 +485,183 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
   function submitCampus() { const id = document.getElementById('campId').value; const nombre = document.getElementById('campNombre').value; const prov = document.getElementById('campProv').value; const dir = document.getElementById('campDir').value; if(!nombre) return notificarError("Nombre obligatorio"); setBtnLoading('btnCampusSubmit', true); const finish = (res) => { setBtnLoading('btnCampusSubmit', false); if(res.success) { campusModal.hide(); notificarExito("Campus guardado"); loadCampusList(); } else { notificarError(res.error); } }; if(id) { google.script.run.withSuccessHandler(finish).updateCampus({ id:id, nombre:nombre, provincia:prov, direccion:dir }); } else { google.script.run.withSuccessHandler(finish).crearCampus({ nombre:nombre, provincia:prov, direccion:dir }); } } 
   function deleteCampus(id) { confirmarAccion("¿Eliminar Campus?", "Se borrará todo el contenido asociado.", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Campus eliminado"); loadCampusList(); } else notificarError(res.error); }).eliminarCampus(id); }); }
   function loadEdificiosList() { const sel = document.getElementById('filterCampusEdificios'); if(sel && sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = '<option value="">- Todos los Campus -</option>'; list.forEach(c => html += `<option value="${c.nombre}">${c.nombre}</option>`); sel.innerHTML = html; }).getListaCampus(); } const tbody = document.getElementById('tableEdificiosBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando edificios...</td></tr>'; google.script.run.withSuccessHandler(d => { allEdificiosData = d; renderEdificiosTable(d); }).getTableData('EDIFICIOS'); }
-  function filterEdificiosList() { const campusVal = document.getElementById('filterCampusEdificios').value; const searchVal = document.getElementById('searchEdificios').value.toLowerCase(); const filtered = allEdificiosData.filter(r => { const matchCampus = (campusVal === "") || (r.campus === campusVal); const matchText = r.nombre.toLowerCase().includes(searchVal) || String(r.contacto).toLowerCase().includes(searchVal); return matchCampus && matchText; }); renderEdificiosTable(filtered); }
-  function renderEdificiosTable(data) { const tbody = document.getElementById('tableEdificiosBody'); if(!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-5">No hay coincidencias</td></tr>'; return; } let h = ''; data.forEach(r => { h += `<tr><td class="ps-4 fw-bold"><a href="#" class="text-decoration-none" onclick="openBuildingDetail('${r.id}'); return false;">${r.nombre}</a></td><td><span class="badge bg-light text-dark border">${r.campus}</span></td><td>${r.contacto}</td><td class="text-end pe-4"><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')" title="Ver Ficha"><i class="bi bi-eye"></i></button><button class="btn btn-sm btn-light border text-secondary" onclick="openEdificioModal('${r.id}', '${r.nombre}', '${r.campus}', '${r.contacto}')" title="Editar"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = h; refreshSecurityIcons(); }
-  function openEdificioModal(id, nombre, nombreCampus, contacto) { if(!edificioModal) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal')); const sel = document.getElementById('edifCampus'); google.script.run.withSuccessHandler(list => { let html = '<option value="">- Seleccione Campus -</option>'; list.forEach(c => { let isSel = (nombreCampus && c.nombre === nombreCampus) ? 'selected' : ''; html += `<option value="${c.id}" ${isSel}>${c.nombre}</option>`; }); sel.innerHTML = html; }).getListaCampus(); if(id) { document.getElementById('edificioModalTitle').innerText = 'Editar Edificio'; document.getElementById('edifId').value = id; document.getElementById('edifNombre').value = nombre; document.getElementById('edifContacto').value = contacto; } else { document.getElementById('edificioModalTitle').innerText = 'Nuevo Edificio'; document.getElementById('edifId').value = ''; document.getElementById('edifNombre').value = ''; document.getElementById('edifCampus').value = ''; document.getElementById('edifContacto').value = ''; } edificioModal.show(); }
   
-  function submitEdificio() {
-    const id = document.getElementById('edifId').value;
-    const nombre = document.getElementById('edifNombre').value;
-    const idCampus = document.getElementById('edifCampus').value;
-    const contacto = document.getElementById('edifContacto').value;
+  function filterEdificiosList() {
+    const campusVal = document.getElementById('filterCampusEdificios').value;
+    const searchVal = document.getElementById('searchEdificios').value.toLowerCase();
+    
+    // Filtramos sobre todos los datos
+    const filtered = allEdificiosData.filter(r => {
+      // Comparación segura (evitamos errores si r.campus es null)
+      const edificioCampus = r.campus ? String(r.campus) : "";
+      const matchCampus = (campusVal === "") || (edificioCampus === campusVal);
+      
+      const matchText = r.nombre.toLowerCase().includes(searchVal) || 
+                        String(r.contacto).toLowerCase().includes(searchVal);
+                        
+      return matchCampus && matchText;
+    });
+    
+    // 1. Actualizamos la Lista
+    renderEdificiosTable(filtered);
+    
+    // 2. Actualizamos el Mapa (¡Aquí estaba la clave!)
+    // Solo si el mapa está activo o visible, para ahorrar recursos
+    if (mapInstance) {
+        renderMarkers(filtered);
+    }
+  }
+  
+  function renderEdificiosTable(data) {
+  const tbody = document.getElementById('tableEdificiosBody');
+  
+  if(!data || data.length === 0) { 
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-5">No hay coincidencias</td></tr>'; 
+    return; 
+  } 
+  
+  let h = ''; 
+  data.forEach(r => { 
+    // Aseguramos que no pasamos "undefined" si no hay coordenadas
+    const lat = r.lat || '';
+    const lng = r.lng || '';
 
-    if(!nombre || !idCampus) return notificarError("Nombre y Campus obligatorios");
+    h += `<tr>
+      <td class="ps-4 fw-bold">
+        <a href="#" class="text-decoration-none" onclick="openBuildingDetail('${r.id}'); return false;">${r.nombre}</a>
+      </td>
+      <td><span class="badge bg-light text-dark border">${r.campus}</span></td>
+      <td>${r.contacto}</td>
+      <td class="text-end pe-4">
+        <div class="btn-group">
+          <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')" title="Ver Ficha"><i class="bi bi-eye"></i></button>
+          
+          <button class="btn btn-sm btn-light border text-secondary" 
+             onclick="openEdificioModal('${r.id}', '${r.nombre}', '${r.campus}', '${r.contacto}', '${lat}', '${lng}')" 
+             title="Editar">
+             <i class="bi bi-pencil"></i>
+          </button>
+          
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
+        </div>
+      </td>
+    </tr>`; 
+  }); 
+  
+  tbody.innerHTML = h; 
+  refreshSecurityIcons(); 
+}
+  
+  function openEdificioModal(id, nombre, nombreCampus, contacto, lat, lng) {
+    if(!edificioModal) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal'));
+    
+    // Cargar el select de Campus
+    const sel = document.getElementById('edifCampus');
+    google.script.run.withSuccessHandler(list => { 
+      let html = '<option value="">- Seleccione Campus -</option>'; 
+      list.forEach(c => { 
+        let isSel = (nombreCampus && c.nombre === nombreCampus) ? 'selected' : ''; 
+        html += `<option value="${c.id}" ${isSel}>${c.nombre}</option>`; 
+      }); 
+      sel.innerHTML = html; 
+    }).getListaCampus();
 
-    // 1. Bloqueamos la pantalla con el mensaje
-    mostrarCargando("Guardando edificio...");
+    if(id) { 
+      // MODO EDICIÓN
+      document.getElementById('edificioModalTitle').innerText = 'Editar Edificio'; 
+      document.getElementById('edifId').value = id; 
+      document.getElementById('edifNombre').value = nombre; 
+      document.getElementById('edifContacto').value = contacto; 
+      
+      // Rellenar coordenadas (si existen)
+      document.getElementById('edifLat').value = lat || '';
+      document.getElementById('edifLng').value = lng || '';
+      
+    } else { 
+      // MODO CREACIÓN
+      document.getElementById('edificioModalTitle').innerText = 'Nuevo Edificio'; 
+      document.getElementById('edifId').value = ''; 
+      document.getElementById('edifNombre').value = ''; 
+      document.getElementById('edifCampus').value = ''; 
+      document.getElementById('edifContacto').value = ''; 
+      
+      // Limpiar coordenadas
+      document.getElementById('edifLat').value = '';
+      document.getElementById('edifLng').value = '';
+    } 
+    
+    edificioModal.show(); 
+  }
+  
+  // ==========================================
+  // FUNCIÓN SUBMIT EDIFICIO (CON VALIDACIÓN DE COORDENADAS)
+  // ==========================================
 
-    const finish = (res) => {
-      // 2. Al recibir respuesta, primero cerramos el formulario (modal)
-      if(edificioModal) edificioModal.hide();
+    function submitEdificio() {
+      const id = document.getElementById('edifId').value;
+      const nombre = document.getElementById('edifNombre').value;
+      const idCampus = document.getElementById('edifCampus').value;
+      const contacto = document.getElementById('edifContacto').value;
+      
+      let rawLat = document.getElementById('edifLat').value;
+      let rawLng = document.getElementById('edifLng').value;
 
-      // 3. Mostramos el resultado
-      if(res.success) {
-          notificarExito("Edificio guardado correctamente");
-          loadEdificiosList();
-      } else {
-          notificarError(res.error);
+      if(!nombre || !idCampus) return notificarError("Nombre y Campus obligatorios");
+
+      // --- FASE 1: LIMPIEZA INTELIGENTE ---
+      // Cambiamos comas por puntos para que Javascript lo entienda
+      let latTxt = rawLat.replace(/,/g, '.').trim();
+      let lngTxt = rawLng.replace(/,/g, '.').trim();
+
+      let latNum = null;
+      let lngNum = null;
+
+      // --- FASE 2: CONVERSIÓN A NÚMERO REAL ---
+      if (latTxt || lngTxt) {
+          latNum = parseFloat(latTxt);
+          lngNum = parseFloat(lngTxt);
+
+          // Validación: Que sean números
+          if (isNaN(latNum) || isNaN(lngNum)) {
+              return notificarError("Las coordenadas no son números válidos.");
+          }
+
+          // Validación: Rangos terrestres
+          if (latNum < -90 || latNum > 90) return notificarError("Latitud imposible (debe ser entre -90 y 90).");
+          if (lngNum < -180 || lngNum > 180) return notificarError("Longitud imposible (debe ser entre -180 y 180).");
       }
-  };
 
-  if(id) { 
-      google.script.run.withSuccessHandler(finish).updateEdificio({ id, nombre, idCampus, contacto }); 
-  } else { 
-      google.script.run.withSuccessHandler(finish).crearEdificio({ nombre, idCampus, contacto }); 
+      mostrarCargando("Guardando edificio...");
+
+      const finish = (res) => { 
+        if(edificioModal) edificioModal.hide();
+        if(res.success) { 
+          notificarExito("Edificio guardado correctamente"); 
+          loadEdificiosList(); 
+        } else { 
+          notificarError(res.error); 
+        } 
+    };
+
+    // --- EL CAMBIO CLAVE ESTÁ AQUÍ ---
+    // Enviamos 'latNum' (Número) en vez de 'latTxt' (Texto).
+    // Si están vacíos, enviamos null.
+    const payload = { 
+        id: id, 
+        nombre: nombre, 
+        idCampus: idCampus, 
+        contacto: contacto, 
+        lat: latNum !== null ? latNum : "", // Enviamos NÚMERO
+        lng: lngNum !== null ? lngNum : ""  // Enviamos NÚMERO
+    };
+
+    if(id) { 
+      google.script.run.withSuccessHandler(finish).updateEdificio(payload); 
+    } else { 
+      google.script.run.withSuccessHandler(finish).crearEdificio(payload); 
+    } 
   }
-  }
+
   function deleteEdificio(id) { confirmarAccion("¿Eliminar edificio?", "Se eliminarán sus activos asociados.", () => { google.script.run.withSuccessHandler(res => { if(res.success) { notificarExito("Eliminado"); loadEdificiosList(); } else notificarError(res.error); }).eliminarEdificio(id); }); }
   function loadEdificios(id) { const s=document.getElementById('filterEdificio'); const tableActivos=document.getElementById('tableActivos'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; tableActivos.innerHTML='<tr><td colspan="4" class="text-center py-5 text-muted">Selecciona un edificio</td></tr>'; document.getElementById('filterSearch').disabled=true; document.getElementById('filterSearch').value=''; if(!id) { s.innerHTML='<option value="">- Seleccione -</option>'; return; } google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
   function loadEdificiosModal(id) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!id)return; google.script.run.withSuccessHandler(l=>{let h='<option value="">- Seleccione -</option>';l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`);s.innerHTML=h;s.disabled=false;}).getEdificiosPorCampus(id); }
@@ -587,79 +747,206 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
   function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { confirmarAccion("¿Eliminar documento?", "", () => { document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { notificarExito("Eliminado"); loadDocs(); } }).eliminarDocumento(idDoc); }); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return notificarError("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; notificarExito("Documento subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } function submitContract() { const id = document.getElementById('contId').value; const datos = { id:id, idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value, estado:document.getElementById('contEstado').value }; if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return notificarError("Campos incompletos"); setBtnLoading('btnContSubmit', true); const cb = () => { setBtnLoading('btnContSubmit', false); if(contractModal) contractModal.hide(); notificarExito("Contrato guardado"); if (currentAssetId) loadContracts(); else loadGlobalContracts(); }; if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos); else google.script.run.withSuccessHandler(cb).crearContrato(datos); } function deleteContract(id) { confirmarAccion("¿Eliminar contrato?", "", () => { google.script.run.withSuccessHandler(cb => { notificarExito("Eliminado"); if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }); }
 
   // ==========================================
-// FUNCIÓN IMPORTACIÓN MASIVA
-// ==========================================
-let importModal = null;
+  // FUNCIÓN IMPORTACIÓN MASIVA
+  // ==========================================
+  let importModal = null;
 
-function openImportModal() {
-  if(!importModal) importModal = new bootstrap.Modal(document.getElementById('importModal'));
-  document.getElementById('importData').value = '';
-  document.getElementById('importLog').innerText = '';
-  importModal.show();
-}
+  function openImportModal() {
+    if(!importModal) importModal = new bootstrap.Modal(document.getElementById('importModal'));
+    document.getElementById('importData').value = '';
+    document.getElementById('importLog').innerText = '';
+    importModal.show();
+  }
 
-function ejecutarImportacion() {
-  const texto = document.getElementById('importData').value;
-  if (!texto.trim()) return notificarError("El área de texto está vacía.");
+  function ejecutarImportacion() {
+    const texto = document.getElementById('importData').value;
+    if (!texto.trim()) return notificarError("El área de texto está vacía.");
 
-  // Parsear texto (detecta tabulaciones de Excel)
-  const lineas = texto.split('\n');
-  const filas = [];
-  
-  lineas.forEach(linea => {
-    if (linea.trim()) {
-      // Excel usa tabulaciones (\t) cuando copias celdas
-      const celdas = linea.split('\t');
-      // Si solo hay 1 celda, a veces es separador por punto y coma
-      if(celdas.length === 1 && linea.includes(';')) {
-         filas.push(linea.split(';'));
-      } else {
-         filas.push(celdas);
-      }
-    }
-  });
-
-  if (filas.length === 0) return notificarError("No se han detectado datos válidos.");
-
-  confirmarAccion(`¿Importar ${filas.length} activos?`, "Asegúrate de que los Campus y Edificios ya existen.", () => {
-    setBtnLoading('btnImportRun', true);
-    document.getElementById('importLog').innerText = "Procesando... esto puede tardar unos segundos.";
+    // Parsear texto (detecta tabulaciones de Excel)
+    const lineas = texto.split('\n');
+    const filas = [];
     
-    google.script.run.withSuccessHandler(res => {
-      setBtnLoading('btnImportRun', false);
-      
-      if (res.success) {
-        let msg = `¡Éxito! Se han creado ${res.procesados} activos.`;
-        if (res.errores.length > 0) {
-          msg += ` Hubo ${res.errores.length} errores. Revisa el log.`;
-          // Mostrar errores en pantalla
-          let logHtml = '<ul class="mb-0 ps-3">';
-          res.errores.forEach(e => logHtml += `<li>${e}</li>`);
-          logHtml += '</ul>';
-          document.getElementById('importLog').innerHTML = logHtml;
-          notificarError("Importación parcial. Revisa los errores.");
+    lineas.forEach(linea => {
+      if (linea.trim()) {
+        // Excel usa tabulaciones (\t) cuando copias celdas
+        const celdas = linea.split('\t');
+        // Si solo hay 1 celda, a veces es separador por punto y coma
+        if(celdas.length === 1 && linea.includes(';')) {
+          filas.push(linea.split(';'));
         } else {
-          importModal.hide();
-          notificarExito(msg);
-          // Recargar la tabla si hay un edificio seleccionado
-          const filtroEdif = document.getElementById('filterEdificio').value;
-          if(filtroEdif) loadActivos(filtroEdif);
-          loadDashboard();
+          filas.push(celdas);
         }
-      } else {
-        notificarError(res.error);
       }
-    }).procesarCargaMasiva(filas);
-  });
-}
+    });
 
-function ocultarLoader() {
-    const loader = document.getElementById('app-loader');
-    if(loader) {
-      loader.style.opacity = '0'; // Efecto desvanecer
-      setTimeout(() => {
-        loader.style.display = 'none'; // Quitar del todo tras la animación
-      }, 500);
+    if (filas.length === 0) return notificarError("No se han detectado datos válidos.");
+
+    confirmarAccion(`¿Importar ${filas.length} activos?`, "Asegúrate de que los Campus y Edificios ya existen.", () => {
+      setBtnLoading('btnImportRun', true);
+      document.getElementById('importLog').innerText = "Procesando... esto puede tardar unos segundos.";
+      
+      google.script.run.withSuccessHandler(res => {
+        setBtnLoading('btnImportRun', false);
+        
+        if (res.success) {
+          let msg = `¡Éxito! Se han creado ${res.procesados} activos.`;
+          if (res.errores.length > 0) {
+            msg += ` Hubo ${res.errores.length} errores. Revisa el log.`;
+            // Mostrar errores en pantalla
+            let logHtml = '<ul class="mb-0 ps-3">';
+            res.errores.forEach(e => logHtml += `<li>${e}</li>`);
+            logHtml += '</ul>';
+            document.getElementById('importLog').innerHTML = logHtml;
+            notificarError("Importación parcial. Revisa los errores.");
+          } else {
+            importModal.hide();
+            notificarExito(msg);
+            // Recargar la tabla si hay un edificio seleccionado
+            const filtroEdif = document.getElementById('filterEdificio').value;
+            if(filtroEdif) loadActivos(filtroEdif);
+            loadDashboard();
+          }
+        } else {
+          notificarError(res.error);
+        }
+      }).procesarCargaMasiva(filas);
+    });
+  }
+
+  function ocultarLoader() {
+      const loader = document.getElementById('app-loader');
+      if(loader) {
+        loader.style.opacity = '0'; // Efecto desvanecer
+        setTimeout(() => {
+          loader.style.display = 'none'; // Quitar del todo tras la animación
+        }, 500);
+      }
+  }
+
+// ==========================================
+// GESTIÓN DE MAPAS (LEAFLET)
+// ==========================================
+
+  function toggleEdificiosView(mode) {
+    const listContainer = document.getElementById('container-edif-list');
+    const mapContainer = document.getElementById('container-edif-map');
+    const btnList = document.getElementById('btnViewList');
+    const btnMap = document.getElementById('btnViewMap');
+
+    if (mode === 'LIST') {
+      // 1. ANTES de ocultar nada, matamos el mapa para liberar memoria
+      destroyMap();
+
+      // 2. Cambiamos la vista
+      listContainer.classList.remove('d-none');
+      mapContainer.classList.add('d-none');
+      
+      // 3. Botones
+      btnList.classList.add('active');
+      btnMap.classList.remove('active');
+      
+    } else {
+      // Modo Mapa
+      listContainer.classList.add('d-none');
+      mapContainer.classList.remove('d-none');
+      
+      btnList.classList.remove('active');
+      btnMap.classList.add('active');
+      
+      // 4. Iniciamos el mapa con un pequeño retardo para asegurar que el div existe
+      setTimeout(() => { initLeafletMap(); }, 100); 
+    }
+  }
+
+  // Función auxiliar para matar el mapa y limpiar memoria
+  function destroyMap() {
+    if (mapInstance) {
+      mapInstance.off(); // Apagar eventos
+      mapInstance.remove(); // Destruir instancia Leaflet
+      mapInstance = null; // Vaciar variable
+      
+      // Truco: Limpiamos el HTML interno del contenedor por si acaso quedó basura
+      const container = document.getElementById('mapEdificios');
+      if(container) container.innerHTML = "";
+    }
+  }
+
+  function initLeafletMap() {
+    // Seguridad: Si ya hay mapa, lo matamos primero
+    destroyMap();
+
+    if (typeof L === 'undefined') {
+      return notificarError("No se pudo cargar el mapa. Revisa tu conexión.");
+    }
+
+    const container = document.getElementById('mapEdificios');
+    if (!container) return;
+
+    // Crear mapa nuevo
+    mapInstance = L.map('mapEdificios').setView([40.416, -3.703], 5); // Zoom alejado para ver toda España
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19
+    }).addTo(mapInstance);
+
+    // Renderizar marcadores
+    renderMarkers();
+  }
+
+  // Aceptamos un parámetro opcional 'data'. 
+// Si no nos pasan nada, usamos 'allEdificiosData' (todos).
+function renderMarkers(data = null) {
+  const datosAPintar = data || allEdificiosData;
+
+    if (!mapInstance || !datosAPintar) return;
+
+    // 1. LIMPIEZA: Si ya hay una capa de marcadores, la quitamos del mapa
+    if (markersLayer) {
+      mapInstance.removeLayer(markersLayer);
+      markersLayer = null;
+    }
+
+    // Creamos el nuevo grupo
+    const newMarkersGroup = L.featureGroup();
+    let count = 0;
+
+    datosAPintar.forEach(edif => {
+      // Limpieza de coordenadas (igual que antes)
+      let rawLat = String(edif.lat).replace(',', '.').trim();
+      let rawLng = String(edif.lng).replace(',', '.').trim();
+      const lat = parseFloat(rawLat);
+      const lng = parseFloat(rawLng);
+
+      if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+        const marker = L.marker([lat, lng]);
+        
+        const popupContent = `
+          <div class="text-center p-2">
+            <h6 class="fw-bold mb-1 text-primary">${edif.nombre}</h6>
+            <span class="badge bg-light text-dark border mb-2">${edif.campus}</span><br>
+            <div class="d-grid gap-2 mt-2">
+              <button class="btn btn-sm btn-primary py-0" onclick="openBuildingDetail('${edif.id}')">
+                Ver Edificio
+              </button>
+            </div>
+          </div>
+        `;
+        marker.bindPopup(popupContent);
+        marker.addTo(newMarkersGroup);
+        count++;
+      }
+    });
+
+    // 2. AÑADIR AL MAPA
+    if (count > 0) {
+      newMarkersGroup.addTo(mapInstance);
+      markersLayer = newMarkersGroup; // Guardamos la referencia para poder borrarla luego
+
+      try {
+        // Ajustar zoom para ver los pines filtrados
+        mapInstance.fitBounds(newMarkersGroup.getBounds().pad(0.2));
+      } catch(e) { console.log("Zoom auto ajustado"); }
     }
   }
 </script>
