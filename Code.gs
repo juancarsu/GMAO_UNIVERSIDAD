@@ -1,3 +1,12 @@
+// GMAO
+// Universidad de Navarra
+// Versión 1.0
+// Autor: Juan Carlos Suárez
+//
+// Licencia: Creative Commons Reconocimiento (CC BY) - creativecommons.org
+// Puedes usar, copiar, modificar y distribuir este código (sin fines comerciales),
+// siempre que cites a Juan Carlos Suárez como autor original.
+
 // ==========================================
 // 1. CONFIGURACIÓN Y ROUTING
 // ==========================================
