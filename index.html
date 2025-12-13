@@ -18,6 +18,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+  <script>
+    // Variables inyectadas desde el servidor
+    window.serverParams = <?!= JSON.stringify(urlParams || {}) ?>;
+  </script>
+
   <?!= include('css'); ?>
 
   <style>
@@ -268,12 +273,20 @@
     </div>
 
     <div id="view-building-detail" class="view-section d-none">
-      <div class="d-flex align-items-center mb-4"><button class="btn btn-light border me-3"
-          onclick="closeBuildingDetail()"><i class="bi bi-arrow-left"></i> Volver</button>
-        <div>
-          <h2 class="mb-0" id="b-detail-name">Cargando...</h2><span class="badge bg-success mt-1"
-            id="b-detail-campus">Campus</span>
+      <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center">
+          <button class="btn btn-light border me-3" onclick="closeBuildingDetail()">
+            <i class="bi bi-arrow-left"></i> Volver
+          </button>
+          <div>
+            <h2 class="mb-0" id="b-detail-name">Cargando...</h2>
+            <span class="badge bg-success mt-1" id="b-detail-campus">Campus</span>
+          </div>
         </div>
+        <button class="btn btn-outline-danger btn-sm" onclick="descargarQRsEdificio()"
+          title="Descargar QR de todos los activos">
+          <i class="bi bi-qr-code-scan"></i> QR Edificio (PDF)
+        </button>
       </div>
       <ul class="nav nav-tabs mb-4">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-b-info">Información</a></li>
@@ -650,12 +663,19 @@
     </div>
 
     <div id="view-asset-detail" class="view-section d-none">
-      <div class="d-flex align-items-center mb-4"><button class="btn btn-light border me-3"
-          onclick="closeAssetDetail()"><i class="bi bi-arrow-left"></i> Volver</button>
-        <div>
-          <h2 class="mb-0" id="detail-name">Cargando...</h2><span class="badge bg-primary mt-1"
-            id="detail-type">Tipo</span>
+      <div class="d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center">
+          <button class="btn btn-light border me-3" onclick="closeAssetDetail()">
+            <i class="bi bi-arrow-left"></i> Volver
+          </button>
+          <div>
+            <h2 class="mb-0" id="detail-name">Cargando...</h2>
+            <span class="badge bg-primary mt-1" id="detail-type">Tipo</span>
+          </div>
         </div>
+        <button class="btn btn-outline-danger btn-sm" onclick="descargarQRActivo()" title="Descargar código QR">
+          <i class="bi bi-qr-code"></i> Descargar QR
+        </button>
       </div>
       <ul class="nav nav-tabs mb-4">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-info">Información</a></li>
@@ -1076,7 +1096,8 @@
               <div id="repFotoPreview" class="mt-2 text-center d-none p-2 border rounded bg-light position-relative">
                 <img id="imgPreview" src="" class="img-fluid rounded" style="max-height: 120px;"><button type="button"
                   class="btn-close position-absolute top-0 end-0 m-1" aria-label="Close" onclick="clearReportImage()"
-                  title="Quitar foto"></button></div>
+                  title="Quitar foto"></button>
+              </div>
             </div>
           </div>
         </div>
