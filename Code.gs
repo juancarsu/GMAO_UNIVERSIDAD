@@ -527,6 +527,8 @@ function obtenerPlanMantenimiento(idActivo) {
   return planes.sort((a, b) => a.fechaISO.localeCompare(b.fechaISO));
 }
 
+// En Code.gs
+
 function getGlobalMaintenance() {
   const planes = getCachedSheetData('PLAN_MANTENIMIENTO');
   const index = buildActivosIndex();
@@ -545,29 +547,42 @@ function getGlobalMaintenance() {
   hoy.setHours(0, 0, 0, 0);
   
   for(let i = 1; i < planes.length; i++) {
-    if (planes[i][6] === 'REALIZADA') continue;
-    
     const idActivo = String(planes[i][1]);
     const activo = index.byId[idActivo];
     
     if (!activo) continue;
     
+    // --- CAMBIO PRINCIPAL AQUÍ ---
+    const estado = planes[i][6]; // Columna G (Estado)
+    
     let f = planes[i][4];
     let color = 'gris';
     let fechaStr = "-";
-    let dias = 9999;
+    let dias = 0;
     let fechaISO = "";
     
-    if (f instanceof Date) {
-      f.setHours(0, 0, 0, 0);
-      dias = Math.ceil((f.getTime() - hoy.getTime()) / 86400000);
-      
-      if (dias < 0) color = 'rojo';
-      else if (dias <= 30) color = 'amarillo';
-      else color = 'verde';
-      
+    // Arreglo de fechas (caché vs objeto)
+    if (typeof f === 'string' && f.length > 5) {
+      f = new Date(f);
+    }
+
+    if (f instanceof Date && !isNaN(f.getTime())) {
       fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
       fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      
+      // Solo calculamos semáforos si NO está realizada
+      if (estado !== 'REALIZADA') {
+        f.setHours(0, 0, 0, 0);
+        dias = Math.ceil((f.getTime() - hoy.getTime()) / 86400000);
+        
+        if (dias < 0) color = 'rojo';
+        else if (dias <= 30) color = 'amarillo';
+        else color = 'verde';
+      } else {
+        // Si está realizada, le ponemos color azul (histórico)
+        color = 'azul';
+        dias = 99999; // Para que salgan al final al ordenar
+      }
     }
     
     let hasCalendar = (planes[i].length > 7 && planes[i][7]) ? true : false;
@@ -582,14 +597,16 @@ function getGlobalMaintenance() {
       tipo: planes[i][2],
       fecha: fechaStr,
       fechaISO: fechaISO,
-      color: color,
+      color: color, // rojo, amarillo, verde o AZUL
       dias: dias,
       edificioId: activo.idEdificio,
       hasDocs: docsMap[String(planes[i][0])] || false,
-      hasCalendar: hasCalendar
+      hasCalendar: hasCalendar,
+      estadoReal: estado // Guardamos el estado real para usarlo en el frontend
     });
   }
   
+  // Ordenar: primero las urgentes (negativo), al final las históricas (muy positivo)
   return result.sort((a, b) => a.dias - b.dias);
 }
 
