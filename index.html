@@ -685,12 +685,10 @@
       </div>
       <ul class="nav nav-tabs mb-4">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-info">Información</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-docs"
-            onclick="loadDocs()">Documentación</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-maint"
-            onclick="loadMaint()">Mantenimiento</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-contracts"
-            onclick="loadContracts()">Contratos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-docs" onclick="loadDocs()">Documentación</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-maint" onclick="loadMaint()">Mantenimiento</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-contracts" onclick="loadContracts()">Contratos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-relaciones" onclick="loadRelacionesActivo()">Relaciones</a></li>
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tab-info">
@@ -784,6 +782,19 @@
             <tbody id="contractsTableBody"></tbody>
           </table>
         </div>
+        <div class="tab-pane fade" id="tab-relaciones">
+          <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-outline-primary" onclick="openRelacionModal()">
+              <i class="bi bi-plus-lg"></i> Nueva Relación
+            </button>
+          </div>
+          
+          <div id="relacionesContainer">
+            <div class="text-center py-5">
+              <div class="spinner-border"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -826,6 +837,64 @@
       <div class="row" id="feedbackContainer">
         <div class="col-12 text-center py-5">
           <div class="spinner-border text-primary"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal fade" id="relacionModal" tabindex="-1">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header bg-light">
+            <h5 class="modal-title"><i class="bi bi-diagram-3"></i> Nueva Relación</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            
+            <!-- Paso 1: Buscar Activo -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">1. Buscar Activo Relacionado</label>
+              <input type="text" class="form-control" id="relSearchInput" 
+                    placeholder="Escribe nombre o tipo..." 
+                    onkeyup="buscarActivosRelacion()">
+              <div id="relResultados" class="mt-2"></div>
+            </div>
+            
+            <!-- Activo seleccionado -->
+            <div id="relActivoSeleccionado" class="mb-3"></div>
+            
+            <!-- Tipo de Relación -->
+            <div class="mb-3">
+              <label class="form-label fw-bold">2. Tipo de Relación</label>
+              <select class="form-select" id="relTipoRelacion">
+                <option value="DEPENDE_DE">🔗 Depende de (crítico si falla)</option>
+                <option value="ALIMENTA">⚡ Alimenta a (suministra energía/fluido)</option>
+                <option value="PERTENECE_A">📦 Pertenece a (mismo circuito/sistema)</option>
+                <option value="RELACIONADO">🔄 Relacionado genérico</option>
+              </select>
+            </div>
+            
+            <!-- Descripción opcional -->
+            <div class="mb-3">
+              <label class="form-label">Descripción (opcional)</label>
+              <textarea class="form-control" id="relDescripcion" rows="2" 
+                        placeholder="Ej. Alimenta al circuito norte..."></textarea>
+            </div>
+            
+            <!-- Bidireccional -->
+            <div class="form-check mb-3 bg-light p-2 rounded">
+              <input class="form-check-input" type="checkbox" id="relBidireccional" checked>
+              <label class="form-check-label" for="relBidireccional">
+                <i class="bi bi-arrow-left-right text-primary"></i> Relación bidireccional (crear en ambos activos)
+              </label>
+            </div>
+            
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="btnRelSubmit" onclick="submitRelacion()">
+              Guardar Relación
+            </button>
+          </div>
         </div>
       </div>
     </div>
