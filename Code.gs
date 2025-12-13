@@ -612,24 +612,53 @@ function getGlobalMaintenance() {
 
 function crearRevision(d) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
+  
   try {
-    let fechaActual = textoAFecha(d.fechaProx); if (!fechaActual) return { success: false, error: "Fecha inválida" };
-    var esRepetitiva = (String(d.esRecursiva) === "true"); var frecuencia = parseInt(d.diasFreq) || 0; var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null; var syncCal = (String(d.syncCalendar) === "true");
+    let fechaActual = textoAFecha(d.fechaProx); 
+    if (!fechaActual) return { success: false, error: "Fecha inválida" };
+    
+    var esRepetitiva = (String(d.esRecursiva) === "true"); 
+    var frecuencia = parseInt(d.diasFreq) || 0; 
+    var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null; 
+    var syncCal = (String(d.syncCalendar) === "true");
+    
     const infoExtra = syncCal ? getInfoParaCalendar(d.idActivo) : {};
-    let eventId = null; if (syncCal) { eventId = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx }); }
-    sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventId]);
+    let eventId = null; 
+    if (syncCal) { 
+        eventId = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx }); 
+    }
+    
+    // --- CAMBIO: Generamos el UUID antes para poder devolverlo ---
+    const newId = Utilities.getUuid();
+    // ------------------------------------------------------------
+
+    sheet.appendRow([newId, d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventId]);
+    
+    // Lógica de repetición (sin cambios, solo usando newId en el log si quisieras)
     if (esRepetitiva && frecuencia > 0 && fechaLimite && fechaLimite > fechaActual) {
       let contador = 0;
       while (contador < 50) { 
-        fechaActual.setDate(fechaActual.getDate() + frecuencia); if (fechaActual > fechaLimite) break;
-        let eventIdLoop = null; if (syncCal) { let fStr = Utilities.formatDate(fechaActual, Session.getScriptTimeZone(), "yyyy-MM-dd"); eventIdLoop = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: fStr }); }
-        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventIdLoop]); contador++;
+        fechaActual.setDate(fechaActual.getDate() + frecuencia); 
+        if (fechaActual > fechaLimite) break;
+        
+        let eventIdLoop = null; 
+        if (syncCal) { 
+            let fStr = Utilities.formatDate(fechaActual, Session.getScriptTimeZone(), "yyyy-MM-dd"); 
+            eventIdLoop = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: fStr }); 
+        }
+        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventIdLoop]); 
+        contador++;
       }
     }
+    
     registrarLog("CREAR REVISION", "Activo: " + d.idActivo + " | Tipo: " + d.tipo);
     invalidateCache('PLAN_MANTENIMIENTO');
-    return { success: true };
+    
+    // --- CAMBIO: Devolvemos el ID ---
+    return { success: true, newId: newId }; 
+    
   } catch (e) { return { success: false, error: e.toString() }; }
 }
 
@@ -856,9 +885,7 @@ function eliminarContrato(id) {
 // ==========================================
 // 9. DASHBOARD Y CRUD GENERAL (V5)
 // ==========================================
-// ==========================================
-// 9. DASHBOARD Y CRUD GENERAL (V5)
-// ==========================================
+
 function getDatosDashboard(idCampus) { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
   const hoy = new Date(); hoy.setHours(0,0,0,0);
@@ -2855,4 +2882,144 @@ function updateEventDate(id, tipo, nuevaFechaISO) {
   }
 
   return { success: false, error: "Elemento no encontrado o tipo no editable" };
+}
+
+// ==========================================
+// 27. MÓDULO DE EXPORTACIÓN PARA AUDITORÍA
+// ==========================================
+
+/**
+ * Obtiene los años disponibles en el histórico de mantenimiento
+ */
+function getAniosAuditoria() {
+  const planes = getCachedSheetData('PLAN_MANTENIMIENTO');
+  const anios = new Set();
+  
+  // Empezamos en 1 para saltar cabecera
+  for(let i=1; i<planes.length; i++) {
+    const fecha = planes[i][4]; // Columna Fecha
+    if (fecha instanceof Date) {
+      anios.add(fecha.getFullYear());
+    }
+  }
+  // Convertir a array y ordenar descendente
+  return Array.from(anios).sort((a,b) => b - a);
+}
+
+/**
+ * Genera una carpeta en Drive con toda la documentación copiada
+ */
+function generarPaqueteAuditoria(anio, tipoFiltro) {
+  // tipoFiltro puede ser 'Legal', 'Todos', etc.
+  
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const planData = getSheetData('PLAN_MANTENIMIENTO');
+  const activosData = getCachedSheetData('ACTIVOS');
+  const edifData = getCachedSheetData('EDIFICIOS');
+  
+  // 1. Mapear Activos y Edificios para obtener nombres rápidos
+  const mapEdificios = {};
+  edifData.slice(1).forEach(r => mapEdificios[String(r[0])] = r[2]); // ID -> Nombre
+  
+  const mapActivos = {};
+  activosData.slice(1).forEach(r => {
+    mapActivos[String(r[0])] = {
+      nombre: r[3],
+      nombreEdificio: mapEdificios[String(r[1])] || "Sin Ubicación"
+    };
+  });
+
+  // 2. Filtrar Revisiones que cumplen el criterio (Año y Tipo)
+  const revisionesValidas = {}; // Map ID_PLAN -> Info para nombre archivo
+  
+  for(let i=1; i<planData.length; i++) {
+    const row = planData[i];
+    const fecha = row[4];
+    const tipo = row[2]; // Legal, Periódica...
+    const idActivo = row[1];
+    const idPlan = String(row[0]);
+    
+    // Filtro de Estado: Solo las REALIZADAS (o todas si prefieres auditar lo pendiente también)
+    // Para auditoría, generalmente se buscan evidencias de lo hecho.
+    // Si quieres incluir todo, quita el if de estado.
+    // if (row[6] !== 'REALIZADA') continue; 
+
+    if (fecha instanceof Date && String(fecha.getFullYear()) === String(anio)) {
+      if (tipoFiltro === 'TODOS' || tipo === tipoFiltro) {
+        const activoInfo = mapActivos[String(idActivo)] || { nombre: "Activo Borrado", nombreEdificio: "_" };
+        
+        revisionesValidas[idPlan] = {
+          fechaStr: Utilities.formatDate(fecha, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+          tipo: tipo,
+          activo: activoInfo.nombre,
+          edificio: activoInfo.nombreEdificio
+        };
+      }
+    }
+  }
+  
+  // 3. Buscar Documentos asociados a esas revisiones
+  const archivosACopiar = [];
+  
+  for(let i=1; i<docsData.length; i++) {
+    const r = docsData[i];
+    const tipoEntidad = r[1];
+    const idEntidad = String(r[2]); // En caso de REVISION, es el ID del Plan
+    const fileId = r[8]; // Columna I (índice 8) es el ID de archivo de Drive
+    
+    if (tipoEntidad === 'REVISION' && revisionesValidas[idEntidad] && fileId) {
+      archivosACopiar.push({
+        fileId: fileId,
+        info: revisionesValidas[idEntidad],
+        originalName: r[3]
+      });
+    }
+  }
+  
+  if (archivosACopiar.length === 0) {
+    return { success: false, error: "No se encontraron documentos para ese año y criterio." };
+  }
+  
+  // 4. Crear Estructura en Drive
+  try {
+    const rootFolderId = getRootFolderId();
+    const parentFolder = DriveApp.getFolderById(rootFolderId);
+    
+    const folderName = `AUDITORIA_${anio}_${tipoFiltro}_${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "HHmm")}`;
+    const auditFolder = parentFolder.createFolder(folderName);
+    
+    let copiados = 0;
+    let errores = 0;
+    
+    // 5. Copiar y renombrar archivos
+    archivosACopiar.forEach(item => {
+      try {
+        const file = DriveApp.getFileById(item.fileId);
+        
+        // Nomenclatura ordenada: [FECHA]_[EDIFICIO]_[ACTIVO]_[TIPO].pdf
+        // Esto permite que al ordenar por nombre en Windows/Mac, salgan cronológicos y por sitio.
+        const cleanName = `${item.info.fechaStr}_${item.info.edificio}_${item.info.activo}_${item.info.tipo}`;
+        // Limpiar caracteres raros del nombre
+        const safeName = cleanName.replace(/[^a-zA-Z0-9_\-\.]/g, '_') + ".pdf"; // Asumimos PDF, o preservar extensión original
+        
+        file.makeCopy(safeName, auditFolder);
+        copiados++;
+      } catch(e) {
+        console.log("Error copiando archivo auditoría: " + e);
+        errores++;
+      }
+    });
+    
+    return { 
+      success: true, 
+      url: auditFolder.getUrl(), 
+      total: copiados,
+      errores: errores,
+      folderName: folderName
+    };
+    
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
 }
