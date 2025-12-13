@@ -20,6 +20,7 @@
   let allPlannerEvents = [];  // Caché local de eventos para filtrar rápido
   window.currentBuildingAssetsList = [];
   window.allAssetsData = []; // Cache local de TODOS los activos
+  let currentRenderTimeout = null;
 
   // Instancias de Modales
   let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null;
@@ -361,6 +362,12 @@
    * Renderizar tabla con paginación virtual (sin páginas, carga progresiva)
    */
   function renderTableLazy(tbody, data, renderRow, pageSize = 50) {
+    // 1. Limpiar cualquier renderizado pendiente anterior
+    if (currentRenderTimeout) {
+        clearTimeout(currentRenderTimeout);
+        currentRenderTimeout = null;
+    }
+
     if (!data || data.length === 0) {
       tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Sin datos</td></tr>';
       return;
@@ -386,11 +393,12 @@
 
       currentPage++;
 
-      // Cargar siguiente página si hay más datos
       if (currentPage < totalPages) {
-        setTimeout(loadPage, 10); // Pequeña pausa para no bloquear UI
+        // Guardamos el ID del timeout
+        currentRenderTimeout = setTimeout(loadPage, 10); 
       } else {
         refreshSecurityIcons();
+        currentRenderTimeout = null; // Limpiamos al terminar
       }
     }
 
@@ -410,36 +418,57 @@
     }).getGlobalMaintenance();
   }
 
+  // En js.html -> renderGlobalMaintTable
+
   function renderGlobalMaintTable(data) {
-    const tbody = document.getElementById('tableGlobalMaint');
+      const tbody = document.getElementById('tableGlobalMaint');
 
-    renderTableLazy(tbody, data, (r, index) => {
-      let dotClass = 'bg-secondary';
-      if (r.color === 'rojo') dotClass = 'bg-rojo';
-      if (r.color === 'amarillo') dotClass = 'bg-amarillo';
-      if (r.color === 'verde') dotClass = 'bg-verde';
+      renderTableLazy(tbody, data, (r, index) => {
+        let dotClass = 'bg-secondary';
+        if (r.color === 'rojo') dotClass = 'bg-rojo';
+        if (r.color === 'amarillo') dotClass = 'bg-amarillo';
+        if (r.color === 'verde') dotClass = 'bg-verde';
+        
+        // --- NUEVO: Clase para histórico ---
+        if (r.color === 'azul') dotClass = 'bg-info'; 
 
-      let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
-      let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
-      const nombreCampusVisual = r.campusNombre || 'Sin datos';
+        let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
+        let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
+        const nombreCampusVisual = r.campusNombre || 'Sin datos';
 
-      return `<tr>
-        <td class="text-center ps-4 text-muted small">${index + 1}</td>
-        <td>
-          <div class="fw-bold">${r.edificio}</div>
-          <small class="text-muted"><i class="bi bi-bank me-1"></i>${nombreCampusVisual}</small>
-        </td>
-        <td>${r.activo}</td>
-        <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
-        <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
-        <td class="text-end pe-4">
-          <div class="btn-group">
+        // --- NUEVO: Texto de fecha ---
+        // Si es histórico, no mostramos "días restantes", mostramos "Realizada"
+        let fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small>`;
+        
+        let botonesAccion = `
             <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
             <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
-          </div>
-        </td>
-      </tr>`;
-    });
+        `;
+
+        if (r.color === 'azul') {
+            fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted fst-italic ms-1">Histórico</small>`;
+            // En histórico solo dejamos ver/editar (para ver docs), pero quitamos "Completar"
+            botonesAccion = `
+              <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Ver detalles/Docs"><i class="bi bi-eye"></i></button>
+            `;
+        }
+
+        return `<tr>
+          <td class="text-center ps-4 text-muted small">${index + 1}</td>
+          <td>
+            <div class="fw-bold">${r.edificio}</div>
+            <small class="text-muted"><i class="bi bi-bank me-1"></i>${nombreCampusVisual}</small>
+          </td>
+          <td>${r.activo}</td>
+          <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
+          <td>${fechaTexto}</td>
+          <td class="text-end pe-4">
+            <div class="btn-group">
+              ${botonesAccion}
+            </div>
+          </td>
+        </tr>`;
+      });
   }
 
   function marcarHecho(idRevision) {
@@ -500,41 +529,80 @@
     }).getEdificiosPorCampus(idCampus);
   }
 
+  // En js.html
+
   function setMaintFilter(tipoFiltro, valor, btn) {
-    if (btn) {
-      btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    }
-    const fCampus = document.getElementById('maintFilterCampus').value;
-    const fEdificio = document.getElementById('maintFilterEdificio').value;
+      // 1. GESTIÓN VISUAL DE BOTONES (Si se ha pulsado uno)
+      if (btn) {
+          // Buscamos el grupo padre del botón pulsado
+          const parent = btn.parentElement;
+          // Quitamos la clase 'active' a todos los botones hermanos
+          parent.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+          // Se la ponemos al botón que acabamos de pulsar
+          btn.classList.add('active');
+      }
 
-    let fColor = 'all';
-    const colorBtns = document.getElementById('filterGroupColor').querySelectorAll('button.active');
-    if (colorBtns.length > 0 && colorBtns[0].innerText !== 'Todas') {
-      if (colorBtns[0].classList.contains('btn-outline-danger')) fColor = 'rojo';
-      if (colorBtns[0].classList.contains('btn-outline-warning')) fColor = 'amarillo';
-      if (colorBtns[0].classList.contains('btn-outline-success')) fColor = 'verde';
-    }
+      // 2. LEER VALORES ACTUALES DE LOS SELECTORES
+      const fCampus = document.getElementById('maintFilterCampus').value;
+      const fEdificio = document.getElementById('maintFilterEdificio').value;
 
-    // Filtro Tipo básico
-    let fType = 'all';
-    const typeBtns = document.getElementById('filterGroupType').querySelectorAll('button.active');
-    if (typeBtns.length > 0) {
-      const txt = typeBtns[0].getAttribute('onclick');
-      if (txt.includes('Legal')) fType = 'Legal';
-      if (txt.includes('Periódica')) fType = 'Periódica';
-      if (txt.includes('Reparación')) fType = 'Reparación';
-      if (txt.includes('Extraordinaria')) fType = 'Extraordinaria';
-    }
+      // 3. DETERMINAR FILTRO DE ESTADO (COLOR)
+      let fColor = 'all';
+      // Buscamos qué botón está activo en el grupo de colores
+      const colorBtnActive = document.querySelector('#filterGroupColor .active');
+      
+      if (colorBtnActive) {
+          if (colorBtnActive.innerText === 'Todas') fColor = 'all';
+          else if (colorBtnActive.classList.contains('btn-outline-danger')) fColor = 'rojo';      // Vencidas
+          else if (colorBtnActive.classList.contains('btn-outline-warning')) fColor = 'amarillo'; // Próximas
+          else if (colorBtnActive.classList.contains('btn-outline-success')) fColor = 'verde';    // Al día
+          else if (colorBtnActive.classList.contains('btn-outline-info')) fColor = 'azul';        // Histórico (NUEVO)
+      }
 
-    const filtered = globalMaintData.filter(item => {
-      const matchCampus = fCampus === "" || String(item.campusId) === String(fCampus);
-      const matchEdif = fEdificio === "" || String(item.edificioId) === String(fEdificio);
-      const matchColor = fColor === 'all' || item.color === fColor;
-      const matchType = fType === 'all' || item.tipo === fType;
-      return matchCampus && matchEdif && matchColor && matchType;
-    });
-    renderGlobalMaintTable(filtered);
+      // 4. DETERMINAR FILTRO DE TIPO DE REVISIÓN
+      let fType = 'all';
+      // Buscamos qué botón está activo en el grupo de tipos
+      const typeBtnActive = document.querySelector('#filterGroupType .active');
+      
+      if (typeBtnActive && typeBtnActive.innerText !== 'Todos') {
+          // Leemos el onclick para saber el tipo exacto (es más seguro que el texto visible)
+          const txt = typeBtnActive.getAttribute('onclick');
+          if (txt.includes('Legal')) fType = 'Legal';
+          else if (txt.includes('Periódica')) fType = 'Periódica';
+          else if (txt.includes('Reparación')) fType = 'Reparación';
+          else if (txt.includes('Extraordinaria')) fType = 'Extraordinaria';
+      }
+
+      // 5. APLICAR FILTROS AL ARRAY GLOBAL DE DATOS
+      if (!globalMaintData) return;
+
+      const filtered = globalMaintData.filter(item => {
+          // A. Filtro Campus
+          const matchCampus = (fCampus === "") || (String(item.campusId) === String(fCampus));
+
+          // B. Filtro Edificio
+          const matchEdif = (fEdificio === "") || (String(item.edificioId) === String(fEdificio));
+          
+          // C. Filtro Tipo
+          const matchType = (fType === 'all') || (item.tipo === fType);
+          
+          // D. Filtro Color (Estado)
+          let matchColor = false;
+          
+          if (fColor === 'all') {
+              // IMPORTANTE: Si elegimos "Todas", mostramos las activas (rojo, amarillo, verde)
+              // pero OCULTAMOS las históricas (azul) para no ensuciar la lista.
+              matchColor = (item.color !== 'azul');
+          } else {
+              // Si elegimos un color específico (incluido azul/histórico), mostramos solo ese.
+              matchColor = (item.color === fColor);
+          }
+
+          return matchCampus && matchEdif && matchType && matchColor;
+      });
+      
+      // 6. RENDERIZAR LA TABLA CON LOS RESULTADOS FILTRADOS
+      renderGlobalMaintTable(filtered);
   }
 
   // --- MODAL REVISIÓN DESDE CALENDARIO ---
