@@ -16,6 +16,8 @@
   let markersLayer = null;
   let changelogModal = null;
   let newVersionModal = null;
+  let plannerCalendar = null; // Instancia separada para el planificador
+  let allPlannerEvents = [];  // Caché local de eventos para filtrar rápido
   window.currentBuildingAssetsList = [];
 
   // Instancias de Modales
@@ -171,29 +173,50 @@
   }
 
   function navTo(viewId, linkEl, event) {
+      // 1. Gestión del menú móvil
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebarOverlay');
+      if (sidebar && sidebar.classList.contains('active')) {
+          toggleSidebar();
+      }
+      
+      if (event) event.preventDefault();
+      
+      // 2. Gestión de clases activas en el menú
+      if (linkEl) { 
+          document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active')); 
+          linkEl.classList.add('active'); 
+      }
+      
+      // 3. Ocultar todas las vistas y mostrar la deseada
+      document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
+      const target = document.getElementById('view-' + viewId); 
+      if (target) target.classList.remove('d-none');
+      
+      // Resetear variables globales de navegación
+      currentActiveAssetId = null; 
+      currentBuildingId = null;
 
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    if (sidebar.classList.contains('active')) {
-      toggleSidebar();
-    }
-    if (event) event.preventDefault();
-    if (linkEl) { document.querySelectorAll('.menu-link').forEach(el => el.classList.remove('active')); linkEl.classList.add('active'); }
-    document.querySelectorAll('.view-section').forEach(el => el.classList.add('d-none'));
-    const target = document.getElementById('view-' + viewId); if (target) target.classList.remove('d-none');
-    currentActiveAssetId = null; currentBuildingId = null;
+      // 4. LÓGICA ESPECÍFICA DE CADA VISTA
+      if (viewId === 'dashboard') loadDashboard();
+      if (viewId === 'campus') loadCampusList();
+      if (viewId === 'edificios') loadEdificiosList();
+      if (viewId === 'mantenimiento') { loadGlobalMaint(); loadMaintFilters(); }
+      if (viewId === 'contratos') { loadGlobalContracts(); loadContractFilters(); }
+      if (viewId === 'activos') { const sel = document.getElementById('filterCampus'); if (!sel || sel.options.length <= 1) initFilters(); }
+      if (viewId === 'config') loadConfigList();
+      if (viewId === 'usuarios') loadUserList();
+      if (viewId === 'incidencias') loadIncidencias();
+      if (viewId === 'logs') loadLogsList();
+      if (viewId === 'feedback') loadFeedbackList();
 
-    if (viewId === 'dashboard') loadDashboard();
-    if (viewId === 'campus') loadCampusList();
-    if (viewId === 'edificios') loadEdificiosList();
-    if (viewId === 'mantenimiento') { loadGlobalMaint(); loadMaintFilters(); }
-    if (viewId === 'contratos') { loadGlobalContracts(); loadContractFilters(); }
-    if (viewId === 'activos') { const sel = document.getElementById('filterCampus'); if (!sel || sel.options.length <= 1) initFilters(); }
-    if (viewId === 'config') loadConfigList();
-    if (viewId === 'usuarios') loadUserList();
-    if (viewId === 'incidencias') loadIncidencias();
-    if (viewId === 'logs') loadLogsList();
-    if (viewId === 'feedback') loadFeedbackList();
+      // --- AQUÍ ESTÁ LA CLAVE DEL PLANIFICADOR ---
+      if (viewId === 'planner') {
+          // Damos 100ms para asegurar que el div ya no tiene 'd-none' antes de pintar el calendario
+          setTimeout(function() {
+              initPlannerCalendar();
+          }, 100);
+      }
   }
 
   function loadLogsList() {
@@ -1771,243 +1794,370 @@
   window.addEventListener('load', detectarAccesoQR);
 
   // ==========================================
-// GESTIÓN DE RELACIONES ENTRE ACTIVOS
-// ==========================================
+  // GESTIÓN DE RELACIONES ENTRE ACTIVOS
+  // ==========================================
 
-function loadRelacionesActivo() {
-  if(!currentAssetId) return;
-  
-  const container = document.getElementById('relacionesContainer');
-  container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
-  
-  google.script.run.withSuccessHandler(data => {
-    renderRelaciones(data.relaciones, data.alertas);
-  }).withFailureHandler(err => {
-    container.innerHTML = '<div class="text-danger small">Error al cargar relaciones</div>';
-  }).obtenerDatosRelaciones(currentAssetId);
-}
-
-function renderRelaciones(relaciones, alertas) {
-  const container = document.getElementById('relacionesContainer');
-  
-  if(!relaciones || relaciones.length === 0) {
-    container.innerHTML = `
-      <div class="text-center text-muted py-4">
-        <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
-        <p class="mb-0">Sin relaciones definidas</p>
-      </div>
-    `;
-    return;
-  }
-  
-  let html = '';
-  
-  // Mostrar alertas si existen
-  if(alertas && alertas.length > 0) {
-    html += '<div class="alert alert-warning mb-3 small">';
-    html += '<strong><i class="bi bi-exclamation-triangle"></i> Activos relacionados con problemas:</strong><ul class="mb-0 mt-2 ps-3">';
-    alertas.forEach(a => {
-      html += `<li><strong>${a.nombreActivo}</strong> (${a.tipoRelacion}): ${a.problema} <span class="badge bg-danger">${a.prioridad}</span></li>`;
-    });
-    html += '</ul></div>';
-  }
-  
-  // Lista de relaciones
-  html += '<div class="list-group">';
-  
-  relaciones.forEach(rel => {
-    let iconoRelacion = obtenerIconoRelacion(rel.tipoRelacion);
-    let colorBadge = obtenerColorRelacion(rel.tipoRelacion);
+  function loadRelacionesActivo() {
+    if(!currentAssetId) return;
     
-    html += `
-      <div class="list-group-item d-flex justify-content-between align-items-center">
-        <div class="d-flex align-items-center flex-grow-1">
-          <div class="me-3 fs-4">${iconoRelacion}</div>
-          <div>
-            <div class="fw-bold">${rel.nombreActivo}</div>
-            <small class="text-muted">${rel.tipoActivo}</small>
-            <div><span class="badge ${colorBadge} mt-1">${formatearTipoRelacion(rel.tipoRelacion)}</span></div>
-            ${rel.descripcion ? `<small class="text-muted fst-italic d-block mt-1">${rel.descripcion}</small>` : ''}
+    const container = document.getElementById('relacionesContainer');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    google.script.run.withSuccessHandler(data => {
+      renderRelaciones(data.relaciones, data.alertas);
+    }).withFailureHandler(err => {
+      container.innerHTML = '<div class="text-danger small">Error al cargar relaciones</div>';
+    }).obtenerDatosRelaciones(currentAssetId);
+  }
+
+  function renderRelaciones(relaciones, alertas) {
+    const container = document.getElementById('relacionesContainer');
+    
+    if(!relaciones || relaciones.length === 0) {
+      container.innerHTML = `
+        <div class="text-center text-muted py-4">
+          <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
+          <p class="mb-0">Sin relaciones definidas</p>
+        </div>
+      `;
+      return;
+    }
+    
+    let html = '';
+    
+    // Mostrar alertas si existen
+    if(alertas && alertas.length > 0) {
+      html += '<div class="alert alert-warning mb-3 small">';
+      html += '<strong><i class="bi bi-exclamation-triangle"></i> Activos relacionados con problemas:</strong><ul class="mb-0 mt-2 ps-3">';
+      alertas.forEach(a => {
+        html += `<li><strong>${a.nombreActivo}</strong> (${a.tipoRelacion}): ${a.problema} <span class="badge bg-danger">${a.prioridad}</span></li>`;
+      });
+      html += '</ul></div>';
+    }
+    
+    // Lista de relaciones
+    html += '<div class="list-group">';
+    
+    relaciones.forEach(rel => {
+      let iconoRelacion = obtenerIconoRelacion(rel.tipoRelacion);
+      let colorBadge = obtenerColorRelacion(rel.tipoRelacion);
+      
+      html += `
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center flex-grow-1">
+            <div class="me-3 fs-4">${iconoRelacion}</div>
+            <div>
+              <div class="fw-bold">${rel.nombreActivo}</div>
+              <small class="text-muted">${rel.tipoActivo}</small>
+              <div><span class="badge ${colorBadge} mt-1">${formatearTipoRelacion(rel.tipoRelacion)}</span></div>
+              ${rel.descripcion ? `<small class="text-muted fst-italic d-block mt-1">${rel.descripcion}</small>` : ''}
+            </div>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${rel.idActivoRelacionado}')" title="Ver activo">
+              <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="eliminarRelacion('${rel.id}')" title="Eliminar relación">
+              <i class="bi bi-trash"></i>
+            </button>
           </div>
         </div>
-        <div class="btn-group">
-          <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${rel.idActivoRelacionado}')" title="Ver activo">
-            <i class="bi bi-eye"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-danger" onclick="eliminarRelacion('${rel.id}')" title="Eliminar relación">
-            <i class="bi bi-trash"></i>
-          </button>
-        </div>
+      `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+    refreshSecurityIcons();
+  }
+
+  function obtenerIconoRelacion(tipo) {
+    const iconos = {
+      "DEPENDE_DE": "🔗",
+      "ES_REQUERIDO_POR": "🔗",
+      "ALIMENTA": "⚡",
+      "ES_ALIMENTADO_POR": "⚡",
+      "PERTENECE_A": "📦",
+      "CONTIENE": "📦",
+      "RELACIONADO": "🔄"
+    };
+    return iconos[tipo] || "🔗";
+  }
+
+  function obtenerColorRelacion(tipo) {
+    const colores = {
+      "DEPENDE_DE": "bg-danger",
+      "ES_REQUERIDO_POR": "bg-warning",
+      "ALIMENTA": "bg-primary",
+      "ES_ALIMENTADO_POR": "bg-info",
+      "PERTENECE_A": "bg-secondary",
+      "CONTIENE": "bg-success",
+      "RELACIONADO": "bg-light text-dark"
+    };
+    return colores[tipo] || "bg-light text-dark";
+  }
+
+  function formatearTipoRelacion(tipo) {
+    const nombres = {
+      "DEPENDE_DE": "Depende de",
+      "ES_REQUERIDO_POR": "Es requerido por",
+      "ALIMENTA": "Alimenta a",
+      "ES_ALIMENTADO_POR": "Es alimentado por",
+      "PERTENECE_A": "Pertenece a",
+      "CONTIENE": "Contiene",
+      "RELACIONADO": "Relacionado con"
+    };
+    return nombres[tipo] || tipo;
+  }
+
+  function openRelacionModal() {
+    if(!currentAssetId) return notificarError("No hay activo seleccionado");
+    
+    const modal = new bootstrap.Modal(document.getElementById('relacionModal'));
+    
+    // Limpiar formulario
+    document.getElementById('relTipoRelacion').value = "DEPENDE_DE";
+    document.getElementById('relDescripcion').value = "";
+    document.getElementById('relBidireccional').checked = true;
+    document.getElementById('relResultados').innerHTML = "";
+    document.getElementById('relSearchInput').value = "";
+    document.getElementById('relActivoSeleccionado').innerHTML = "";
+    
+    modal.show();
+  }
+
+  let searchRelTimeout = null;
+  function buscarActivosRelacion() {
+    const texto = document.getElementById('relSearchInput').value;
+    
+    if(searchRelTimeout) clearTimeout(searchRelTimeout);
+    
+    if(texto.length < 2) {
+      document.getElementById('relResultados').innerHTML = '<small class="text-muted">Escribe al menos 2 caracteres...</small>';
+      return;
+    }
+    
+    searchRelTimeout = setTimeout(() => {
+      document.getElementById('relResultados').innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+      
+      google.script.run.withSuccessHandler(resultados => {
+        renderResultadosBusqueda(resultados);
+      }).buscarActivosParaRelacionar(currentAssetId, texto);
+    }, 300);
+  }
+
+  function renderResultadosBusqueda(resultados) {
+    const container = document.getElementById('relResultados');
+    
+    if(!resultados || resultados.length === 0) {
+      container.innerHTML = '<small class="text-muted">No se encontraron activos</small>';
+      return;
+    }
+    
+    let html = '<div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">';
+    
+    resultados.forEach(a => {
+      html += `
+        <button type="button" class="list-group-item list-group-item-action" onclick="seleccionarActivoRelacion('${a.id}', '${a.nombre}', '${a.tipo}', '${a.edificio}')">
+          <div class="fw-bold">${a.nombre}</div>
+          <small class="text-muted">${a.tipo} - ${a.edificio}</small>
+        </button>
+      `;
+    });
+    
+    html += '</div>';
+    container.innerHTML = html;
+  }
+
+  let activoSeleccionadoId = null;
+  function seleccionarActivoRelacion(id, nombre, tipo, edificio) {
+    activoSeleccionadoId = id;
+    
+    document.getElementById('relActivoSeleccionado').innerHTML = `
+      <div class="alert alert-success mb-0">
+        <strong><i class="bi bi-check-circle"></i> Seleccionado:</strong> ${nombre}
+        <br><small>${tipo} - ${edificio}</small>
       </div>
     `;
-  });
-  
-  html += '</div>';
-  container.innerHTML = html;
-  refreshSecurityIcons();
-}
-
-function obtenerIconoRelacion(tipo) {
-  const iconos = {
-    "DEPENDE_DE": "🔗",
-    "ES_REQUERIDO_POR": "🔗",
-    "ALIMENTA": "⚡",
-    "ES_ALIMENTADO_POR": "⚡",
-    "PERTENECE_A": "📦",
-    "CONTIENE": "📦",
-    "RELACIONADO": "🔄"
-  };
-  return iconos[tipo] || "🔗";
-}
-
-function obtenerColorRelacion(tipo) {
-  const colores = {
-    "DEPENDE_DE": "bg-danger",
-    "ES_REQUERIDO_POR": "bg-warning",
-    "ALIMENTA": "bg-primary",
-    "ES_ALIMENTADO_POR": "bg-info",
-    "PERTENECE_A": "bg-secondary",
-    "CONTIENE": "bg-success",
-    "RELACIONADO": "bg-light text-dark"
-  };
-  return colores[tipo] || "bg-light text-dark";
-}
-
-function formatearTipoRelacion(tipo) {
-  const nombres = {
-    "DEPENDE_DE": "Depende de",
-    "ES_REQUERIDO_POR": "Es requerido por",
-    "ALIMENTA": "Alimenta a",
-    "ES_ALIMENTADO_POR": "Es alimentado por",
-    "PERTENECE_A": "Pertenece a",
-    "CONTIENE": "Contiene",
-    "RELACIONADO": "Relacionado con"
-  };
-  return nombres[tipo] || tipo;
-}
-
-function openRelacionModal() {
-  if(!currentAssetId) return notificarError("No hay activo seleccionado");
-  
-  const modal = new bootstrap.Modal(document.getElementById('relacionModal'));
-  
-  // Limpiar formulario
-  document.getElementById('relTipoRelacion').value = "DEPENDE_DE";
-  document.getElementById('relDescripcion').value = "";
-  document.getElementById('relBidireccional').checked = true;
-  document.getElementById('relResultados').innerHTML = "";
-  document.getElementById('relSearchInput').value = "";
-  document.getElementById('relActivoSeleccionado').innerHTML = "";
-  
-  modal.show();
-}
-
-let searchRelTimeout = null;
-function buscarActivosRelacion() {
-  const texto = document.getElementById('relSearchInput').value;
-  
-  if(searchRelTimeout) clearTimeout(searchRelTimeout);
-  
-  if(texto.length < 2) {
-    document.getElementById('relResultados').innerHTML = '<small class="text-muted">Escribe al menos 2 caracteres...</small>';
-    return;
-  }
-  
-  searchRelTimeout = setTimeout(() => {
-    document.getElementById('relResultados').innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
     
-    google.script.run.withSuccessHandler(resultados => {
-      renderResultadosBusqueda(resultados);
-    }).buscarActivosParaRelacionar(currentAssetId, texto);
-  }, 300);
-}
-
-function renderResultadosBusqueda(resultados) {
-  const container = document.getElementById('relResultados');
-  
-  if(!resultados || resultados.length === 0) {
-    container.innerHTML = '<small class="text-muted">No se encontraron activos</small>';
-    return;
+    document.getElementById('relResultados').innerHTML = "";
+    document.getElementById('relSearchInput').value = "";
   }
-  
-  let html = '<div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">';
-  
-  resultados.forEach(a => {
-    html += `
-      <button type="button" class="list-group-item list-group-item-action" onclick="seleccionarActivoRelacion('${a.id}', '${a.nombre}', '${a.tipo}', '${a.edificio}')">
-        <div class="fw-bold">${a.nombre}</div>
-        <small class="text-muted">${a.tipo} - ${a.edificio}</small>
-      </button>
-    `;
-  });
-  
-  html += '</div>';
-  container.innerHTML = html;
-}
 
-let activoSeleccionadoId = null;
-function seleccionarActivoRelacion(id, nombre, tipo, edificio) {
-  activoSeleccionadoId = id;
-  
-  document.getElementById('relActivoSeleccionado').innerHTML = `
-    <div class="alert alert-success mb-0">
-      <strong><i class="bi bi-check-circle"></i> Seleccionado:</strong> ${nombre}
-      <br><small>${tipo} - ${edificio}</small>
-    </div>
-  `;
-  
-  document.getElementById('relResultados').innerHTML = "";
-  document.getElementById('relSearchInput').value = "";
-}
-
-function submitRelacion() {
-  if(!activoSeleccionadoId) return notificarError("Primero selecciona un activo");
-  
-  const datos = {
-    idActivoA: currentAssetId,
-    idActivoB: activoSeleccionadoId,
-    tipoRelacion: document.getElementById('relTipoRelacion').value,
-    descripcion: document.getElementById('relDescripcion').value,
-    bidireccional: document.getElementById('relBidireccional').checked
-  };
-  
-  const btn = document.getElementById('btnRelSubmit');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-  
-  google.script.run.withSuccessHandler(res => {
-    btn.disabled = false;
-    btn.innerHTML = 'Guardar Relación';
+  function submitRelacion() {
+    if(!activoSeleccionadoId) return notificarError("Primero selecciona un activo");
     
-    if(res.success) {
-      bootstrap.Modal.getInstance(document.getElementById('relacionModal')).hide();
-      notificarExito("Relación creada correctamente");
-      loadRelacionesActivo();
-    } else {
-      notificarError(res.error);
-    }
-  }).crearRelacionActivo(datos);
-}
-
-function eliminarRelacion(idRelacion) {
-  confirmarAccion("¿Eliminar esta relación?", "No afectará al activo relacionado.", () => {
+    const datos = {
+      idActivoA: currentAssetId,
+      idActivoB: activoSeleccionadoId,
+      tipoRelacion: document.getElementById('relTipoRelacion').value,
+      descripcion: document.getElementById('relDescripcion').value,
+      bidireccional: document.getElementById('relBidireccional').checked
+    };
+    
+    const btn = document.getElementById('btnRelSubmit');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
     google.script.run.withSuccessHandler(res => {
+      btn.disabled = false;
+      btn.innerHTML = 'Guardar Relación';
+      
       if(res.success) {
-        notificarExito("Relación eliminada");
+        bootstrap.Modal.getInstance(document.getElementById('relacionModal')).hide();
+        notificarExito("Relación creada correctamente");
         loadRelacionesActivo();
       } else {
         notificarError(res.error);
       }
-    }).eliminarRelacionActivo(currentAssetId, idRelacion);
-  });
-}
+    }).crearRelacionActivo(datos);
+  }
 
-// Función en backend para devolver datos completos
-function obtenerDatosRelaciones(idActivo) {
-  return {
-    relaciones: getRelacionesActivo(idActivo),
-    alertas: getAlertasActivosRelacionados(idActivo)
-  };
-}
+  function eliminarRelacion(idRelacion) {
+    confirmarAccion("¿Eliminar esta relación?", "No afectará al activo relacionado.", () => {
+      google.script.run.withSuccessHandler(res => {
+        if(res.success) {
+          notificarExito("Relación eliminada");
+          loadRelacionesActivo();
+        } else {
+          notificarError(res.error);
+        }
+      }).eliminarRelacionActivo(currentAssetId, idRelacion);
+    });
+  }
+
+  // Función en backend para devolver datos completos
+  function obtenerDatosRelaciones(idActivo) {
+    return {
+      relaciones: getRelacionesActivo(idActivo),
+      alertas: getAlertasActivosRelacionados(idActivo)
+    };
+  }
+
+  // ==========================================
+  // 26. LÓGICA DEL PLANIFICADOR
+  // ==========================================
+
+  function initPlannerCalendar() {
+    const calendarEl = document.getElementById('plannerCalendar');
+  
+  // Si ya existe la instancia
+    if (plannerCalendar) {
+      plannerCalendar.render();
+      plannerCalendar.updateSize(); 
+      
+      if(allPlannerEvents.length === 0) loadPlannerEvents();
+      return;
+    }
+    plannerCalendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'es',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      height: 'auto', // Altura automática
+      editable: true, // ¡IMPORTANTE: Permite arrastrar!
+      droppable: true,
+      eventResizableFromStart: false,
+      
+      // Al hacer clic en un evento
+      eventClick: function(info) {
+        const props = info.event.extendedProps;
+        // Reutilizamos tus modales existentes
+        if(props.tipo === 'MANTENIMIENTO') {
+          // Asumimos que hasCalendar es false por defecto para la edición rápida
+          editRevision(info.event.id, info.event.title.split('-')[0].trim(), info.event.startStr, null, false);
+        } else if (props.tipo === 'INCIDENCIA') {
+          editIncidencia(info.event.id);
+        } else {
+          // Para Obras, podríamos hacer un simple alert o navegar a detalle
+          Swal.fire({
+            title: info.event.title,
+            text: props.descripcion,
+            icon: 'info'
+          });
+        }
+      },
+
+      // LÓGICA DRAG & DROP (Reprogramar)
+      eventDrop: function(info) {
+        const props = info.event.extendedProps;
+        
+        // Verificar si es editable
+        if (!props.editable) {
+          info.revert(); // Devolver a su sitio
+          return;
+        }
+
+        const nuevaFecha = info.event.startStr; // YYYY-MM-DD
+        const tipo = props.tipo;
+        const id = info.event.id;
+
+        // Confirmación visual suave
+        const Toast = Swal.mixin({
+          toast: true, position: 'top-end', showConfirmButton: false, timer: 2000
+        });
+        Toast.fire({ icon: 'info', title: 'Reprogramando...' });
+
+        // Llamada al servidor
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              Toast.fire({ icon: 'success', title: 'Fecha actualizada' });
+              // Actualizamos también el dashboard si es necesario en segundo plano
+            } else {
+              info.revert(); // Si falla, vuelve atrás
+              notificarError(res.error);
+            }
+          })
+          .withFailureHandler(err => {
+            info.revert();
+            notificarError("Error de red: " + err.message);
+          })
+          .updateEventDate(id, tipo, nuevaFecha);
+      }
+    });
+
+    plannerCalendar.render();
+    loadPlannerEvents();
+  }
+
+  function loadPlannerEvents() {
+    if(plannerCalendar) plannerCalendar.removeAllEvents();
+    
+    // Feedback de carga
+    const header = document.querySelector('#view-planner .page-title');
+    const orgTitle = header.innerText;
+    header.innerHTML = orgTitle + ' <span class="spinner-border spinner-border-sm text-primary"></span>';
+
+    google.script.run
+      .withSuccessHandler(eventos => {
+        header.innerText = "Planificador de Trabajo";
+        allPlannerEvents = eventos; // Guardar en caché local
+        filterPlanner(); // Aplicar filtros y pintar
+      })
+      .getPlannerEvents();
+  }
+
+  function filterPlanner() {
+    if(!plannerCalendar) return;
+
+    const showMant = document.getElementById('chkShowMant').checked;
+    const showObras = document.getElementById('chkShowObras').checked;
+    const showInc = document.getElementById('chkShowInc').checked;
+
+    // Filtramos la caché local
+    const filtrados = allPlannerEvents.filter(ev => {
+      if (ev.extendedProps.tipo === 'MANTENIMIENTO' && !showMant) return false;
+      if (ev.extendedProps.tipo === 'OBRA' && !showObras) return false;
+      if (ev.extendedProps.tipo === 'INCIDENCIA' && !showInc) return false;
+      return true;
+    });
+
+    // Repintar (borrar y añadir)
+    plannerCalendar.removeAllEvents();
+    plannerCalendar.addEventSource(filtrados);
+  }
 
 </script>
