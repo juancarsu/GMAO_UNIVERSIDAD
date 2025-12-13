@@ -231,43 +231,89 @@
     const filter = document.getElementById('dashboardCampusFilter');
     const idCampus = filter ? filter.value : null;
 
-    google.script.run.withSuccessHandler(d => {
-      document.getElementById('d-activos').innerText = d.activos;
-      document.getElementById('d-vencidas').innerText = d.vencidas;
-      document.getElementById('d-pendientes').innerText = d.pendientes;
-      document.getElementById('d-incidencias').innerText = d.incidencias;
-      document.getElementById('d-contratos').innerText = d.contratos;
-      document.getElementById('d-edificios').innerText = d.edificios;
-      document.getElementById('d-campus').innerText = d.campus;
+    // Mostrar loader mientras carga
+    document.getElementById('d-activos').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    document.getElementById('d-vencidas').innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    
+    // UNA SOLA LLAMADA para todo
+    google.script.run
+      .withSuccessHandler(d => {
+        // Actualizar números
+        document.getElementById('d-activos').innerText = d.activos;
+        document.getElementById('d-vencidas').innerText = d.vencidas;
+        document.getElementById('d-pendientes').innerText = d.pendientes;
+        document.getElementById('d-incidencias').innerText = d.incidencias;
+        document.getElementById('d-contratos').innerText = d.contratos;
+        document.getElementById('d-edificios').innerText = d.edificios;
+        document.getElementById('d-campus').innerText = d.campus;
 
-      const ctx = document.getElementById('mainChart').getContext('2d');
-      if (myChart) myChart.destroy();
-      myChart = new Chart(ctx, { type: 'line', data: { labels: d.chartLabels, datasets: [{ label: 'Revisiones', data: d.chartData, borderColor: '#CC0605', backgroundColor: 'rgba(204, 6, 5, 0.1)', tension: 0.3, fill: true }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } } });
+        // Gráficas
+        const ctx = document.getElementById('mainChart').getContext('2d');
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: d.chartLabels,
+            datasets: [{
+              label: 'Revisiones',
+              data: d.chartData,
+              borderColor: '#CC0605',
+              backgroundColor: 'rgba(204, 6, 5, 0.1)',
+              tension: 0.3,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+          }
+        });
 
-      const ctxPie = document.getElementById('pieChart').getContext('2d');
-      if (myPieChart) myPieChart.destroy();
-      myPieChart = new Chart(ctxPie, {
-        type: 'doughnut',
-        data: { labels: ['Pendientes', 'Vencidas', 'Al Día'], datasets: [{ data: [d.pendientes, d.vencidas, d.ok], backgroundColor: ['#f59e0b', '#ef4444', '#10b981'] }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-      });
+        const ctxPie = document.getElementById('pieChart').getContext('2d');
+        if (myPieChart) myPieChart.destroy();
+        myPieChart = new Chart(ctxPie, {
+          type: 'doughnut',
+          data: {
+            labels: ['Pendientes', 'Vencidas', 'Al Día'],
+            datasets: [{
+              data: [d.pendientes, d.vencidas, d.ok],
+              backgroundColor: ['#f59e0b', '#ef4444', '#10b981']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom' } }
+          }
+        });
 
-      const calendarEl = document.getElementById('calendar');
-      calendarEl.innerHTML = '';
-      calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        locale: 'es',
-        height: 550,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
-        events: d.calendarEvents,
-        selectable: true,
-        navLinks: false,
-        dateClick: function (info) { mostrarModalRevision(info.dateStr); },
-        eventClick: function (info) { const p = info.event.extendedProps; editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar); }
-      });
-      calendar.render();
-      ocultarLoader();
-    }).getDatosDashboard(idCampus);
+        // Calendario
+        const calendarEl = document.getElementById('calendar');
+        calendarEl.innerHTML = '';
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          locale: 'es',
+          height: 550,
+          headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+          events: d.calendarEvents,
+          selectable: true,
+          dateClick: function(info) { mostrarModalRevision(info.dateStr); },
+          eventClick: function(info) {
+            const p = info.event.extendedProps;
+            editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar);
+          }
+        });
+        calendar.render();
+        
+        ocultarLoader();
+      })
+      .withFailureHandler(err => {
+        notificarError("Error cargando dashboard: " + err.message);
+        ocultarLoader();
+      })
+      .getDatosDashboard(idCampus);
   }
 
   function loadDashboardFilters() {
@@ -278,6 +324,46 @@
       list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
       sel.innerHTML = html;
     }).getTableData('CAMPUS');
+  }
+
+  /**
+   * Renderizar tabla con paginación virtual (sin páginas, carga progresiva)
+   */
+  function renderTableLazy(tbody, data, renderRow, pageSize = 50) {
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Sin datos</td></tr>';
+      return;
+    }
+    
+    let currentPage = 0;
+    const totalPages = Math.ceil(data.length / pageSize);
+    
+    function loadPage() {
+      const start = currentPage * pageSize;
+      const end = Math.min(start + pageSize, data.length);
+      
+      let html = '';
+      for (let i = start; i < end; i++) {
+        html += renderRow(data[i], i);
+      }
+      
+      if (currentPage === 0) {
+        tbody.innerHTML = html;
+      } else {
+        tbody.insertAdjacentHTML('beforeend', html);
+      }
+      
+      currentPage++;
+      
+      // Cargar siguiente página si hay más datos
+      if (currentPage < totalPages) {
+        setTimeout(loadPage, 10); // Pequeña pausa para no bloquear UI
+      } else {
+        refreshSecurityIcons();
+      }
+    }
+    
+    loadPage();
   }
 
   // ==========================================
@@ -295,12 +381,8 @@
 
   function renderGlobalMaintTable(data) {
     const tbody = document.getElementById('tableGlobalMaint');
-    if (!data || data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">No hay revisiones pendientes.</td></tr>';
-      return;
-    }
-    let html = '';
-    data.forEach((r, index) => {
+    
+    renderTableLazy(tbody, data, (r, index) => {
       let dotClass = 'bg-secondary';
       if (r.color === 'rojo') dotClass = 'bg-rojo';
       if (r.color === 'amarillo') dotClass = 'bg-amarillo';
@@ -308,29 +390,25 @@
 
       let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
       let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
-
-      // DEBUG: Si r.campusNombre viene vacío, pondrá "Sin datos"
       const nombreCampusVisual = r.campusNombre || 'Sin datos';
 
-      html += `<tr>
-            <td class="text-center ps-4 text-muted small">${index + 1}</td>
-            <td>
-                <div class="fw-bold">${r.edificio}</div>
-                <small class="text-muted"><i class="bi bi-bank me-1"></i>${nombreCampusVisual}</small>
-            </td>
-            <td>${r.activo}</td>
-            <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
-            <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
-            <td class="text-end pe-4">
-                <div class="btn-group">
-                    <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
-                </div>
-            </td>
-        </tr>`;
+      return `<tr>
+        <td class="text-center ps-4 text-muted small">${index + 1}</td>
+        <td>
+          <div class="fw-bold">${r.edificio}</div>
+          <small class="text-muted"><i class="bi bi-bank me-1"></i>${nombreCampusVisual}</small>
+        </td>
+        <td>${r.activo}</td>
+        <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
+        <td><span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small></td>
+        <td class="text-end pe-4">
+          <div class="btn-group">
+            <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
+          </div>
+        </td>
+      </tr>`;
     });
-    tbody.innerHTML = html;
-    refreshSecurityIcons();
   }
 
   function marcarHecho(idRevision) {
@@ -965,7 +1043,52 @@
 
   let searchTimeout = null;
   function handleGlobalSearch(e) { if (e.key === 'Escape') { closeSearchResults(); return; } const txt = document.getElementById('globalSearchInput').value; if (searchTimeout) clearTimeout(searchTimeout); if (txt.length < 3) { closeSearchResults(); return; } searchTimeout = setTimeout(() => { executeGlobalSearch(); }, 300); }
-  function executeGlobalSearch() { const txt = document.getElementById('globalSearchInput').value; if (!txt) return; const resContainer = document.getElementById('globalSearchResults'); resContainer.innerHTML = '<div class="list-group-item text-center text-muted small"><span class="spinner-border spinner-border-sm"></span> Buscando...</div>'; resContainer.classList.remove('d-none'); google.script.run.withSuccessHandler(resultados => { if (resultados.length === 0) { resContainer.innerHTML = '<div class="list-group-item text-center text-muted small">No hay coincidencias</div>'; } else { let html = ''; resultados.forEach(r => { let icon = r.tipo === 'ACTIVO' ? '<i class="bi bi-box-seam text-primary"></i>' : '<i class="bi bi-building text-success"></i>'; html += `<button type="button" class="list-group-item list-group-item-action small" onclick="goToResult('${r.id}', '${r.tipo}')"><div class="d-flex w-100 justify-content-between align-items-center"><strong class="mb-1 text-truncate" style="max-width: 150px;">${icon} ${r.texto}</strong></div><small class="text-muted d-block text-truncate">${r.subtexto}</small></button>`; }); resContainer.innerHTML = html; } }).buscarGlobal(txt); }
+  
+  function executeGlobalSearch() {
+    const txt = document.getElementById('globalSearchInput').value;
+    if (!txt || txt.length < 3) {
+      closeSearchResults();
+      return;
+    }
+    
+    const resContainer = document.getElementById('globalSearchResults');
+    resContainer.innerHTML = '<div class="list-group-item text-center text-muted small"><span class="spinner-border spinner-border-sm"></span> Buscando...</div>';
+    resContainer.classList.remove('d-none');
+    
+    console.log('🔍 Buscando:', txt); // Log para debug
+    
+    google.script.run
+      .withSuccessHandler(resultados => {
+        console.log('✅ Resultados recibidos:', resultados); // Log para debug
+        
+        if (!resultados || resultados.length === 0) {
+          resContainer.innerHTML = '<div class="list-group-item text-center text-muted small">No hay coincidencias</div>';
+        } else {
+          let html = '';
+          resultados.forEach(r => {
+            let icon = r.tipo === 'ACTIVO' 
+              ? '<i class="bi bi-box-seam text-primary"></i>' 
+              : '<i class="bi bi-building text-success"></i>';
+            
+            html += `
+              <button type="button" class="list-group-item list-group-item-action small" onclick="goToResult('${r.id}', '${r.tipo}')">
+                <div class="d-flex w-100 justify-content-between align-items-center">
+                  <strong class="mb-1 text-truncate" style="max-width: 150px;">${icon} ${r.texto}</strong>
+                </div>
+                <small class="text-muted d-block text-truncate">${r.subtexto}</small>
+              </button>
+            `;
+          });
+          resContainer.innerHTML = html;
+        }
+      })
+      .withFailureHandler(error => {
+        console.error('❌ Error en búsqueda:', error); // Log para debug
+        resContainer.innerHTML = '<div class="list-group-item text-center text-danger small">Error: ' + error.message + '</div>';
+      })
+      .buscarGlobal(txt);
+  }
+  
   function closeSearchResults() { const resContainer = document.getElementById('globalSearchResults'); if (resContainer) { resContainer.classList.add('d-none'); resContainer.innerHTML = ''; } }
   function goToResult(id, tipo) { closeSearchResults(); document.getElementById('globalSearchInput').value = ''; if (tipo === 'ACTIVO') { navTo('activos'); openAssetDetail(id); } else if (tipo === 'EDIFICIO') { navTo('edificios'); openBuildingDetail(id); } }
   document.addEventListener('click', function (e) { const container = document.querySelector('.input-group'); const results = document.getElementById('globalSearchResults'); if (container && !container.contains(e.target) && results && !results.contains(e.target)) { closeSearchResults(); } });
@@ -1646,4 +1769,245 @@
   }
 
   window.addEventListener('load', detectarAccesoQR);
+
+  // ==========================================
+// GESTIÓN DE RELACIONES ENTRE ACTIVOS
+// ==========================================
+
+function loadRelacionesActivo() {
+  if(!currentAssetId) return;
+  
+  const container = document.getElementById('relacionesContainer');
+  container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+  
+  google.script.run.withSuccessHandler(data => {
+    renderRelaciones(data.relaciones, data.alertas);
+  }).withFailureHandler(err => {
+    container.innerHTML = '<div class="text-danger small">Error al cargar relaciones</div>';
+  }).obtenerDatosRelaciones(currentAssetId);
+}
+
+function renderRelaciones(relaciones, alertas) {
+  const container = document.getElementById('relacionesContainer');
+  
+  if(!relaciones || relaciones.length === 0) {
+    container.innerHTML = `
+      <div class="text-center text-muted py-4">
+        <i class="bi bi-diagram-3 fs-1 d-block mb-2"></i>
+        <p class="mb-0">Sin relaciones definidas</p>
+      </div>
+    `;
+    return;
+  }
+  
+  let html = '';
+  
+  // Mostrar alertas si existen
+  if(alertas && alertas.length > 0) {
+    html += '<div class="alert alert-warning mb-3 small">';
+    html += '<strong><i class="bi bi-exclamation-triangle"></i> Activos relacionados con problemas:</strong><ul class="mb-0 mt-2 ps-3">';
+    alertas.forEach(a => {
+      html += `<li><strong>${a.nombreActivo}</strong> (${a.tipoRelacion}): ${a.problema} <span class="badge bg-danger">${a.prioridad}</span></li>`;
+    });
+    html += '</ul></div>';
+  }
+  
+  // Lista de relaciones
+  html += '<div class="list-group">';
+  
+  relaciones.forEach(rel => {
+    let iconoRelacion = obtenerIconoRelacion(rel.tipoRelacion);
+    let colorBadge = obtenerColorRelacion(rel.tipoRelacion);
+    
+    html += `
+      <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div class="d-flex align-items-center flex-grow-1">
+          <div class="me-3 fs-4">${iconoRelacion}</div>
+          <div>
+            <div class="fw-bold">${rel.nombreActivo}</div>
+            <small class="text-muted">${rel.tipoActivo}</small>
+            <div><span class="badge ${colorBadge} mt-1">${formatearTipoRelacion(rel.tipoRelacion)}</span></div>
+            ${rel.descripcion ? `<small class="text-muted fst-italic d-block mt-1">${rel.descripcion}</small>` : ''}
+          </div>
+        </div>
+        <div class="btn-group">
+          <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${rel.idActivoRelacionado}')" title="Ver activo">
+            <i class="bi bi-eye"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger" onclick="eliminarRelacion('${rel.id}')" title="Eliminar relación">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  container.innerHTML = html;
+  refreshSecurityIcons();
+}
+
+function obtenerIconoRelacion(tipo) {
+  const iconos = {
+    "DEPENDE_DE": "🔗",
+    "ES_REQUERIDO_POR": "🔗",
+    "ALIMENTA": "⚡",
+    "ES_ALIMENTADO_POR": "⚡",
+    "PERTENECE_A": "📦",
+    "CONTIENE": "📦",
+    "RELACIONADO": "🔄"
+  };
+  return iconos[tipo] || "🔗";
+}
+
+function obtenerColorRelacion(tipo) {
+  const colores = {
+    "DEPENDE_DE": "bg-danger",
+    "ES_REQUERIDO_POR": "bg-warning",
+    "ALIMENTA": "bg-primary",
+    "ES_ALIMENTADO_POR": "bg-info",
+    "PERTENECE_A": "bg-secondary",
+    "CONTIENE": "bg-success",
+    "RELACIONADO": "bg-light text-dark"
+  };
+  return colores[tipo] || "bg-light text-dark";
+}
+
+function formatearTipoRelacion(tipo) {
+  const nombres = {
+    "DEPENDE_DE": "Depende de",
+    "ES_REQUERIDO_POR": "Es requerido por",
+    "ALIMENTA": "Alimenta a",
+    "ES_ALIMENTADO_POR": "Es alimentado por",
+    "PERTENECE_A": "Pertenece a",
+    "CONTIENE": "Contiene",
+    "RELACIONADO": "Relacionado con"
+  };
+  return nombres[tipo] || tipo;
+}
+
+function openRelacionModal() {
+  if(!currentAssetId) return notificarError("No hay activo seleccionado");
+  
+  const modal = new bootstrap.Modal(document.getElementById('relacionModal'));
+  
+  // Limpiar formulario
+  document.getElementById('relTipoRelacion').value = "DEPENDE_DE";
+  document.getElementById('relDescripcion').value = "";
+  document.getElementById('relBidireccional').checked = true;
+  document.getElementById('relResultados').innerHTML = "";
+  document.getElementById('relSearchInput').value = "";
+  document.getElementById('relActivoSeleccionado').innerHTML = "";
+  
+  modal.show();
+}
+
+let searchRelTimeout = null;
+function buscarActivosRelacion() {
+  const texto = document.getElementById('relSearchInput').value;
+  
+  if(searchRelTimeout) clearTimeout(searchRelTimeout);
+  
+  if(texto.length < 2) {
+    document.getElementById('relResultados').innerHTML = '<small class="text-muted">Escribe al menos 2 caracteres...</small>';
+    return;
+  }
+  
+  searchRelTimeout = setTimeout(() => {
+    document.getElementById('relResultados').innerHTML = '<div class="spinner-border spinner-border-sm"></div>';
+    
+    google.script.run.withSuccessHandler(resultados => {
+      renderResultadosBusqueda(resultados);
+    }).buscarActivosParaRelacionar(currentAssetId, texto);
+  }, 300);
+}
+
+function renderResultadosBusqueda(resultados) {
+  const container = document.getElementById('relResultados');
+  
+  if(!resultados || resultados.length === 0) {
+    container.innerHTML = '<small class="text-muted">No se encontraron activos</small>';
+    return;
+  }
+  
+  let html = '<div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">';
+  
+  resultados.forEach(a => {
+    html += `
+      <button type="button" class="list-group-item list-group-item-action" onclick="seleccionarActivoRelacion('${a.id}', '${a.nombre}', '${a.tipo}', '${a.edificio}')">
+        <div class="fw-bold">${a.nombre}</div>
+        <small class="text-muted">${a.tipo} - ${a.edificio}</small>
+      </button>
+    `;
+  });
+  
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+let activoSeleccionadoId = null;
+function seleccionarActivoRelacion(id, nombre, tipo, edificio) {
+  activoSeleccionadoId = id;
+  
+  document.getElementById('relActivoSeleccionado').innerHTML = `
+    <div class="alert alert-success mb-0">
+      <strong><i class="bi bi-check-circle"></i> Seleccionado:</strong> ${nombre}
+      <br><small>${tipo} - ${edificio}</small>
+    </div>
+  `;
+  
+  document.getElementById('relResultados').innerHTML = "";
+  document.getElementById('relSearchInput').value = "";
+}
+
+function submitRelacion() {
+  if(!activoSeleccionadoId) return notificarError("Primero selecciona un activo");
+  
+  const datos = {
+    idActivoA: currentAssetId,
+    idActivoB: activoSeleccionadoId,
+    tipoRelacion: document.getElementById('relTipoRelacion').value,
+    descripcion: document.getElementById('relDescripcion').value,
+    bidireccional: document.getElementById('relBidireccional').checked
+  };
+  
+  const btn = document.getElementById('btnRelSubmit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  
+  google.script.run.withSuccessHandler(res => {
+    btn.disabled = false;
+    btn.innerHTML = 'Guardar Relación';
+    
+    if(res.success) {
+      bootstrap.Modal.getInstance(document.getElementById('relacionModal')).hide();
+      notificarExito("Relación creada correctamente");
+      loadRelacionesActivo();
+    } else {
+      notificarError(res.error);
+    }
+  }).crearRelacionActivo(datos);
+}
+
+function eliminarRelacion(idRelacion) {
+  confirmarAccion("¿Eliminar esta relación?", "No afectará al activo relacionado.", () => {
+    google.script.run.withSuccessHandler(res => {
+      if(res.success) {
+        notificarExito("Relación eliminada");
+        loadRelacionesActivo();
+      } else {
+        notificarError(res.error);
+      }
+    }).eliminarRelacionActivo(currentAssetId, idRelacion);
+  });
+}
+
+// Función en backend para devolver datos completos
+function obtenerDatosRelaciones(idActivo) {
+  return {
+    relaciones: getRelacionesActivo(idActivo),
+    alertas: getAlertasActivosRelacionados(idActivo)
+  };
+}
+
 </script>
