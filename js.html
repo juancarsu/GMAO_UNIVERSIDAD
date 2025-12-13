@@ -218,14 +218,12 @@
     if (viewId === 'incidencias') loadIncidencias();
     if (viewId === 'logs') loadLogsList();
     if (viewId === 'feedback') loadFeedbackList();
-
-    // --- AQUÍ ESTÁ LA CLAVE DEL PLANIFICADOR ---
     if (viewId === 'planner') {
-      // Damos 100ms para asegurar que el div ya no tiene 'd-none' antes de pintar el calendario
       setTimeout(function () {
         initPlannerCalendar();
       }, 100);
     }
+    if (viewId === 'audit') loadAuditYears();
   }
 
   function loadLogsList() {
@@ -556,7 +554,7 @@
           else if (colorBtnActive.classList.contains('btn-outline-danger')) fColor = 'rojo';      // Vencidas
           else if (colorBtnActive.classList.contains('btn-outline-warning')) fColor = 'amarillo'; // Próximas
           else if (colorBtnActive.classList.contains('btn-outline-success')) fColor = 'verde';    // Al día
-          else if (colorBtnActive.classList.contains('btn-outline-info')) fColor = 'azul';        // Histórico (NUEVO)
+          else if (colorBtnActive.classList.contains('btn-outline-info')) fColor = 'azul';        // Histórico
       }
 
       // 4. DETERMINAR FILTRO DE TIPO DE REVISIÓN
@@ -606,31 +604,48 @@
   }
 
   // --- MODAL REVISIÓN DESDE CALENDARIO ---
-  function mostrarModalRevision(dateStr) {
-    if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
-    document.getElementById('revId').value = "";
-    document.getElementById('revTipo').value = "Legal";
-    document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0];
-    document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
-    document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
+  // En js.html
 
-    // Habilitar selectores
-    document.getElementById('assetSelector').classList.remove('d-none');
-    const selC = document.getElementById('maintCampus');
-    if (selC.options.length <= 1) {
-      google.script.run.withSuccessHandler(list => {
-        let html = '<option value="">- Campus -</option>';
-        list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
-        selC.innerHTML = html;
-      }).getListaCampus();
-    }
-    // Reset selects
-    document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
-    document.getElementById('maintEdificio').disabled = true;
-    document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
-    document.getElementById('maintActivo').disabled = true;
-    currentAssetId = null;
-    maintModal.show();
+  function mostrarModalRevision(dateStr) {
+      if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+      
+      // Limpieza de campos básicos
+      document.getElementById('revId').value = "";
+      document.getElementById('revTipo').value = "Legal";
+      document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0];
+      document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
+      document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
+
+      // --- CORRECCIÓN AQUÍ ---
+      // Comprobamos si estamos dentro de un activo (currentAssetId tiene valor)
+      if (currentAssetId) {
+          // MODO CONTEXTO ACTIVO: Ocultamos los selectores para no confundir
+          // El sistema usará 'currentAssetId' automáticamente al guardar
+          document.getElementById('assetSelector').classList.add('d-none');
+      } else {
+          // MODO GLOBAL: Mostramos selectores para elegir el activo
+          document.getElementById('assetSelector').classList.remove('d-none');
+          
+          const selC = document.getElementById('maintCampus');
+          if (selC.options.length <= 1) {
+              google.script.run.withSuccessHandler(list => {
+                  let html = '<option value="">- Campus -</option>';
+                  list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+                  selC.innerHTML = html;
+              }).getListaCampus();
+          }
+          
+          // Reset de selectores
+          document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
+          document.getElementById('maintEdificio').disabled = true;
+          document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
+          document.getElementById('maintActivo').disabled = true;
+      }
+
+      // ¡IMPORTANTE! Hemos eliminado la línea "currentAssetId = null;"
+      // Esto permite que al guardar, la función sepa que tiene que refrescar la lista del activo.
+      
+      maintModal.show();
   }
 
   function loadEdificiosModalMaint(idCampus) {
@@ -1499,29 +1514,54 @@
   function toggleEditInfo(editable) { if (editable) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel = document.getElementById('edit-tipo'); if (sel.options.length <= 1) { google.script.run.withSuccessHandler(list => { let html = ''; const actual = document.getElementById('d-tipo-val').innerText; list.forEach(t => { const selected = t.nombre === actual ? 'selected' : ''; html += `<option value="${t.nombre}" ${selected}>${t.nombre}</option>`; }); sel.innerHTML = html; }).getCatalogoInstalaciones(); } } else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); } }
 
   function saveAssetInfo() {
-    const newData = {
-      id: currentAssetId,
-      nombre: document.getElementById('edit-nombre').value,
-      marca: document.getElementById('edit-marca').value,
-      tipo: document.getElementById('edit-tipo').value
-    };
+      // Recogemos los nuevos valores
+      const nuevoNombre = document.getElementById('edit-nombre').value;
+      const nuevaMarca = document.getElementById('edit-marca').value;
+      const nuevoTipo = document.getElementById('edit-tipo').value;
 
-    const btnSave = document.querySelector('#btn-save-info button');
-    setBtnLoading('btn-save-info button', true);
+      const newData = {
+        id: currentAssetId,
+        nombre: nuevoNombre,
+        marca: nuevaMarca,
+        tipo: nuevoTipo
+      };
 
-    mostrarCargando("Actualizando activo...");
+      const btnSave = document.querySelector('#btn-save-info button');
+      setBtnLoading('btn-save-info button', true);
+      
+      // Bloqueo visual
+      mostrarCargando("Actualizando activo...");
 
-    google.script.run.withSuccessHandler(res => {
-      btnSave.disabled = false;
-      btnSave.innerText = "Guardar";
+      google.script.run.withSuccessHandler(res => {
+        btnSave.disabled = false;
+        btnSave.innerText = "Guardar";
 
-      if (res.success) {
-        notificarExito("Info actualizada");
-        openAssetDetail(currentAssetId);
-      }
+        if (res.success) {
+          notificarExito("Info actualizada");
+          
+          // 1. Actualizamos la vista de DETALLE (donde estamos ahora)
+          openAssetDetail(currentAssetId);
 
-      else { notificarError(res.error); }
-    }).updateAsset(newData);
+          // 2. ACTUALIZACIÓN EN CALIENTE DE LA LISTA (El arreglo clave)
+          if (window.allAssetsData) {
+              // Buscamos el activo en la memoria local
+              const index = window.allAssetsData.findIndex(a => String(a.id) === String(currentAssetId));
+              
+              if (index !== -1) {
+                  // Actualizamos sus propiedades
+                  window.allAssetsData[index].nombre = nuevoNombre;
+                  window.allAssetsData[index].marca = nuevaMarca;
+                  window.allAssetsData[index].tipo = nuevoTipo;
+                  
+                  // Refrescamos la tabla de fondo manteniendo los filtros
+                  applyAssetFilters();
+              }
+          }
+
+        } else { 
+          notificarError(res.error); 
+        }
+      }).updateAsset(newData);
   }
 
   function loadDocs() { if (!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { confirmarAccion("¿Eliminar documento?", "", () => { document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if (res.success) { notificarExito("Eliminado"); loadDocs(); } }).eliminarDocumento(idDoc); }); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if (!file || !currentAssetId) return notificarError("Selecciona archivo"); const btn = document.querySelector('#tab-docs button'), st = document.getElementById('uploadStatus'); btn.disabled = true; st.innerText = 'Subiendo...'; const r = new FileReader(); r.onload = function (e) { google.script.run.withSuccessHandler(res => { btn.disabled = false; st.innerText = 'Subido'; document.getElementById('fileInput').value = ''; notificarExito("Documento subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if (!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); }
@@ -2493,6 +2533,74 @@
     // Repintar (borrar y añadir)
     plannerCalendar.removeAllEvents();
     plannerCalendar.addEventSource(filtrados);
+  }
+
+  // ==========================================
+  // 28. LOGICA AUDITORÍA
+  // ==========================================
+
+  function loadAuditYears() {
+    const sel = document.getElementById('auditYear');
+    // Reset UI
+    document.getElementById('auditResult').classList.add('d-none');
+    setBtnLoading('btnAuditRun', false);
+    
+    sel.innerHTML = '<option>Cargando...</option>';
+    
+    google.script.run.withSuccessHandler(anios => {
+      if (!anios || anios.length === 0) {
+        // Si no hay datos, ponemos el año actual por defecto
+        const thisYear = new Date().getFullYear();
+        sel.innerHTML = `<option value="${thisYear}">${thisYear}</option>`;
+        return;
+      }
+      
+      let html = '';
+      anios.forEach(a => {
+        html += `<option value="${a}">${a}</option>`;
+      });
+      sel.innerHTML = html;
+    }).getAniosAuditoria();
+  }
+
+  function runAudit() {
+    const anio = document.getElementById('auditYear').value;
+    const tipo = document.getElementById('auditType').value;
+    
+    if (!anio) return notificarError("Selecciona un año.");
+    
+    const btn = document.getElementById('btnAuditRun');
+    
+    // Feedback visual de carga "pesada"
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Procesando archivos...';
+    
+    // Ocultar resultado anterior
+    document.getElementById('auditResult').classList.add('d-none');
+    
+    // Notificación flotante para que el usuario sepa que tarda
+    notificar("Esto puede tardar unos segundos...", "info");
+
+    google.script.run
+      .withSuccessHandler(res => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-cloud-arrow-up me-2"></i> Generar Paquete';
+        
+        if (res.success) {
+          document.getElementById('auditResult').classList.remove('d-none');
+          document.getElementById('auditMsg').innerText = `Se han recopilado ${res.total} documentos en la carpeta "${res.folderName}".`;
+          document.getElementById('auditLink').href = res.url;
+          notificarExito("Paquete generado correctamente");
+        } else {
+          notificarError(res.error);
+        }
+      })
+      .withFailureHandler(err => {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-cloud-arrow-up me-2"></i> Reintentar';
+          notificarError("Error crítico: " + err.message);
+      })
+      .generarPaqueteAuditoria(anio, tipo);
   }
 
 </script>
