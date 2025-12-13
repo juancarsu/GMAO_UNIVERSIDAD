@@ -22,6 +22,181 @@ function doGet(e) {
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
 
 // ==========================================
+// SISTEMA DE CACHÉ OPTIMIZADO
+// ==========================================
+
+const CACHE = CacheService.getScriptCache();
+const CACHE_TIME = 300; // 5 minutos
+
+/**
+ * Obtener datos con caché automática
+ */
+function getCachedSheetData(sheetName, forceRefresh = false) {
+  const cacheKey = 'SHEET_' + sheetName;
+  
+  if (!forceRefresh) {
+    const cached = CACHE.get(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch(e) {
+        Logger.log('Error parsing cache: ' + e);
+      }
+    }
+  }
+  
+  // Si no hay caché o falló, cargar desde Sheet
+  const data = getSheetData(sheetName);
+  
+  // Guardar en caché (solo si no es muy grande)
+  try {
+    const serialized = JSON.stringify(data);
+    if (serialized.length < 90000) { // Límite de CacheService
+      CACHE.put(cacheKey, serialized, CACHE_TIME);
+    }
+  } catch(e) {
+    Logger.log('No se pudo cachear ' + sheetName + ': ' + e);
+  }
+  
+  return data;
+}
+
+/**
+ * Invalidar caché cuando se modifiquen datos
+ */
+function invalidateCache(sheetName) {
+  CACHE.remove('SHEET_' + sheetName);
+  // También invalida cachés relacionados
+  if (sheetName === 'ACTIVOS') {
+    CACHE.remove('INDEX_ACTIVOS');
+  }
+  if (sheetName === 'EDIFICIOS') {
+    CACHE.remove('INDEX_EDIFICIOS');
+  }
+}
+
+/**
+ * Crear índices optimizados para búsquedas rápidas
+ */
+function buildActivosIndex() {
+  const cacheKey = 'INDEX_ACTIVOS';
+  
+  try {
+    const cached = CACHE.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+  } catch(e) {
+    Logger.log('Error leyendo caché de índice: ' + e);
+  }
+  
+  try {
+    const activos = getCachedSheetData('ACTIVOS');
+    const edificios = getCachedSheetData('EDIFICIOS');
+    const campus = getCachedSheetData('CAMPUS');
+    
+    // Crear mapas rápidos
+    const mapCampus = {};
+    if (campus && campus.length > 1) {
+      campus.slice(1).forEach(r => {
+        if (r && r[0] && r[1]) {
+          mapCampus[String(r[0])] = r[1];
+        }
+      });
+    }
+    
+    const mapEdificios = {};
+    if (edificios && edificios.length > 1) {
+      edificios.slice(1).forEach(r => {
+        if (r && r[0] && r[1] && r[2]) {
+          mapEdificios[String(r[0])] = {
+            nombre: r[2],
+            idCampus: String(r[1]),
+            campusNombre: mapCampus[String(r[1])] || '-'
+          };
+        }
+      });
+    }
+    
+    // Índice principal de activos
+    const index = {
+      byId: {},
+      byEdificio: {},
+      byCampus: {},
+      searchable: []
+    };
+    
+    if (activos && activos.length > 1) {
+      activos.slice(1).forEach(r => {
+        if (!r || !r[0]) return; // Skip filas vacías
+        
+        const id = String(r[0]);
+        const idEdif = String(r[1] || '');
+        const edifInfo = mapEdificios[idEdif] || {};
+        
+        const activo = {
+          id: id,
+          idEdificio: idEdif,
+          tipo: r[2] || '-',
+          nombre: r[3] || 'Sin nombre',
+          marca: r[4] || '',
+          fechaAlta: r[5] || null,
+          edificio: edifInfo.nombre || '-',
+          campus: edifInfo.campusNombre || '-',
+          idCampus: edifInfo.idCampus || null
+        };
+        
+        // Por ID
+        index.byId[id] = activo;
+        
+        // Por Edificio
+        if (idEdif) {
+          if (!index.byEdificio[idEdif]) index.byEdificio[idEdif] = [];
+          index.byEdificio[idEdif].push(activo);
+        }
+        
+        // Por Campus
+        if (edifInfo.idCampus) {
+          if (!index.byCampus[edifInfo.idCampus]) index.byCampus[edifInfo.idCampus] = [];
+          index.byCampus[edifInfo.idCampus].push(activo);
+        }
+        
+        // Para búsquedas de texto
+        const searchText = (activo.nombre + ' ' + activo.tipo + ' ' + activo.marca).toLowerCase();
+        index.searchable.push({
+          id: id,
+          text: searchText
+        });
+      });
+    }
+    
+    // Guardar índice en caché
+    try {
+      const serialized = JSON.stringify(index);
+      if (serialized.length < 90000) {
+        CACHE.put(cacheKey, serialized, CACHE_TIME);
+      } else {
+        Logger.log('Índice demasiado grande para caché: ' + serialized.length);
+      }
+    } catch(e) {
+      Logger.log('Error guardando índice en caché: ' + e);
+    }
+    
+    return index;
+    
+  } catch(e) {
+    Logger.log('Error construyendo índice: ' + e.toString());
+    // Devolver índice vacío en caso de error
+    return {
+      byId: {},
+      byEdificio: {},
+      byCampus: {},
+      searchable: []
+    };
+  }
+}
+
+// ==========================================
 // 2. SEGURIDAD Y ROLES
 // ==========================================
 function getMyRole() {
@@ -85,57 +260,32 @@ function textoAFecha(txt) {
 // ==========================================
 // 4. API VISTAS
 // ==========================================
+
 function getListaCampus() { const data = getSheetData('CAMPUS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1] })); }
+
 function getEdificiosPorCampus(idCampus) { const data = getSheetData('EDIFICIOS'); return data.slice(1).filter(r => String(r[1]) === String(idCampus)).map(r => ({ id: r[0], nombre: r[2] })); }
-function getActivosPorEdificio(idEdificio) { const data = getSheetData('ACTIVOS'); return data.slice(1).filter(r => String(r[1]) === String(idEdificio)).map(r => ({ id: r[0], nombre: r[3], tipo: r[2], marca: r[4] })); }
+
+function getActivosPorEdificio(idEdificio) {
+  const index = buildActivosIndex();
+  return index.byEdificio[String(idEdificio)] || [];
+}
 
 function getAssetInfo(idActivo) {
-  const data = getSheetData('ACTIVOS');
-  const edificios = getSheetData('EDIFICIOS');
-  const campus = getSheetData('CAMPUS');
-
-  for(let i=1; i<data.length; i++){
-    if(String(data[i][0]) === String(idActivo)){
-      const f = data[i][5];
-      const fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy") : "-";
-      
-      const idEdificio = data[i][1];
-      let nombreEdificio = "Desconocido";
-      let nombreCampus = "Desconocido";
-      let idCampus = null;
-
-      // Buscar Edificio
-      for(let j=1; j<edificios.length; j++){
-        if(String(edificios[j][0]) === String(idEdificio)){
-          nombreEdificio = edificios[j][2];
-          idCampus = edificios[j][1];
-          break;
-        }
-      }
-
-      // Buscar Campus
-      if(idCampus){
-        for(let k=1; k<campus.length; k++){
-          if(String(campus[k][0]) === String(idCampus)){
-            nombreCampus = campus[k][1];
-            break;
-          }
-        }
-      }
-
-      return { 
-        id: data[i][0], 
-        nombre: data[i][3], 
-        tipo: data[i][2], 
-        marca: data[i][4], 
-        fechaAlta: fechaStr,
-        edificio: nombreEdificio,
-        campus: nombreCampus
-      };
-    }
-  }
-  // Si llegamos aquí, no se encontró
-  return null; 
+  const index = buildActivosIndex();
+  const activo = index.byId[String(idActivo)];
+  
+  if (!activo) return null;
+  
+  return {
+    id: activo.id,
+    nombre: activo.nombre,
+    tipo: activo.tipo,
+    marca: activo.marca,
+    fechaAlta: activo.fechaAlta instanceof Date ? 
+               Utilities.formatDate(activo.fechaAlta, Session.getScriptTimeZone(), "dd/MM/yyyy") : "-",
+    edificio: activo.edificio,
+    campus: activo.campus
+  };
 }
 
 function updateAsset(datos) {
@@ -148,6 +298,7 @@ function updateAsset(datos) {
       sheet.getRange(i+1, 3).setValue(datos.tipo); sheet.getRange(i+1, 4).setValue(datos.nombre); sheet.getRange(i+1, 5).setValue(datos.marca); return { success: true };
     }
   }
+  invalidateCache('ACTIVOS');
   return { success: false, error: "ID no encontrado" };
 }
 
@@ -338,78 +489,69 @@ function obtenerPlanMantenimiento(idActivo) {
 }
 
 function getGlobalMaintenance() {
-  const planes = getSheetData('PLAN_MANTENIMIENTO'); 
-  const activos = getSheetData('ACTIVOS'); 
-  const edificios = getSheetData('EDIFICIOS');
+  const planes = getCachedSheetData('PLAN_MANTENIMIENTO');
+  const index = buildActivosIndex();
+  const docsData = getCachedSheetData('DOCS_HISTORICO');
   
-  // 1. CARGAR CAMPUS (Blindado a String para evitar errores de ID)
-  const campusData = getSheetData('CAMPUS');
-  const mapCampus = {};
-  campusData.slice(1).forEach(r => {
-    mapCampus[String(r[0])] = r[1]; // Guardamos ID como Texto -> Nombre
-  });
-
-  const docsData = getSheetData('DOCS_HISTORICO');
-  const docsMap = {}; 
-  for(let j=1; j<docsData.length; j++) { if(String(docsData[j][1]) === 'REVISION') docsMap[String(docsData[j][2])] = true; }
-  
-  const mapEdificios = {}; 
-  edificios.slice(1).forEach(r => mapEdificios[String(r[0])] = { nombre: r[2], idCampus: String(r[1]) });
-  
-  const mapActivos = {}; 
-  activos.slice(1).forEach(r => { 
-    const edificioInfo = mapEdificios[String(r[1])] || {}; 
-    mapActivos[String(r[0])] = { 
-      nombre: r[3], 
-      idEdif: r[1], 
-      idCampus: edificioInfo.idCampus || null 
-    }; 
-  });
-  
-  const result = []; 
-  const hoy = new Date(); 
-  hoy.setHours(0,0,0,0);
-  
-  for(let i=1; i<planes.length; i++) {
-    if (planes[i][6] === 'REALIZADA') continue;
-
-    const idActivo = String(planes[i][1]); 
-    const activoInfo = mapActivos[idActivo];
-    
-    if(activoInfo) {
-       const nombreEdificio = mapEdificios[String(activoInfo.idEdif)] ? mapEdificios[String(activoInfo.idEdif)].nombre : "-";
-       
-       // 2. RESOLVER NOMBRE CAMPUS
-       const idC = activoInfo.idCampus;
-       // Buscamos en el mapa. Si no existe, devolvemos "-"
-       const nombreCampus = (idC && mapCampus[idC]) ? mapCampus[idC] : "-";
-
-       let f = planes[i][4]; let color = 'gris'; let fechaStr = "-"; let dias = 9999; let fechaISO = "";
-       if (f instanceof Date) { f.setHours(0,0,0,0); dias = Math.ceil((f.getTime() - hoy.getTime()) / (86400000)); if (dias < 0) color = 'rojo'; else if (dias <= 30) color = 'amarillo'; else color = 'verde'; fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy"); fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd"); }
-       let hasCalendar = (planes[i].length > 7 && planes[i][7]) ? true : false;
-       
-       result.push({ 
-         id: planes[i][0], 
-         idActivo: idActivo, 
-         activo: activoInfo.nombre, 
-         edificio: nombreEdificio, 
-         
-         // AQUÍ VA EL DATO CLAVE
-         campusNombre: nombreCampus, 
-         campusId: activoInfo.idCampus,
-
-         tipo: planes[i][2], 
-         fecha: fechaStr, 
-         fechaISO: fechaISO, 
-         color: color, 
-         dias: dias, 
-         edificioId: activoInfo.idEdif, 
-         hasDocs: docsMap[String(planes[i][0])] || false, 
-         hasCalendar: hasCalendar 
-       });
+  // Mapa de documentos
+  const docsMap = {};
+  for(let j = 1; j < docsData.length; j++) {
+    if(String(docsData[j][1]) === 'REVISION') {
+      docsMap[String(docsData[j][2])] = true;
     }
   }
-  return result.sort((a,b) => a.dias - b.dias);
+  
+  const result = [];
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  for(let i = 1; i < planes.length; i++) {
+    if (planes[i][6] === 'REALIZADA') continue;
+    
+    const idActivo = String(planes[i][1]);
+    const activo = index.byId[idActivo];
+    
+    if (!activo) continue;
+    
+    let f = planes[i][4];
+    let color = 'gris';
+    let fechaStr = "-";
+    let dias = 9999;
+    let fechaISO = "";
+    
+    if (f instanceof Date) {
+      f.setHours(0, 0, 0, 0);
+      dias = Math.ceil((f.getTime() - hoy.getTime()) / 86400000);
+      
+      if (dias < 0) color = 'rojo';
+      else if (dias <= 30) color = 'amarillo';
+      else color = 'verde';
+      
+      fechaStr = Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy");
+      fechaISO = Utilities.formatDate(f, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    }
+    
+    let hasCalendar = (planes[i].length > 7 && planes[i][7]) ? true : false;
+    
+    result.push({
+      id: planes[i][0],
+      idActivo: idActivo,
+      activo: activo.nombre,
+      edificio: activo.edificio,
+      campusNombre: activo.campus,
+      campusId: activo.idCampus,
+      tipo: planes[i][2],
+      fecha: fechaStr,
+      fechaISO: fechaISO,
+      color: color,
+      dias: dias,
+      edificioId: activo.idEdificio,
+      hasDocs: docsMap[String(planes[i][0])] || false,
+      hasCalendar: hasCalendar
+    });
+  }
+  
+  return result.sort((a, b) => a.dias - b.dias);
 }
 
 function crearRevision(d) {
@@ -430,6 +572,7 @@ function crearRevision(d) {
       }
     }
     registrarLog("CREAR REVISION", "Activo: " + d.idActivo + " | Tipo: " + d.tipo);
+    invalidateCache('PLAN_MANTENIMIENTO');
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
@@ -610,6 +753,7 @@ function crearContrato(d) {
   verificarPermiso(['WRITE']);
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   ss.getSheetByName('CONTRATOS').appendRow([Utilities.getUuid(), d.tipoEntidad, d.idEntidad, d.proveedor, d.ref, textoAFecha(d.fechaIni), textoAFecha(d.fechaFin), d.estado]); registrarLog("CREAR CONTRATO", "Proveedor: " + d.proveedor + " | Ref: " + d.ref);
+  invalidateCache('CONTRATOS');
   return { success: true };
 }
 
@@ -776,7 +920,16 @@ function getDatosDashboard(idCampus) {
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
 
-function crearCampus(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); registrarLog("CREAR CAMPUS", "Nombre: " + d.nombre); return {success:true}; }
+function crearCampus(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); 
+  registrarLog("CREAR CAMPUS", "Nombre: " + d.nombre);
+  invalidateCache('CAMPUS');    
+  invalidateCache('EDIFICIOS');
+  invalidateCache('ACTIVOS');
+  return { success: true };
+}
 
 function crearEdificio(d) { 
   verificarPermiso(['WRITE']); 
@@ -792,10 +945,31 @@ function crearEdificio(d) {
   ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId, d.lat, d.lng]); 
   
   registrarLog("CREAR EDIFICIO", "Nombre: " + d.nombre); // Auditoría
+  invalidateCache('EDIFICIOS');
+  invalidateCache('ACTIVOS');
   return {success:true}; 
 }
 
-function crearActivo(d) { verificarPermiso(['WRITE']); const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const eData = getSheetData('EDIFICIOS'); let pId; for(let i=1; i<eData.length; i++) if(String(eData[i][0])==String(d.idEdificio)) pId=eData[i][5]; const fId = crearCarpeta(d.nombre, pId); const id = Utilities.getUuid(); const cats = getSheetData('CAT_INSTALACIONES'); let nombreTipo = d.tipo; for(let i=1; i<cats.length; i++) { if(String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; } } ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]); return {success:true}; }
+function crearActivo(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const eData = getSheetData('EDIFICIOS');
+  let pId;
+  for (let i = 1; i < eData.length; i++)
+    if (String(eData[i][0]) == String(d.idEdificio)) pId = eData[i][5];
+  const fId = crearCarpeta(d.nombre, pId);
+  const id = Utilities.getUuid();
+  const cats = getSheetData('CAT_INSTALACIONES');
+  let nombreTipo = d.tipo;
+  for (let i = 1; i < cats.length; i++) {
+    if (String(cats[i][0]) === String(d.tipo)) {
+      nombreTipo = cats[i][1]; break;
+    }
+  }
+  ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]);
+  invalidateCache('ACTIVOS');
+  return { success: true };
+}
 
 function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
 
@@ -827,7 +1001,97 @@ function getTableData(tipo) {
   return []; 
 }
 
-function buscarGlobal(texto) { if (!texto || texto.length < 3) return []; texto = texto.toLowerCase(); const resultados = []; const activos = getSheetData('ACTIVOS'); for(let i=1; i<activos.length; i++) { const r = activos[i]; if (String(r[3]).toLowerCase().includes(texto) || String(r[2]).toLowerCase().includes(texto) || String(r[4]).toLowerCase().includes(texto)) { resultados.push({ id: r[0], tipo: 'ACTIVO', texto: r[3], subtexto: r[2] + (r[4] ? " - " + r[4] : "") }); } } const edificios = getSheetData('EDIFICIOS'); for(let i=1; i<edificios.length; i++) { const r = edificios[i]; if (String(r[2]).toLowerCase().includes(texto)) { resultados.push({ id: r[0], tipo: 'EDIFICIO', texto: r[2], subtexto: 'Edificio' }); } } return resultados.slice(0, 10); }
+/**
+ * buscarGlobal - OPTIMIZADO Y ROBUSTO
+ */
+function buscarGlobal(texto) {
+  if (!texto || texto.length < 3) return [];
+  
+  try {
+    const index = buildActivosIndex();
+    const textoLower = texto.toLowerCase();
+    const resultados = [];
+    
+    // Búsqueda en activos
+    for (let i = 0; i < index.searchable.length && resultados.length < 10; i++) {
+      const item = index.searchable[i];
+      if (item.text.includes(textoLower)) {
+        const activo = index.byId[item.id];
+        if (activo) {
+          resultados.push({
+            id: activo.id,
+            tipo: 'ACTIVO',
+            texto: activo.nombre,
+            subtexto: activo.tipo + (activo.marca ? " - " + activo.marca : "")
+          });
+        }
+      }
+    }
+    
+    // Búsqueda en edificios (si no hay suficientes resultados)
+    if (resultados.length < 10) {
+      const edificios = getCachedSheetData('EDIFICIOS');
+      for (let i = 1; i < edificios.length && resultados.length < 10; i++) {
+        const nombre = String(edificios[i][2]).toLowerCase();
+        if (nombre.includes(textoLower)) {
+          resultados.push({
+            id: edificios[i][0],
+            tipo: 'EDIFICIO',
+            texto: edificios[i][2],
+            subtexto: 'Edificio'
+          });
+        }
+      }
+    }
+    
+    return resultados;
+    
+  } catch(e) {
+    Logger.log('Error en buscarGlobal: ' + e.toString());
+    // Fallback a búsqueda tradicional si falla el índice
+    return buscarGlobalFallback(texto);
+  }
+}
+
+/**
+ * Fallback de búsqueda (sin caché) por si falla la optimizada
+ */
+function buscarGlobalFallback(texto) {
+  if (!texto || texto.length < 3) return [];
+  
+  texto = texto.toLowerCase();
+  const resultados = [];
+  
+  const activos = getSheetData('ACTIVOS');
+  for(let i = 1; i < activos.length && resultados.length < 10; i++) {
+    const r = activos[i];
+    if (String(r[3]).toLowerCase().includes(texto) || 
+        String(r[2]).toLowerCase().includes(texto) || 
+        String(r[4]).toLowerCase().includes(texto)) {
+      resultados.push({
+        id: r[0],
+        tipo: 'ACTIVO',
+        texto: r[3],
+        subtexto: r[2] + (r[4] ? " - " + r[4] : "")
+      });
+    }
+  }
+  
+  const edificios = getSheetData('EDIFICIOS');
+  for(let i = 1; i < edificios.length && resultados.length < 10; i++) {
+    const r = edificios[i];
+    if (String(r[2]).toLowerCase().includes(texto)) {
+      resultados.push({
+        id: r[0],
+        tipo: 'EDIFICIO',
+        texto: r[2],
+        subtexto: 'Edificio'
+      });
+    }
+  }
+  
+  return resultados;
+}
 
 // ==========================================
 // 10. GESTIÓN USUARIOS Y CONFIG (ADMIN ONLY)
@@ -2191,4 +2455,240 @@ function getActivoByQR(idActivo) {
   } catch (e) {
     return { success: false, error: e.toString() };
   }
+}
+
+// ==========================================
+// 25. SISTEMA DE RELACIONES ENTRE ACTIVOS
+// ==========================================
+
+/**
+ * Obtener relaciones de un activo específico
+ */
+function getRelacionesActivo(idActivo) {
+  const data = getSheetData('ACTIVOS');
+  
+  for(let i = 1; i < data.length; i++) {
+    if(String(data[i][0]) === String(idActivo)) {
+      // La columna 8 (índice 7) guardará las relaciones como JSON
+      const relacionesRaw = data[i][7] || "[]";
+      
+      try {
+        const relaciones = JSON.parse(relacionesRaw);
+        
+        // Enriquecer con nombres de los activos relacionados
+        return relaciones.map(rel => {
+          const activoInfo = getAssetInfo(rel.idActivoRelacionado);
+          return {
+            id: rel.id,
+            idActivoRelacionado: rel.idActivoRelacionado,
+            nombreActivo: activoInfo ? activoInfo.nombre : "Desconocido",
+            tipoActivo: activoInfo ? activoInfo.tipo : "-",
+            tipoRelacion: rel.tipoRelacion,
+            descripcion: rel.descripcion || ""
+          };
+        });
+      } catch(e) {
+        return [];
+      }
+    }
+  }
+  
+  return [];
+}
+
+/**
+ * Guardar nueva relación entre activos (bidireccional)
+ */
+function crearRelacionActivo(datos) {
+  verificarPermiso(['WRITE']);
+  
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    const sheet = ss.getSheetByName('ACTIVOS');
+    const dataActivos = sheet.getDataRange().getValues();
+    
+    // 1. Añadir relación en Activo A -> B
+    actualizarRelacionEnActivo(sheet, dataActivos, datos.idActivoA, {
+      id: Utilities.getUuid(),
+      idActivoRelacionado: datos.idActivoB,
+      tipoRelacion: datos.tipoRelacion,
+      descripcion: datos.descripcion
+    });
+    
+    // 2. Añadir relación inversa en Activo B -> A (si es bidireccional)
+    if(datos.bidireccional) {
+      const tipoInverso = obtenerTipoInverso(datos.tipoRelacion);
+      actualizarRelacionEnActivo(sheet, dataActivos, datos.idActivoB, {
+        id: Utilities.getUuid(),
+        idActivoRelacionado: datos.idActivoA,
+        tipoRelacion: tipoInverso,
+        descripcion: datos.descripcion
+      });
+    }
+    
+    registrarLog("CREAR RELACIÓN", `Entre activos ${datos.idActivoA} y ${datos.idActivoB} (${datos.tipoRelacion})`);
+    
+    return { success: true };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Helper: Actualizar relaciones en un activo específico
+ */
+function actualizarRelacionEnActivo(sheet, data, idActivo, nuevaRelacion) {
+  for(let i = 1; i < data.length; i++) {
+    if(String(data[i][0]) === String(idActivo)) {
+      const relacionesActuales = data[i][7] || "[]";
+      let relaciones = [];
+      
+      try {
+        relaciones = JSON.parse(relacionesActuales);
+      } catch(e) {
+        relaciones = [];
+      }
+      
+      // Añadir nueva relación
+      relaciones.push(nuevaRelacion);
+      
+      // Guardar en Excel
+      sheet.getRange(i + 1, 8).setValue(JSON.stringify(relaciones));
+      break;
+    }
+  }
+}
+
+/**
+ * Helper: Obtener tipo de relación inversa
+ */
+function obtenerTipoInverso(tipo) {
+  const mapInversos = {
+    "DEPENDE_DE": "ES_REQUERIDO_POR",
+    "ES_REQUERIDO_POR": "DEPENDE_DE",
+    "ALIMENTA": "ES_ALIMENTADO_POR",
+    "ES_ALIMENTADO_POR": "ALIMENTA",
+    "PERTENECE_A": "CONTIENE",
+    "CONTIENE": "PERTENECE_A"
+  };
+  
+  return mapInversos[tipo] || tipo;
+}
+
+/**
+ * Eliminar una relación específica
+ */
+function eliminarRelacionActivo(idActivo, idRelacion) {
+  verificarPermiso(['DELETE']);
+  
+  try {
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    const sheet = ss.getSheetByName('ACTIVOS');
+    const data = sheet.getDataRange().getValues();
+    
+    for(let i = 1; i < data.length; i++) {
+      if(String(data[i][0]) === String(idActivo)) {
+        const relacionesRaw = data[i][7] || "[]";
+        let relaciones = JSON.parse(relacionesRaw);
+        
+        // Filtrar la relación a eliminar
+        relaciones = relaciones.filter(r => r.id !== idRelacion);
+        
+        sheet.getRange(i + 1, 8).setValue(JSON.stringify(relaciones));
+        
+        registrarLog("ELIMINAR RELACIÓN", `Relación ${idRelacion} del activo ${idActivo}`);
+        return { success: true };
+      }
+    }
+    
+    return { success: false, error: "Activo no encontrado" };
+  } catch(e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Obtener alertas de activos relacionados con problemas
+ */
+function getAlertasActivosRelacionados(idActivo) {
+  const relaciones = getRelacionesActivo(idActivo);
+  const alertas = [];
+  
+  // Revisar si algún activo relacionado tiene incidencias abiertas
+  const incidencias = getSheetData('INCIDENCIAS');
+  
+  relaciones.forEach(rel => {
+    for(let i = 1; i < incidencias.length; i++) {
+      if(String(incidencias[i][2]) === String(rel.idActivoRelacionado) && 
+         incidencias[i][6] !== 'RESUELTA') {
+        alertas.push({
+          nombreActivo: rel.nombreActivo,
+          tipoRelacion: rel.tipoRelacion,
+          problema: incidencias[i][4],
+          prioridad: incidencias[i][5]
+        });
+      }
+    }
+  });
+  
+  return alertas;
+}
+
+/**
+ * Buscar activos disponibles para relacionar (excluyendo el actual y ya relacionados)
+ */
+function buscarActivosParaRelacionar(idActivo, textoBusqueda) {
+  const activos = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  const relacionesActuales = getRelacionesActivo(idActivo);
+  
+  const idsExcluidos = new Set([idActivo, ...relacionesActuales.map(r => r.idActivoRelacionado)]);
+  
+  const mapEdificios = {};
+  edificios.slice(1).forEach(e => mapEdificios[e[0]] = e[2]);
+  
+  const resultados = [];
+  const textoLower = (textoBusqueda || "").toLowerCase();
+  
+  for(let i = 1; i < activos.length; i++) {
+    const id = activos[i][0];
+    const nombre = activos[i][3];
+    const tipo = activos[i][2];
+    
+    if(idsExcluidos.has(String(id))) continue;
+    
+    if(!textoBusqueda || 
+       nombre.toLowerCase().includes(textoLower) || 
+       tipo.toLowerCase().includes(textoLower)) {
+      
+      const edificio = mapEdificios[activos[i][1]] || "Sin edificio";
+      
+      resultados.push({
+        id: id,
+        nombre: nombre,
+        tipo: tipo,
+        edificio: edificio
+      });
+      
+      if(resultados.length >= 20) break; // Limitar resultados
+    }
+  }
+  
+  return resultados;
+}
+
+/**
+ * Función wrapper para obtener relaciones + alertas (llamada desde frontend)
+ */
+function obtenerDatosRelaciones(idActivo) {
+  return {
+    relaciones: getRelacionesActivo(idActivo),
+    alertas: getAlertasActivosRelacionados(idActivo)
+  };
+}
+
+function limpiarCache() {
+  const CACHE = CacheService.getScriptCache();
+  CACHE.removeAll(['SHEET_ACTIVOS', 'SHEET_EDIFICIOS', 'SHEET_CAMPUS', 'INDEX_ACTIVOS']);
+  Logger.log('Caché limpiada');
 }
