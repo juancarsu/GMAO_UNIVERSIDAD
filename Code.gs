@@ -2692,3 +2692,111 @@ function limpiarCache() {
   CACHE.removeAll(['SHEET_ACTIVOS', 'SHEET_EDIFICIOS', 'SHEET_CAMPUS', 'INDEX_ACTIVOS']);
   Logger.log('Caché limpiada');
 }
+
+// ==========================================
+// 26. PLANIFICADOR (CALENDARIO GLOBAL)
+// ==========================================
+
+/**
+ * Obtiene todos los eventos combinados para el planificador
+ */
+function getPlannerEvents() {
+  const eventos = [];
+  const hoy = new Date(); 
+  hoy.setHours(0,0,0,0);
+
+  // 1. REVISIONES DE MANTENIMIENTO
+  const mant = getGlobalMaintenance(); // Reutilizamos tu función existente
+  mant.forEach(r => {
+    eventos.push({
+      id: r.id,
+      resourceId: 'MANTENIMIENTO', // Para filtrado
+      title: `🔧 ${r.tipo} - ${r.activo}`,
+      start: r.fechaISO, // YYYY-MM-DD
+      color: r.color === 'rojo' ? '#dc3545' : (r.color === 'amarillo' ? '#ffc107' : '#198754'),
+      textColor: r.color === 'amarillo' ? '#000' : '#fff',
+      extendedProps: {
+        tipo: 'MANTENIMIENTO',
+        descripcion: `${r.edificio} | ${r.campusNombre}`,
+        status: r.color,
+        editable: true // Permitir drag & drop
+      }
+    });
+  });
+
+  // 2. OBRAS EN CURSO
+  const dataObras = getSheetData('OBRAS');
+  for(let i=1; i<dataObras.length; i++) {
+    if(dataObras[i][6] === 'EN CURSO' && dataObras[i][4] instanceof Date) {
+      eventos.push({
+        id: dataObras[i][0],
+        resourceId: 'OBRA',
+        title: `🏗️ ${dataObras[i][2]}`,
+        start: Utilities.formatDate(dataObras[i][4], Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        color: '#0d6efd', // Azul
+        extendedProps: {
+          tipo: 'OBRA',
+          descripcion: dataObras[i][3],
+          editable: true
+        }
+      });
+    }
+  }
+
+  // 3. INCIDENCIAS PENDIENTES
+  // Nota: Las incidencias suelen tener fecha de creación, no de "ejecución".
+  // Las mostramos en el día que se reportaron para referencia.
+  const dataInc = getSheetData('INCIDENCIAS');
+  for(let i=1; i<dataInc.length; i++) {
+    if(dataInc[i][6] !== 'RESUELTA' && dataInc[i][7] instanceof Date) {
+      eventos.push({
+        id: dataInc[i][0],
+        resourceId: 'INCIDENCIA',
+        title: `⚠️ ${dataInc[i][5]} - ${dataInc[i][3]}`,
+        start: Utilities.formatDate(dataInc[i][7], Session.getScriptTimeZone(), "yyyy-MM-dd"),
+        color: '#fd7e14', // Naranja
+        extendedProps: {
+          tipo: 'INCIDENCIA',
+          descripcion: dataInc[i][4],
+          editable: false // No solemos reprogramar la "creación" de una incidencia
+        }
+      });
+    }
+  }
+
+  return eventos;
+}
+
+/**
+ * Actualiza la fecha de un evento tras Drag & Drop
+ */
+function updateEventDate(id, tipo, nuevaFechaISO) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const nuevaFecha = textoAFecha(nuevaFechaISO); // Tu helper espera YYYY-MM-DD
+
+  if (tipo === 'MANTENIMIENTO') {
+    const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
+    const data = sheet.getDataRange().getValues();
+    for(let i=1; i<data.length; i++){
+      if(String(data[i][0]) === String(id)) {
+        sheet.getRange(i+1, 5).setValue(nuevaFecha); // Columna fecha
+        registrarLog("REPROGRAMAR", `Revisión ${id} movida a ${nuevaFechaISO}`);
+        return { success: true };
+      }
+    }
+  } 
+  else if (tipo === 'OBRA') {
+    const sheet = ss.getSheetByName('OBRAS');
+    const data = sheet.getDataRange().getValues();
+    for(let i=1; i<data.length; i++){
+      if(String(data[i][0]) === String(id)) {
+        sheet.getRange(i+1, 5).setValue(nuevaFecha); // Columna fecha inicio
+        registrarLog("REPROGRAMAR", `Obra ${id} movida a ${nuevaFechaISO}`);
+        return { success: true };
+      }
+    }
+  }
+
+  return { success: false, error: "Elemento no encontrado o tipo no editable" };
+}
