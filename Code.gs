@@ -1353,3 +1353,429 @@ function getContratoFullDetails(idContrato) {
     idActivo: idActivo
   };
 }
+
+// ==========================================
+// 22. SISTEMA DE NOTIFICACIONES AUTOMÁTICAS
+// ==========================================
+
+/**
+ * FUNCIÓN PRINCIPAL - Se ejecuta automáticamente cada día
+ * Configurar en: Activadores (Triggers) > Añadir activador
+ * - Función: enviarNotificacionesAutomaticas
+ * - Tipo: Controlado por tiempo
+ * - Tipo de activador: Temporizador diario
+ * - Hora: 08:00 - 09:00 (recomendado)
+ */
+function enviarNotificacionesAutomaticas() {
+  try {
+    Logger.log("=== INICIO ENVÍO NOTIFICACIONES AUTOMÁTICAS ===");
+    
+    // 1. Obtener usuarios con notificaciones activadas
+    const usuariosConAvisos = obtenerUsuariosConAvisos();
+    
+    if (usuariosConAvisos.length === 0) {
+      Logger.log("No hay usuarios con avisos activados. Finalizando.");
+      return;
+    }
+    
+    // 2. Detectar revisiones próximas a vencer (7 días)
+    const revisionesProximas = detectarRevisionesProximas();
+    
+    // 3. Detectar revisiones vencidas
+    const revisionesVencidas = detectarRevisionesVencidas();
+    
+    // 4. Detectar contratos próximos a caducar (60 días)
+    const contratosProximos = detectarContratosProximos();
+    
+    // 5. Si hay algo que notificar, enviar emails
+    if (revisionesProximas.length > 0 || revisionesVencidas.length > 0 || contratosProximos.length > 0) {
+      usuariosConAvisos.forEach(usuario => {
+        enviarEmailResumen(usuario, revisionesProximas, revisionesVencidas, contratosProximos);
+      });
+      
+      Logger.log(`Emails enviados a ${usuariosConAvisos.length} usuario(s)`);
+    } else {
+      Logger.log("No hay alertas que notificar hoy.");
+    }
+    
+    Logger.log("=== FIN ENVÍO NOTIFICACIONES ===");
+    
+  } catch (e) {
+    Logger.log("ERROR en notificaciones automáticas: " + e.toString());
+    // Enviar email de error al admin
+    MailApp.sendEmail(
+      "jcsuarez@unav.es", 
+      "[GMAO] Error en Notificaciones Automáticas", 
+      "Se ha producido un error al enviar las notificaciones automáticas:\n\n" + e.toString()
+    );
+  }
+}
+
+// Obtener usuarios que tienen avisos activados
+function obtenerUsuariosConAvisos() {
+  const data = getSheetData('USUARIOS');
+  const usuarios = [];
+  
+  for(let i = 1; i < data.length; i++) {
+    if (data[i][4] === 'SI') { // Columna 5 = AVISOS
+      usuarios.push({
+        nombre: data[i][1],
+        email: data[i][2],
+        rol: data[i][3]
+      });
+    }
+  }
+  
+  return usuarios;
+}
+
+// Detectar revisiones que vencen en los próximos 7 días
+function detectarRevisionesProximas() {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  const en7Dias = new Date(hoy);
+  en7Dias.setDate(en7Dias.getDate() + 7);
+  
+  const dataMant = getSheetData('PLAN_MANTENIMIENTO');
+  const activos = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  
+  // Mapas para resolver nombres
+  const mapActivos = {};
+  activos.slice(1).forEach(r => mapActivos[r[0]] = { nombre: r[3], edificioId: r[1] });
+  
+  const mapEdificios = {};
+  edificios.slice(1).forEach(r => mapEdificios[r[0]] = r[2]);
+  
+  const proximas = [];
+  
+  for(let i = 1; i < dataMant.length; i++) {
+    // Saltar si ya está realizada
+    if (dataMant[i][6] === 'REALIZADA') continue;
+    
+    const fechaRevision = dataMant[i][4];
+    
+    if (fechaRevision instanceof Date) {
+      fechaRevision.setHours(0, 0, 0, 0);
+      
+      // Si está entre hoy y 7 días
+      if (fechaRevision >= hoy && fechaRevision <= en7Dias) {
+        const idActivo = dataMant[i][1];
+        const activo = mapActivos[idActivo];
+        
+        if (activo) {
+          const diasRestantes = Math.ceil((fechaRevision - hoy) / (1000 * 60 * 60 * 24));
+          
+          proximas.push({
+            tipo: dataMant[i][2],
+            activo: activo.nombre,
+            edificio: mapEdificios[activo.edificioId] || 'N/A',
+            fecha: Utilities.formatDate(fechaRevision, Session.getScriptTimeZone(), "dd/MM/yyyy"),
+            diasRestantes: diasRestantes
+          });
+        }
+      }
+    }
+  }
+  
+  return proximas;
+}
+
+// Detectar revisiones vencidas
+function detectarRevisionesVencidas() {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  const dataMant = getSheetData('PLAN_MANTENIMIENTO');
+  const activos = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  
+  const mapActivos = {};
+  activos.slice(1).forEach(r => mapActivos[r[0]] = { nombre: r[3], edificioId: r[1] });
+  
+  const mapEdificios = {};
+  edificios.slice(1).forEach(r => mapEdificios[r[0]] = r[2]);
+  
+  const vencidas = [];
+  
+  for(let i = 1; i < dataMant.length; i++) {
+    if (dataMant[i][6] === 'REALIZADA') continue;
+    
+    const fechaRevision = dataMant[i][4];
+    
+    if (fechaRevision instanceof Date) {
+      fechaRevision.setHours(0, 0, 0, 0);
+      
+      // Si está vencida
+      if (fechaRevision < hoy) {
+        const idActivo = dataMant[i][1];
+        const activo = mapActivos[idActivo];
+        
+        if (activo) {
+          const diasVencida = Math.ceil((hoy - fechaRevision) / (1000 * 60 * 60 * 24));
+          
+          vencidas.push({
+            tipo: dataMant[i][2],
+            activo: activo.nombre,
+            edificio: mapEdificios[activo.edificioId] || 'N/A',
+            fecha: Utilities.formatDate(fechaRevision, Session.getScriptTimeZone(), "dd/MM/yyyy"),
+            diasVencida: diasVencida
+          });
+        }
+      }
+    }
+  }
+  
+  return vencidas;
+}
+
+// Detectar contratos que caducan en los próximos 60 días
+function detectarContratosProximos() {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  
+  const en60Dias = new Date(hoy);
+  en60Dias.setDate(en60Dias.getDate() + 60);
+  
+  const dataContratos = getSheetData('CONTRATOS');
+  const proximos = [];
+  
+  for(let i = 1; i < dataContratos.length; i++) {
+    const estado = dataContratos[i][7]; // Estado del contrato
+    
+    // Solo contratos activos
+    if (estado !== 'ACTIVO') continue;
+    
+    const fechaFin = dataContratos[i][6];
+    
+    if (fechaFin instanceof Date) {
+      fechaFin.setHours(0, 0, 0, 0);
+      
+      // Si caduca en los próximos 60 días
+      if (fechaFin >= hoy && fechaFin <= en60Dias) {
+        const diasRestantes = Math.ceil((fechaFin - hoy) / (1000 * 60 * 60 * 24));
+        
+        proximos.push({
+          proveedor: dataContratos[i][3],
+          referencia: dataContratos[i][4],
+          fechaFin: Utilities.formatDate(fechaFin, Session.getScriptTimeZone(), "dd/MM/yyyy"),
+          diasRestantes: diasRestantes
+        });
+      }
+    }
+  }
+  
+  return proximos;
+}
+
+// Enviar email resumen a un usuario
+function enviarEmailResumen(usuario, revisionesProximas, revisionesVencidas, contratosProximos) {
+  const fechaHoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
+  
+  // Construir HTML del email
+  let htmlBody = `
+    <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
+          .header { background-color: #CC0605; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; }
+          .section { margin-bottom: 30px; }
+          .section-title { color: #CC0605; font-size: 18px; font-weight: bold; border-bottom: 2px solid #CC0605; padding-bottom: 5px; margin-bottom: 15px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th { background-color: #f3f4f6; color: #CC0605; padding: 10px; text-align: left; font-size: 12px; }
+          td { padding: 10px; border-bottom: 1px solid #eee; font-size: 13px; }
+          .urgente { color: #dc3545; font-weight: bold; }
+          .proximo { color: #f59e0b; font-weight: bold; }
+          .footer { background-color: #f9fafb; padding: 15px; text-align: center; font-size: 12px; color: #666; margin-top: 30px; }
+          .badge { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+          .badge-danger { background-color: #fef2f2; color: #dc3545; }
+          .badge-warning { background-color: #fffbeb; color: #f59e0b; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>🔔 Notificación Automática GMAO</h1>
+          <p>Universidad de Navarra - ${fechaHoy}</p>
+        </div>
+        
+        <div class="content">
+          <p>Hola <strong>${usuario.nombre}</strong>,</p>
+          <p>Este es tu resumen automático de mantenimiento y contratos:</p>
+  `;
+  
+  // SECCIÓN: Revisiones Vencidas
+  if (revisionesVencidas.length > 0) {
+    htmlBody += `
+      <div class="section">
+        <div class="section-title">⚠️ REVISIONES VENCIDAS (${revisionesVencidas.length})</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Activo</th>
+              <th>Edificio</th>
+              <th>Tipo</th>
+              <th>Fecha Límite</th>
+              <th>Días Vencida</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    revisionesVencidas.forEach(r => {
+      htmlBody += `
+        <tr>
+          <td>${r.activo}</td>
+          <td>${r.edificio}</td>
+          <td>${r.tipo}</td>
+          <td>${r.fecha}</td>
+          <td class="urgente">${r.diasVencida} días</td>
+        </tr>
+      `;
+    });
+    
+    htmlBody += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  
+  // SECCIÓN: Revisiones Próximas
+  if (revisionesProximas.length > 0) {
+    htmlBody += `
+      <div class="section">
+        <div class="section-title">📅 REVISIONES PRÓXIMAS (${revisionesProximas.length})</div>
+        <p style="font-size: 13px; color: #666;">Vencen en los próximos 7 días</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Activo</th>
+              <th>Edificio</th>
+              <th>Tipo</th>
+              <th>Fecha Límite</th>
+              <th>Días Restantes</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    revisionesProximas.forEach(r => {
+      htmlBody += `
+        <tr>
+          <td>${r.activo}</td>
+          <td>${r.edificio}</td>
+          <td>${r.tipo}</td>
+          <td>${r.fecha}</td>
+          <td class="proximo">${r.diasRestantes} días</td>
+        </tr>
+      `;
+    });
+    
+    htmlBody += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  
+  // SECCIÓN: Contratos Próximos a Caducar
+  if (contratosProximos.length > 0) {
+    htmlBody += `
+      <div class="section">
+        <div class="section-title">📄 CONTRATOS PRÓXIMOS A CADUCAR (${contratosProximos.length})</div>
+        <p style="font-size: 13px; color: #666;">Caducan en los próximos 60 días</p>
+        <table>
+          <thead>
+            <tr>
+              <th>Proveedor</th>
+              <th>Referencia</th>
+              <th>Fecha Fin</th>
+              <th>Días Restantes</th>
+            </tr>
+          </thead>
+          <tbody>
+    `;
+    
+    contratosProximos.forEach(c => {
+      htmlBody += `
+        <tr>
+          <td>${c.proveedor}</td>
+          <td>${c.referencia}</td>
+          <td>${c.fechaFin}</td>
+          <td class="proximo">${c.diasRestantes} días</td>
+        </tr>
+      `;
+    });
+    
+    htmlBody += `
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+  
+  // Footer
+  htmlBody += `
+          <div class="footer">
+            <p><strong>GMAO - Sistema de Gestión de Mantenimiento</strong></p>
+            <p>Universidad de Navarra | Servicio de Obras y Mantenimiento</p>
+            <p style="font-size: 11px; color: #999;">Este es un email automático. Para gestionar tus preferencias de notificaciones, accede a la aplicación.</p>
+          </div>
+        </div>
+      </body>
+    </html>
+  `;
+  
+  // Construir asunto dinámico
+  let asunto = "[GMAO] Resumen de Mantenimiento - " + fechaHoy;
+  
+  if (revisionesVencidas.length > 0) {
+    asunto = `⚠️ [GMAO] ${revisionesVencidas.length} Revisión(es) Vencida(s) - ${fechaHoy}`;
+  } else if (revisionesProximas.length > 0) {
+    asunto = `📅 [GMAO] ${revisionesProximas.length} Revisión(es) Próxima(s) - ${fechaHoy}`;
+  }
+  
+  // Enviar email
+  MailApp.sendEmail({
+    to: usuario.email,
+    subject: asunto,
+    htmlBody: htmlBody
+  });
+  
+  Logger.log(`Email enviado a: ${usuario.email}`);
+}
+
+// ==========================================
+// 23. FUNCIONES DE PRUEBA Y CONFIGURACIÓN
+// ==========================================
+
+/**
+ * Función de PRUEBA - Ejecutar manualmente para probar el sistema
+ * NO configurar como trigger automático
+ */
+function probarNotificaciones() {
+  Logger.log("=== PRUEBA DE NOTIFICACIONES ===");
+  enviarNotificacionesAutomaticas();
+  Logger.log("Revisa tu email y los logs para ver el resultado");
+}
+
+/**
+ * Función para DESACTIVAR todas las notificaciones de un usuario
+ */
+function desactivarNotificacionesUsuario(email) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('USUARIOS');
+  const data = sheet.getDataRange().getValues();
+  
+  for(let i = 1; i < data.length; i++) {
+    if (String(data[i][2]).toLowerCase() === email.toLowerCase()) {
+      sheet.getRange(i + 1, 5).setValue('NO'); // Columna AVISOS
+      Logger.log(`Notificaciones desactivadas para: ${email}`);
+      return { success: true };
+    }
+  }
+  
+  return { success: false, error: "Usuario no encontrado" };
+}
