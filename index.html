@@ -1109,8 +1109,11 @@
             <div id="revDocsList" class="mb-2 bg-light rounded p-2" style="font-size: 0.9em; min-height: 40px;">
               <div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>
             </div>
-            <div class="input-group input-group-sm"><input type="file" class="form-control" id="revFileInput"><button
-                class="btn btn-outline-secondary" type="button" onclick="uploadRevDoc()">Subir</button></div><small
+            <div class="mb-3 border p-2 rounded bg-light">
+              <label class="form-label small fw-bold text-muted"><i class="bi bi-paperclip"></i> Adjuntar Evidencia (PDF/Foto)</label>
+              <input type="file" class="form-control form-control-sm" id="revFileInput">
+              <div class="form-text small">El archivo se subirá automáticamente al guardar.</div>
+            </div><small
               id="revUploadStatus" class="text-muted" style="font-size: 0.8rem;"></small>
           </div>
         </div>
