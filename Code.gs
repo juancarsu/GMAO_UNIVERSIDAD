@@ -656,13 +656,46 @@ function eliminarContrato(id) {
 // ==========================================
 // 9. DASHBOARD Y CRUD GENERAL (V5)
 // ==========================================
-function getDatosDashboard() { 
+// ==========================================
+// 9. DASHBOARD Y CRUD GENERAL (V5)
+// ==========================================
+function getDatosDashboard(idCampus) { 
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
   const hoy = new Date(); hoy.setHours(0,0,0,0);
+  
+  // 1. OBTENER DATOS MASIVOS
   const dataMant = getSheetData('PLAN_MANTENIMIENTO');
   const activos = getSheetData('ACTIVOS');
-  const mapActivos = {}; activos.slice(1).forEach(r => mapActivos[r[0]] = r[3]);
+  const edificios = getSheetData('EDIFICIOS');
+  const campus = getSheetData('CAMPUS');
+  const dataInc = getSheetData('INCIDENCIAS');
+  const dataCont = getSheetData('CONTRATOS');
+
+  // 2. PREPARAR FILTROS (Sets para búsqueda rápida)
+  let validBuildingIds = new Set();
+  let validAssetIds = new Set();
   
+  // Si hay filtro de campus, identificamos qué edificios y activos son válidos
+  if (idCampus) {
+    // Filtrar edificios del campus
+    for(let i=1; i<edificios.length; i++) {
+      if (String(edificios[i][1]) === String(idCampus)) {
+        validBuildingIds.add(String(edificios[i][0]));
+      }
+    }
+    // Filtrar activos de esos edificios
+    for(let i=1; i<activos.length; i++) {
+        if (validBuildingIds.has(String(activos[i][1]))) {
+            validAssetIds.add(String(activos[i][0]));
+        }
+    }
+  }
+
+  // Mapa de nombres de activos para el calendario
+  const mapActivos = {}; 
+  activos.slice(1).forEach(r => mapActivos[r[0]] = r[3]);
+  
+  // 3. PROCESAR MANTENIMIENTOS
   let revPend = 0, revVenc = 0, revOk = 0; const calendarEvents = [];
   const mesesNombres = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
   const countsMap = {}; const chartLabels = []; const chartData = [];
@@ -670,8 +703,9 @@ function getDatosDashboard() {
   for (let k = 0; k < 6; k++) { let key = mesesNombres[dIter.getMonth()] + " " + dIter.getFullYear(); countsMap[key] = 0; chartLabels.push(key); dIter.setMonth(dIter.getMonth() + 1); }
   
   for(let i=1; i<dataMant.length; i++) { 
-    // FILTRO NUEVO: Si está realizada, no cuenta para las estadísticas
+    // FILTROS
     if (dataMant[i][6] === 'REALIZADA') continue;
+    if (idCampus && !validAssetIds.has(String(dataMant[i][1]))) continue; // Si es un activo de otro campus, saltar
 
     const f = dataMant[i][4]; 
     if(f instanceof Date) { 
@@ -690,11 +724,55 @@ function getDatosDashboard() {
     } 
   } 
   chartLabels.forEach(lbl => { chartData.push(countsMap[lbl]); });
-  const dataCont = getSheetData('CONTRATOS'); let contCount = (dataCont.length > 1) ? dataCont.length - 1 : 0;
-  const dataInc = getSheetData('INCIDENCIAS'); let incCount = 0; for(let i=1; i<dataInc.length; i++) { if(dataInc[i][6] !== 'RESUELTA') incCount++; }
-  const cAct = (activos.length > 1) ? activos.length - 1 : 0; 
-  const cEdif = (getSheetData('EDIFICIOS').length - 1) || 0;
-  const cCampus = (getSheetData('CAMPUS').length - 1) || 0;
+
+  // 4. PROCESAR OTROS CONTADORES CON FILTROS
+  
+  // Contratos
+  let contCount = 0;
+  if (!idCampus) {
+      contCount = (dataCont.length > 1) ? dataCont.length - 1 : 0;
+  } else {
+      for(let i=1; i<dataCont.length; i++) {
+        // Asumiendo contrato vinculado a Edificio (col 2) o Campus (col 1 - check indices logic later if needed, assuming simple count for now or based on hierarchy)
+        // Revisando estructura contratos: [id, idCampus, idEdificio, ...]
+        // Si tiene idEdificio y está en validBuildingIds -> cuenta
+        // Si NO tiene idEdificio pero tiene idCampus y coincide -> cuenta
+        let cCampusId = String(dataCont[i][1]);
+        let cEdifId = String(dataCont[i][2]);
+        if (cEdifId && validBuildingIds.has(cEdifId))  { contCount++; continue; }
+        if (!cEdifId && cCampusId === String(idCampus)) { contCount++; }
+      }
+  }
+
+  // Incidencias
+  let incCount = 0; 
+  for(let i=1; i<dataInc.length; i++) { 
+    if(dataInc[i][6] !== 'RESUELTA') {
+        if (!idCampus) {
+            incCount++;
+        } else {
+            // Filtrar por activo o edificio
+            let tipoRel = dataInc[i][1]; // ACTIVO o EDIFICIO
+            let idRel = String(dataInc[i][2]);
+            if (tipoRel === 'ACTIVO' && validAssetIds.has(idRel)) incCount++;
+            else if (tipoRel === 'EDIFICIO' && validBuildingIds.has(idRel)) incCount++;
+        }
+    } 
+  }
+
+  // Totales Entidades
+  let cAct = 0, cEdif = 0, cCampus = 0;
+  
+  if (!idCampus) {
+      cAct = (activos.length > 1) ? activos.length - 1 : 0; 
+      cEdif = (getSheetData('EDIFICIOS').length - 1) || 0;
+      cCampus = (getSheetData('CAMPUS').length - 1) || 0;
+  } else {
+      cAct = validAssetIds.size;
+      cEdif = validBuildingIds.size;
+      cCampus = 1;
+  }
+
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
 
