@@ -126,8 +126,42 @@
 
     // Listeners
     const revTipo = document.getElementById('revTipo'); if (revTipo) revTipo.addEventListener('change', updateMaintFormVisibility);
-    const revNorma = document.getElementById('revNorma'); if (revNorma) revNorma.addEventListener('change', autoFillFrequency);
-    const revRecur = document.getElementById('revRecur'); if (revRecur) revRecur.addEventListener('change', function () { document.getElementById('secRecurOptions').classList.toggle('d-none', !this.checked); });
+    const revNorma = document.getElementById('revNorma'); 
+    if (revNorma) {
+        revNorma.addEventListener('change', function() {
+            const option = this.options[this.selectedIndex];
+            if (option && option.dataset.dias) {
+                // Llenar frecuencia
+                document.getElementById('revFreq').value = option.dataset.dias;
+                
+                // Auto-activar repetición
+                document.getElementById('revRecur').checked = true;
+                document.getElementById('secRecurOptions').classList.remove('d-none');
+                
+                // Fecha límite 5 años (para legales)
+                const hoy = new Date();
+                const cincoAnos = new Date(hoy);
+                cincoAnos.setFullYear(cincoAnos.getFullYear() + 5);
+                document.getElementById('revEnd').value = cincoAnos.toISOString().split('T')[0];
+            }
+        });
+    }
+    const revRecur = document.getElementById('revRecur'); 
+    if (revRecur) {
+      revRecur.addEventListener('change', function () { 
+          const opciones = document.getElementById('secRecurOptions');
+          if (this.checked) {
+              opciones.classList.remove('d-none');
+              // Auto-rellenar fecha límite (1 año adelante)
+              const hoy = new Date();
+              const unAnoDespues = new Date(hoy);
+              unAnoDespues.setFullYear(unAnoDespues.getFullYear() + 1);
+              document.getElementById('revEnd').value = unAnoDespues.toISOString().split('T')[0];
+          } else {
+              opciones.classList.add('d-none');
+          }
+      }); 
+    }
   };
 
   // ==========================================
@@ -440,7 +474,9 @@
         
         let botonesAccion = `
             <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar"><i class="bi bi-check-lg"></i></button>
+            <button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" title="Completar" data-id="${r.id}">
+              <i class="bi bi-check-lg"></i> Completar
+            </button>
         `;
 
         if (r.color === 'azul') {
@@ -470,34 +506,114 @@
   }
 
   function marcarHecho(idRevision) {
-    Swal.fire({
-      title: '¿Completar revisión?',
-      text: "Se marcará como realizada y desaparecerá de la lista de pendientes.",
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#198754', // Verde éxito
-      cancelButtonColor: '#6c757d',
-      confirmButtonText: 'Sí, completar',
-      cancelButtonText: 'Cancelar'
-    }).then((result) => {
-      if (result.isConfirmed) {
-        google.script.run.withSuccessHandler(res => {
-          if (res.success) {
-            notificarExito("¡Revisión completada!");
-            // Recargamos la lista según donde estemos
-            if (document.getElementById('view-mantenimiento') && !document.getElementById('view-mantenimiento').classList.contains('d-none')) {
-              loadGlobalMaint();
-            } else if (currentAssetId) {
-              loadMaint();
-            }
-            loadDashboard(); // Actualizar contadores
-          } else {
-            notificarError(res.error);
-          }
-        }).completarRevision(idRevision);
+  Swal.fire({
+    title: '¿Completar revisión?',
+    text: "Se marcará como realizada y desaparecerá de la lista de pendientes.",
+    icon: 'question',
+    showCancelButton: true,
+    confirmButtonColor: '#198754',
+    cancelButtonColor: '#6c757d',
+    confirmButtonText: 'Sí, completar',
+    cancelButtonText: 'Cancelar'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      // Buscar la fila en la tabla para animarla
+      const btn = document.querySelector(`button[data-id="${idRevision}"]`);
+      const row = btn ? btn.closest('tr') : null;
+      
+      if (row) {
+        // Animar la fila - cambio a verde
+        row.style.transition = 'all 0.3s ease';
+        row.style.backgroundColor = '#d1fae5'; // Verde suave
+        
+        // Deshabilitar el botón para evitar doble clic
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
       }
-    });
-  }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.success) {
+            if (row) {
+              // MAGIA: Animación de salida suave
+              row.style.opacity = '0';
+              row.style.transform = 'translateX(30px)';
+              
+              // Esperar a que termine la animación
+              setTimeout(() => {
+                // Colapsar la altura para que las demás filas suban suavemente
+                const currentHeight = row.offsetHeight;
+                row.style.height = currentHeight + 'px';
+                row.style.overflow = 'hidden';
+                
+                // Forzar el reflow para que se aplique la altura
+                row.offsetHeight;
+                
+                // Animar el colapso
+                row.style.transition = 'height 0.3s ease, padding 0.3s ease, margin 0.3s ease';
+                row.style.height = '0';
+                row.style.paddingTop = '0';
+                row.style.paddingBottom = '0';
+                row.style.marginTop = '0';
+                row.style.marginBottom = '0';
+                
+                // Después de la animación de colapso, eliminar del DOM
+                setTimeout(() => {
+                  row.remove();
+                  
+                  // Mostrar notificación de éxito DESPUÉS de la animación
+                  notificarExito("¡Revisión completada!");
+                  
+                  // Actualizar SOLO el dashboard (contadores) sin recargar la tabla
+                  loadDashboard();
+                  
+                  // BONUS: Si la tabla quedó vacía, mostrar mensaje
+                  const tbody = row.closest('tbody');
+                  if (tbody && tbody.children.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5">🎉 ¡No hay revisiones pendientes!</td></tr>';
+                  }
+                }, 300); // Tiempo de la animación de colapso
+                
+              }, 300); // Tiempo de la animación de fade out
+              
+            } else {
+              // Fallback si no encuentra la fila (no debería pasar)
+              notificarExito("¡Revisión completada!");
+              loadGlobalMaint();
+              loadMaint();
+              loadDashboard();
+            }
+          } else {
+            // Restaurar fila si hay error
+            if (row) {
+              row.style.backgroundColor = '';
+              row.style.opacity = '1';
+              row.style.transform = '';
+            }
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-check-lg"></i> Completar';
+            }
+            notificarError(res.error || "Error al completar la revisión");
+          }
+        })
+        .withFailureHandler(err => {
+          // Restaurar fila si hay error
+          if (row) {
+            row.style.backgroundColor = '';
+            row.style.opacity = '1';
+            row.style.transform = '';
+          }
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check-lg"></i> Completar';
+          }
+          notificarError("Error de conexión: " + err.message);
+        })
+        .completarRevision(idRevision);
+    }
+  });
+}
 
   // --- FILTROS MANTENIMIENTO ---
   function loadMaintFilters() {
@@ -606,47 +722,80 @@
   // --- MODAL REVISIÓN DESDE CALENDARIO ---
   // En js.html
 
-  function mostrarModalRevision(dateStr) {
-      if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
-      
-      // Limpieza de campos básicos
-      document.getElementById('revId').value = "";
-      document.getElementById('revTipo').value = "Legal";
-      document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0];
-      document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
-      document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
+  // 1. MOSTRAR MODAL REVISIÓN (Resetear correctamente)
+function mostrarModalRevision(dateStr) {
+    if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+    
+    // Limpieza de campos básicos
+    document.getElementById('revId').value = "";
+    document.getElementById('revTipo').value = "Legal";
+    document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0];
+    document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
+    document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos adjuntos</div>';
 
-      // --- CORRECCIÓN AQUÍ ---
-      // Comprobamos si estamos dentro de un activo (currentAssetId tiene valor)
-      if (currentAssetId) {
-          // MODO CONTEXTO ACTIVO: Ocultamos los selectores para no confundir
-          // El sistema usará 'currentAssetId' automáticamente al guardar
-          document.getElementById('assetSelector').classList.add('d-none');
-      } else {
-          // MODO GLOBAL: Mostramos selectores para elegir el activo
-          document.getElementById('assetSelector').classList.remove('d-none');
-          
-          const selC = document.getElementById('maintCampus');
-          if (selC.options.length <= 1) {
-              google.script.run.withSuccessHandler(list => {
-                  let html = '<option value="">- Campus -</option>';
-                  list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
-                  selC.innerHTML = html;
-              }).getListaCampus();
-          }
-          
-          // Reset de selectores
-          document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
-          document.getElementById('maintEdificio').disabled = true;
-          document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
-          document.getElementById('maintActivo').disabled = true;
-      }
+    // ✅ RESETEAR CHECKBOX Y CAMPOS DE REPETICIÓN
+    document.getElementById('revRecur').checked = false;
+    document.getElementById('revFreq').value = "365";
+    document.getElementById('revEnd').value = "";
+    document.getElementById('secRecurOptions').classList.add('d-none');
 
-      // ¡IMPORTANTE! Hemos eliminado la línea "currentAssetId = null;"
-      // Esto permite que al guardar, la función sepa que tiene que refrescar la lista del activo.
-      
-      maintModal.show();
-  }
+    // Comprobar si estamos dentro de un activo
+    if (currentAssetId) {
+        document.getElementById('assetSelector').classList.add('d-none');
+    } else {
+        document.getElementById('assetSelector').classList.remove('d-none');
+        
+        const selC = document.getElementById('maintCampus');
+        if (selC.options.length <= 1) {
+            google.script.run.withSuccessHandler(list => {
+                let html = '<option value="">- Campus -</option>';
+                list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+                selC.innerHTML = html;
+            }).getListaCampus();
+        }
+        
+        document.getElementById('maintEdificio').innerHTML = '<option value="">- Edificio -</option>';
+        document.getElementById('maintEdificio').disabled = true;
+        document.getElementById('maintActivo').innerHTML = '<option value="">- Activo -</option>';
+        document.getElementById('maintActivo').disabled = true;
+    }
+
+    // ✅ Actualizar visibilidad de campos según tipo
+    updateMaintFormVisibility();
+    
+    maintModal.show();
+}
+
+// 2. EDITAR REVISIÓN (Cargar datos correctamente)
+function editRevision(id, tipo, fecha, activoId, hasCalendar) {
+    document.getElementById('maintModalTitle').innerText = 'Editar Revisión';
+    document.getElementById('revId').value = id;
+    document.getElementById('revTipo').value = tipo;
+    document.getElementById('revFecha').value = fecha;
+    
+    // Calendario
+    const chk = document.getElementById('revCalendar');
+    chk.checked = hasCalendar ? true : false;
+    
+    if (activoId) currentActiveAssetId = activoId;
+    
+    // ✅ IMPORTANTE: Al editar, NO queremos repetir
+    document.getElementById('revRecur').checked = false;
+    document.getElementById('revFreq').value = "365";
+    document.getElementById('revEnd').value = "";
+    document.getElementById('secRecurOptions').classList.add('d-none');
+    
+    const revNorma = document.getElementById('revNorma');
+    if (revNorma) revNorma.value = "";
+    
+    const assetSelector = document.getElementById('assetSelector');
+    if (assetSelector) assetSelector.classList.add('d-none');
+    
+    updateMaintFormVisibility();
+    loadRevDocs(id);
+    
+    if (maintModal) maintModal.show();
+}
 
   function loadEdificiosModalMaint(idCampus) {
     const sel = document.getElementById('maintEdificio');
@@ -1472,7 +1621,115 @@
   function loadMaint() { if (!currentAssetId) return; const tbody = document.getElementById('maintTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { if (list.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay mantenimiento programado</td></tr>'; return; } let html = ''; list.forEach(p => { let dotClass = 'bg-secondary'; if (p.color === 'rojo') dotClass = 'bg-rojo'; if (p.color === 'amarillo') dotClass = 'bg-amarillo'; if (p.color === 'verde') dotClass = 'bg-verde'; let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos"></i>' : ''; let calIcon = p.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-2" title="Sync Calendar"></i>' : ''; html += `<tr class="align-middle"><td class="text-center"><span class="dot ${dotClass}"></span></td><td>${p.tipo} ${clipIcon} ${calIcon}</td><td>${p.fechaProxima}</td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editRevision('${p.id}', '${p.tipo}', '${p.fechaISO}', null, ${p.hasCalendar})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteRevision('${p.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerPlanMantenimiento(currentAssetId); }
   function deleteRevision(id) { confirmarAccion("¿Eliminar revisión?", "", () => { google.script.run.withSuccessHandler(() => { notificarExito("Revisión eliminada"); loadMaint(); }).eliminarRevision(id); }); }
   function editRevision(id, tipo, fecha, activoId, hasCalendar) { document.getElementById('maintModalTitle').innerText = 'Editar Revisión'; document.getElementById('revId').value = id; document.getElementById('revTipo').value = tipo; document.getElementById('revFecha').value = fecha; const chk = document.getElementById('revCalendar'); if (hasCalendar) chk.checked = true; else chk.checked = false; if (activoId) currentActiveAssetId = activoId; document.getElementById('revRecur').checked = false; document.getElementById('revFreq').value = "365"; document.getElementById('revEnd').value = ""; const revNorma = document.getElementById('revNorma'); if (revNorma) revNorma.value = ""; document.getElementById('secRecurOptions').classList.add('d-none'); const assetSelector = document.getElementById('assetSelector'); if (assetSelector) assetSelector.classList.add('d-none'); updateMaintFormVisibility(); loadRevDocs(id); if (maintModal) maintModal.show(); }
-  function submitRevision() { const id = document.getElementById('revId').value; const tipo = document.getElementById('revTipo').value; const fecha = document.getElementById('revFecha').value; const isRecursiva = document.getElementById('revRecur').checked; const diasFreq = document.getElementById('revFreq').value; const fechaFin = document.getElementById('revEnd').value; const syncCalendar = document.getElementById('revCalendar').checked; let activeAssetId = currentAssetId || currentActiveAssetId; if (!activeAssetId) { const sel = document.getElementById('maintActivo'); if (sel) activeAssetId = sel.value; } if (!activeAssetId) return notificarError("Debes seleccionar un activo."); if (!tipo || !fecha) return notificarError("Rellena todos los campos."); if (isRecursiva && !fechaFin) return notificarError("Indica fecha límite."); setBtnLoading('btnMaintSubmit', true); const cb = (r) => { setBtnLoading('btnMaintSubmit', false); if (maintModal) maintModal.hide(); if (r.success) { notificarExito("Revisión guardada"); if (currentAssetId) loadMaint(); else loadGlobalMaint(); loadDashboard(); } else { notificarError(r.error); } }; const fail = (e) => { setBtnLoading('btnMaintSubmit', false); notificarError(e.message); }; const payload = { idActivo: activeAssetId, idPlan: id, tipo: tipo, fechaProx: fecha, esRecursiva: isRecursiva, diasFreq: diasFreq, fechaFin: fechaFin, syncCalendar: syncCalendar }; if (id) { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).updateRevision(payload); } else { google.script.run.withSuccessHandler(cb).withFailureHandler(fail).crearRevision(payload); } }
+function submitRevision() {
+    var id = document.getElementById('revId').value;
+    var tipo = document.getElementById('revTipo').value;
+    var fecha = document.getElementById('revFecha').value;
+    var isRecursiva = document.getElementById('revRecur').checked;
+    var diasFreq = document.getElementById('revFreq').value;
+    var fechaFin = document.getElementById('revEnd').value;
+    var syncCalendar = document.getElementById('revCalendar').checked;
+    
+    var fileInput = document.getElementById('revFileInput');
+    var file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
+
+    var activeAssetId = currentAssetId || currentActiveAssetId;
+    if (!activeAssetId) {
+        var sel = document.getElementById('maintActivo');
+        if (sel) activeAssetId = sel.value;
+    }
+
+    if (!activeAssetId) return notificarError("Debes seleccionar un activo.");
+    if (!tipo || !fecha) return notificarError("Rellena todos los campos.");
+    if (isRecursiva && !fechaFin) return notificarError("Indica fecha límite.");
+
+    var btn = document.getElementById('btnMaintSubmit');
+    var txtOriginal = btn.innerText;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Guardando...';
+
+    var payload = {
+        idActivo: activeAssetId,
+        idPlan: id,
+        tipo: tipo,
+        fechaProx: fecha,
+        esRecursiva: isRecursiva,
+        diasFreq: diasFreq,
+        fechaFin: fechaFin,
+        syncCalendar: syncCalendar
+    };
+
+    var terminarProceso = function(exito) {
+        btn.disabled = false;
+        btn.innerText = txtOriginal;
+        if (exito) {
+            if (maintModal) maintModal.hide();
+            notificarExito(id ? "Actualizado" : "Creado con éxito");
+            if (fileInput) fileInput.value = '';
+            if (currentAssetId) loadMaint();
+            else loadGlobalMaint();
+            loadDashboard();
+        }
+    };
+
+    var onSuccess = function(res) {
+        if (res && res.success) {
+            var targetId = id || res.newId;
+            
+            if (file && targetId) {
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Subiendo archivo...';
+                
+                var reader = new FileReader();
+                reader.onload = function(e) {
+                    var content = e.target.result.split(',')[1];
+                    
+                    google.script.run
+                        .withSuccessHandler(function(uploadRes) {
+                            if (uploadRes && uploadRes.success) {
+                                terminarProceso(true);
+                            } else {
+                                btn.disabled = false;
+                                btn.innerText = txtOriginal;
+                                notificarError("Revisión guardada pero falló subir archivo.");
+                            }
+                        })
+                        .withFailureHandler(function(error) {
+                            btn.disabled = false;
+                            btn.innerText = txtOriginal;
+                            notificarError("Error al subir: " + error.message);
+                        })
+                        .subirArchivo(content, file.name, file.type, targetId, 'REVISION');
+                };
+                
+                reader.onerror = function() {
+                    btn.disabled = false;
+                    btn.innerText = txtOriginal;
+                    notificarError("Error al leer el archivo.");
+                };
+                
+                reader.readAsDataURL(file);
+            } else {
+                terminarProceso(true);
+            }
+        } else {
+            btn.disabled = false;
+            btn.innerText = txtOriginal;
+            notificarError(res ? res.error : "Error desconocido");
+        }
+    };
+
+    var onFail = function(e) {
+        btn.disabled = false;
+        btn.innerText = txtOriginal;
+        notificarError(e.message);
+    };
+
+    if (id) {
+        google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail).updateRevision(payload);
+    } else {
+        google.script.run.withSuccessHandler(onSuccess).withFailureHandler(onFail).crearRevision(payload);
+    }
+}
   function loadRevDocs(idRevision) { const container = document.getElementById('revDocsList'); container.innerHTML = '<div class="text-center text-muted"><span class="spinner-border spinner-border-sm"></span></div>'; google.script.run.withSuccessHandler(docs => { if (!docs || docs.length === 0) { container.innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin evidencias adjuntas</div>'; return; } let html = '<ul class="list-group list-group-flush bg-transparent">'; docs.forEach(d => { html += `<li class="list-group-item bg-transparent d-flex justify-content-between align-items-center p-1"><a href="${d.url}" target="_blank" class="text-decoration-none text-truncate" style="max-width: 250px;"><i class="bi bi-file-earmark-text text-danger"></i> ${d.nombre}</a><button class="btn btn-sm text-danger py-0" onclick="deleteRevDoc('${d.id}')">&times;</button></li>`; }); html += '</ul>'; container.innerHTML = html; }).obtenerDocs(idRevision, 'REVISION'); }
   function uploadRevDoc() { const idRevision = document.getElementById('revId').value; const fileInput = document.getElementById('revFileInput'); const file = fileInput.files[0]; const status = document.getElementById('revUploadStatus'); if (!idRevision) return notificarError("Primero guarda la revisión."); if (!file) return notificarError("Selecciona un archivo."); status.innerText = "Subiendo..."; const btn = event.target; btn.disabled = true; const r = new FileReader(); r.onload = function (e) { const content = e.target.result.split(',')[1]; google.script.run.withSuccessHandler(res => { btn.disabled = false; status.innerText = ""; fileInput.value = ""; if (res.success) { notificarExito("Subido"); loadRevDocs(idRevision); } else { notificarError(res.error); } }).subirArchivo(content, file.name, file.type, idRevision, 'REVISION'); }; r.readAsDataURL(file); }
   function deleteRevDoc(idDoc) { confirmarAccion("¿Eliminar archivo?", "", () => { google.script.run.withSuccessHandler(res => { if (res.success) { notificarExito("Eliminado"); const idRev = document.getElementById('revId').value; loadRevDocs(idRev); } }).eliminarDocumento(idDoc); }); }
