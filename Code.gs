@@ -270,6 +270,45 @@ function getActivosPorEdificio(idEdificio) {
   return index.byEdificio[String(idEdificio)] || [];
 }
 
+// En Code.gs
+
+function getAllAssetsList() {
+  const index = buildActivosIndex();
+  const allIds = Object.keys(index.byId);
+  const list = [];
+  
+  // --- NUEVO: Mapear qué activos tienen documentos ---
+  const docsData = getCachedSheetData('DOCS_HISTORICO');
+  const docsMap = {};
+  
+  if (docsData && docsData.length > 1) {
+    docsData.slice(1).forEach(r => {
+      // Columna 1 (B) es el TIPO ENTIDAD, Columna 2 (C) es el ID ENTIDAD
+      if (String(r[1]) === 'ACTIVO') {
+        docsMap[String(r[2])] = true;
+      }
+    });
+  }
+
+  for (const id of allIds) {
+    const a = index.byId[id];
+    list.push({
+      id: a.id,
+      nombre: a.nombre,
+      tipo: a.tipo,
+      marca: a.marca,
+      idEdificio: a.idEdificio,
+      edificioNombre: a.edificio,
+      idCampus: a.idCampus,
+      campusNombre: a.campus,
+      hasDocs: docsMap[id] || false 
+    });
+  }
+  
+  // Ordenar alfabéticamente por nombre
+  return list.sort((a,b) => a.nombre.localeCompare(b.nombre));
+}
+
 function getAssetInfo(idActivo) {
   const index = buildActivosIndex();
   const activo = index.byId[String(idActivo)];
