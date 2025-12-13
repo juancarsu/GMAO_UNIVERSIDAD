@@ -15,6 +15,7 @@
   let mapInstance = null; // Para guardar el mapa
   let markersLayer = null;
   let changelogModal = null;
+  let newVersionModal = null;
   window.currentBuildingAssetsList = [];
 
   // Instancias de Modales
@@ -454,34 +455,289 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
       }).getActivosPorEdificio(idEdificio);
   }
 
-  // --- CONTRATOS GLOBAL ---
-  function loadGlobalContracts() {
-      const tbody = document.getElementById('tableGlobalContracts');
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>';
-      google.script.run.withSuccessHandler(d => {
-           globalContractData = d;
-           renderGlobalContractsTable(d);
-      }).obtenerContratosGlobal();
-  }
-  function renderGlobalContractsTable(d) {
-       const tbody = document.getElementById('tableGlobalContracts');
-       if(!d || !d.length) { tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted">Sin contratos</td></tr>'; return; }
-       let h=''; d.forEach(c=>{ 
-           let color = c.color==='rojo'?'bg-danger':(c.color==='amarillo'?'bg-warning text-dark':'bg-success');
-           h+=`<tr><td><span class="badge ${color}">${c.estado}</span></td><td><div class="fw-bold text-truncate" style="max-width:200px;">${c.nombreEntidad}</div></td><td>${c.proveedor}</td><td>${c.ref}</td><td>${c.fin}</td><td class="text-end"><button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}', '${c.inicio}', '${c.fin}', '${c.estadoDB}', '${c.proveedor}', '${c.ref}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
-       });
-       tbody.innerHTML=h;
-  }
+  // ==========================================
+  // LÓGICA DEL MODAL DE CONTRATOS (ASOCIACIÓN)
+  // ==========================================
+
+  // 1. ABRIR MODAL (Cargar Campus)
   function mostrarModalContrato() {
       if(!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
+      
       document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+      
+      // Limpiar campos
       document.getElementById('contId').value = '';
       document.getElementById('contProv').value = '';
       document.getElementById('contRef').value = '';
+      document.getElementById('contIni').value = '';
+      document.getElementById('contFin').value = '';
+      document.getElementById('contEstado').value = 'ACTIVO';
+      
+      // Resetear selectores de ubicación
+      const selC = document.getElementById('contCampus');
+      selC.innerHTML = '<option>Cargando...</option>';
+      document.getElementById('contEdificio').innerHTML = '<option value="">- Todo el Edificio (Opcional) -</option>';
+      document.getElementById('contEdificio').disabled = true;
+      document.getElementById('contActivo').innerHTML = '<option value="">- Activo Específico (Opcional) -</option>';
+      document.getElementById('contActivo').disabled = true;
+
+      // Cargar Campus
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">- Selecciona Campus -</option>';
+          list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+          selC.innerHTML = html;
+      }).getListaCampus();
+      
       contractModal.show();
   }
-  function loadContractFilters() { loadMaintFilters(); } 
-  function loadEdificiosContractFilter(id) { loadEdificiosMaintFilter(id); }
+
+  // 2. CARGAR EDIFICIOS (Al cambiar Campus en el Modal)
+  function loadEdificiosContModal(idCampus) {
+      const sel = document.getElementById('contEdificio');
+      sel.innerHTML = '<option>Cargando...</option>';
+      sel.disabled = true;
+      
+      // Reset activos
+      document.getElementById('contActivo').innerHTML = '<option value="">- Activo Específico (Opcional) -</option>';
+      document.getElementById('contActivo').disabled = true;
+
+      if(!idCampus) {
+          sel.innerHTML = '<option value="">- Todo el Edificio (Opcional) -</option>';
+          return;
+      }
+
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">- Todo el Edificio (Opcional) -</option>';
+          list.forEach(e => html += `<option value="${e.id}">${e.nombre}</option>`);
+          sel.innerHTML = html;
+          sel.disabled = false;
+      }).getEdificiosPorCampus(idCampus);
+  }
+
+  // 3. CARGAR ACTIVOS (Al cambiar Edificio en el Modal)
+  function loadActivosContModal(idEdificio) {
+      const sel = document.getElementById('contActivo');
+      sel.innerHTML = '<option>Cargando...</option>';
+      sel.disabled = true;
+
+      if(!idEdificio) {
+          sel.innerHTML = '<option value="">- Activo Específico (Opcional) -</option>';
+          return;
+      }
+
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">- Activo Específico (Opcional) -</option>';
+          list.forEach(a => html += `<option value="${a.id}">${a.nombre}</option>`);
+          sel.innerHTML = html;
+          sel.disabled = false;
+      }).getActivosPorEdificio(idEdificio);
+  }
+
+  // 4. GUARDAR CONTRATO (LÓGICA INTELIGENTE)
+  function submitContract() {
+      const id = document.getElementById('contId').value;
+      const prov = document.getElementById('contProv').value;
+      const ref = document.getElementById('contRef').value;
+      const ini = document.getElementById('contIni').value;
+      const fin = document.getElementById('contFin').value;
+      const estado = document.getElementById('contEstado').value;
+      
+      // Leemos los selectores para ver la profundidad de la asignación
+      const idCampus = document.getElementById('contCampus').value;
+      const idEdificio = document.getElementById('contEdificio').value;
+      const idActivo = document.getElementById('contActivo').value;
+
+      if(!prov || !ini || !fin) return notificarError("Rellena Proveedor y Fechas.");
+      if(!idCampus) return notificarError("Debes asociar el contrato al menos a un Campus.");
+
+      // LÓGICA DE JERARQUÍA: Nos quedamos con el ID más específico posible
+      let idEntidad = idCampus;
+      let tipoEntidad = 'CAMPUS';
+
+      if (idEdificio) {
+          idEntidad = idEdificio;
+          tipoEntidad = 'EDIFICIO';
+      }
+      if (idActivo) {
+          idEntidad = idActivo;
+          tipoEntidad = 'ACTIVO';
+      }
+
+      // Preparamos objeto
+      const datos = {
+          id: id,
+          idEntidad: idEntidad,
+          tipoEntidad: tipoEntidad,
+          proveedor: prov,
+          ref: ref,
+          fechaIni: ini,
+          fechaFin: fin,
+          estado: estado
+      };
+
+      setBtnLoading('btnContSubmit', true);
+      
+      const finish = () => {
+          setBtnLoading('btnContSubmit', false);
+          if(contractModal) contractModal.hide();
+          notificarExito("Contrato guardado y asociado correctamente");
+          loadGlobalContracts(); // Refrescar tabla
+      };
+
+      if(id) google.script.run.withSuccessHandler(finish).updateContrato(datos);
+      else google.script.run.withSuccessHandler(finish).crearContrato(datos);
+  }
+
+    google.script.run.withSuccessHandler(list => {
+        let html = '<option value="">Todos los Edificios</option>';
+        list.forEach(e => html += `<option value="${e.id}">${e.nombre}</option>`);
+        sel.innerHTML = html;
+        sel.disabled = false;
+        
+        // Reseteamos el filtro de edificio al cambiar de campus
+        setContractFilter('edificio', ''); 
+    }).getEdificiosPorCampus(idCampus);
+
+  // 1. Cargar la lista inicial de contratos
+  function loadGlobalContracts() {
+      const tbody = document.getElementById('tableGlobalContracts');
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5">Cargando contratos...</td></tr>';
+      
+      google.script.run.withSuccessHandler(d => {
+          globalContractData = d; // Guardamos en variable global para filtrar luego
+          renderGlobalContractsTable(d);
+          // Cargamos los filtros justo después de tener los datos
+          loadContractFilters(); 
+      }).obtenerContratosGlobal();
+  }
+
+  // 2. Pintar la tabla (Render)
+  function renderGlobalContractsTable(d) {
+     const tbody = document.getElementById('tableGlobalContracts');
+     if (!tbody) return;
+
+     if(!d || !d.length) { 
+         tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted py-5">No hay contratos que coincidan.</td></tr>'; 
+         return; 
+     }
+     
+     let h=''; 
+     d.forEach(c=>{ 
+         let color = 'bg-secondary';
+         if(c.color==='rojo') color='bg-danger';
+         if(c.color==='amarillo') color='bg-warning text-dark';
+         if(c.color==='verde') color='bg-success';
+         
+         let fechas = `<small>${c.inicio}</small><br><small class="text-muted">${c.fin}</small>`;
+
+         // AQUÍ ESTÁ EL CAMBIO: Usamos c.campusNombre
+         let campusDisplay = c.campusNombre || '-';
+
+         h+=`<tr>
+            <td class="align-middle"><span class="badge ${color}">${c.estado}</span></td>
+            <td class="align-middle">
+                <div class="fw-bold text-truncate" style="max-width:220px;">${c.nombreEntidad || 'N/A'}</div>
+                <small class="text-muted"><i class="bi bi-bank me-1"></i>${campusDisplay}</small>
+            </td>
+            <td class="align-middle fw-bold">${c.proveedor}</td>
+            <td class="align-middle font-monospace small">${c.ref}</td>
+            <td class="align-middle">${fechas}</td>
+            <td class="text-end align-middle">
+                <div class="btn-group">
+                    <button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}')"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button>
+                </div>
+            </td>
+         </tr>`;
+     });
+     tbody.innerHTML=h;
+     if (typeof refreshSecurityIcons === "function") refreshSecurityIcons();
+  }
+
+  // 3. Cargar el selector de Campus
+  function loadContractFilters() {
+      const sel = document.getElementById('contractFilterCampus');
+      if (!sel || sel.options.length > 1) return; // Si ya tiene datos, no recargamos
+
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">Todos los Campus</option>';
+          list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+          sel.innerHTML = html;
+      }).getListaCampus();
+  }
+
+  // 4. Cargar Edificios según Campus
+  function loadEdificiosContractFilter(idCampus) {
+      const sel = document.getElementById('contractFilterEdificio');
+      sel.innerHTML = '<option>Cargando...</option>';
+      sel.disabled = true;
+
+      if (!idCampus) {
+          sel.innerHTML = '<option value="">Todos los Edificios</option>';
+          setContractFilter(); // Refrescar filtro sin edificio
+          return;
+      }
+
+      google.script.run.withSuccessHandler(list => {
+          let html = '<option value="">Todos los Edificios</option>';
+          list.forEach(e => html += `<option value="${e.id}">${e.nombre}</option>`);
+          sel.innerHTML = html;
+          sel.disabled = false;
+          setContractFilter(); // Refrescar filtro
+      }).getEdificiosPorCampus(idCampus);
+  }
+
+  // 5. Lógica de Filtrado (CORREGIDA)
+  // Esta función ahora acepta argumentos flexibles o ninguno
+  function setContractFilter(arg1, arg2) {
+      
+      // A. GESTIÓN VISUAL DE LOS BOTONES
+      // Si el primer argumento es un texto de estado (VIGENTE, etc), significa que hemos pulsado botón
+      // El segundo argumento 'arg2' será el elemento 'this' (el botón)
+      if (['VIGENTE', 'PRÓXIMO', 'CADUCADO', 'INACTIVO', 'all'].includes(arg1) && arg2) {
+          const btn = arg2;
+          const group = document.getElementById('contractFilterGroup');
+          const buttons = group.getElementsByTagName('button');
+          // Limpiamos todos
+          for (let b of buttons) b.classList.remove('active');
+          // Activamos el pulsado
+          btn.classList.add('active');
+      }
+
+      // B. LEER ESTADO ACTUAL DE LA INTERFAZ
+      // 1. Selectores
+      const campusVal = document.getElementById('contractFilterCampus').value;
+      const edificioVal = document.getElementById('contractFilterEdificio').value;
+      
+      // 2. Botones (Buscamos cuál tiene la clase active)
+      let estadoFiltro = 'all';
+      const activeBtn = document.querySelector('#contractFilterGroup .active');
+      if(activeBtn) {
+          // Leemos el texto del onclick para saber qué filtro es
+          const action = activeBtn.getAttribute('onclick'); 
+          if(action.includes("'VIGENTE'")) estadoFiltro = 'VIGENTE';
+          else if(action.includes("'PRÓXIMO'")) estadoFiltro = 'PRÓXIMO';
+          else if(action.includes("'CADUCADO'")) estadoFiltro = 'CADUCADO';
+          else if(action.includes("'INACTIVO'")) estadoFiltro = 'INACTIVO';
+      }
+
+      // C. APLICAR FILTRO
+      if (!globalContractData) return;
+
+      const filtered = globalContractData.filter(item => {
+          // Filtro Campus (conversión a String por seguridad)
+          const matchCampus = (campusVal === "") || (String(item.campusId) === String(campusVal));
+          // Filtro Edificio
+          const matchEdificio = (edificioVal === "") || (String(item.edificioId) === String(edificioVal));
+          // Filtro Estado
+          const matchEstado = (estadoFiltro === 'all') || (item.estado === estadoFiltro);
+
+          return matchCampus && matchEdificio && matchEstado;
+      });
+
+      renderGlobalContractsTable(filtered);
+  }
+
 
   // ==========================================
   // 7. GESTIÓN INCIDENCIAS & FEEDBACK
@@ -769,7 +1025,9 @@ function mostrarCargando(mensaje = 'Guardando cambios...') {
     else { notificarError(res.error); } }).updateAsset(newData);
   }
   
-  function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { confirmarAccion("¿Eliminar documento?", "", () => { document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { notificarExito("Eliminado"); loadDocs(); } }).eliminarDocumento(idDoc); }); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return notificarError("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; notificarExito("Documento subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } function submitContract() { const id = document.getElementById('contId').value; const datos = { id:id, idEntidad:currentAssetId, tipoEntidad:'ACTIVO', proveedor:document.getElementById('contProv').value, ref:document.getElementById('contRef').value, fechaIni:document.getElementById('contIni').value, fechaFin:document.getElementById('contFin').value, estado:document.getElementById('contEstado').value }; if(!datos.proveedor || !datos.fechaIni || !datos.fechaFin) return notificarError("Campos incompletos"); setBtnLoading('btnContSubmit', true); const cb = () => { setBtnLoading('btnContSubmit', false); if(contractModal) contractModal.hide(); notificarExito("Contrato guardado"); if (currentAssetId) loadContracts(); else loadGlobalContracts(); }; if(id) google.script.run.withSuccessHandler(cb).updateContrato(datos); else google.script.run.withSuccessHandler(cb).crearContrato(datos); } function deleteContract(id) { confirmarAccion("¿Eliminar contrato?", "", () => { google.script.run.withSuccessHandler(cb => { notificarExito("Eliminado"); if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }); }
+  function loadDocs() { if(!currentAssetId) return; const tbody = document.getElementById('docsTableBody'); tbody.innerHTML = '<tr><td colspan="4" class="text-center">Cargando...</td></tr>'; google.script.run.withSuccessHandler(docs => { let html = docs.length ? '' : '<tr><td colspan="4" class="text-center text-muted">Sin documentos</td></tr>'; docs.forEach(d => { html += `<tr><td class="ps-3 align-middle"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>${d.nombre}</td><td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td><td class="align-middle small text-muted">${d.fecha}</td><td class="text-end pe-3"><div class="btn-group"><a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a><button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerDocs(currentAssetId); } function deleteDoc(idDoc) { confirmarAccion("¿Eliminar documento?", "", () => { document.body.style.cursor = 'wait'; google.script.run.withSuccessHandler(res => { document.body.style.cursor = 'default'; if(res.success) { notificarExito("Eliminado"); loadDocs(); } }).eliminarDocumento(idDoc); }); } function uploadFile() { const file = document.getElementById('fileInput').files[0]; if(!file || !currentAssetId) return notificarError("Selecciona archivo"); const btn=document.querySelector('#tab-docs button'), st=document.getElementById('uploadStatus'); btn.disabled=true; st.innerText='Subiendo...'; const r = new FileReader(); r.onload=function(e){ google.script.run.withSuccessHandler(res=>{ btn.disabled=false; st.innerText='Subido'; document.getElementById('fileInput').value=''; notificarExito("Documento subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], file.name, file.type, currentAssetId, 'ACTIVO'); }; r.readAsDataURL(file); } function editContractGlobal(id, ini, fin, estadoDB, prov, ref) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function editContract(id, prov, ref, ini, fin, estadoDB) { document.getElementById('contModalTitle').innerText = 'Editar Contrato'; document.getElementById('contId').value = id; document.getElementById('contProv').value = prov; document.getElementById('contRef').value = ref; document.getElementById('contIni').value = ini; document.getElementById('contFin').value = fin; document.getElementById('contEstado').value = estadoDB; if (contractModal) contractModal.show(); } function loadContracts() { if(!currentAssetId) return; const tbody = document.getElementById('contractsTableBody'); tbody.innerHTML = '<tr><td colspan="5">Cargando...</td></tr>'; google.script.run.withSuccessHandler(list => { let html = list.length ? '' : '<tr><td colspan="5" class="text-center text-muted">Sin contratos</td></tr>'; list.forEach(c => { let badgeClass = 'bg-secondary'; if (c.color === 'verde') badgeClass = 'bg-success'; if (c.color === 'rojo') badgeClass = 'bg-danger'; if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; if (c.color === 'gris') badgeClass = 'bg-secondary'; html += `<tr><td><span class="badge ${badgeClass}">${c.estado}</span></td><td>${c.proveedor}</td><td>${c.ref}</td><td><small>${c.inicio} - ${c.fin}</small></td><td class="text-end"><div class="btn-group"><button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); tbody.innerHTML = html; refreshSecurityIcons(); }).obtenerContratos(currentAssetId); } 
+    
+    function deleteContract(id) { confirmarAccion("¿Eliminar contrato?", "", () => { google.script.run.withSuccessHandler(cb => { notificarExito("Eliminado"); if(currentAssetId) loadContracts(); else loadGlobalContracts(); }).eliminarContrato(id); }); }
 
   // ==========================================
   // FUNCIÓN IMPORTACIÓN MASIVA
@@ -977,7 +1235,6 @@ function renderMarkers(data = null) {
   // ==========================================
   // GESTIÓN DE NOVEDADES (CHANGELOG)
   // ==========================================
-  let newVersionModal = null; // Variable global nueva
 
   function openChangelogModal(e) {
     if(e) e.preventDefault();
@@ -1031,8 +1288,6 @@ function renderMarkers(data = null) {
       container.innerHTML = html;
     }).getNovedadesApp();
   }
-
-  // --- FUNCIONES NUEVAS PARA AÑADIR ---
 
   function openNewVersionModal() {
     // Cerramos el modal de listado para que no se solapen
@@ -1176,5 +1431,113 @@ function loadFeedbackList() {
     } else {
       badge.classList.add('d-none');
     }
+  }
+
+  // ==========================================
+  // DESCARGA DE INFORMES PDF
+  // ==========================================
+  function descargarInforme(tipo) {
+    // Feedback visual para el usuario
+    const btnId = tipo === 'LEGAL' ? 'btnPdfLegal' : 'btnPdfContratos';
+    const btn = document.getElementById(btnId);
+    const originalText = btn.innerHTML;
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generando PDF...';
+
+    google.script.run.withSuccessHandler(res => {
+      // Restaurar botón
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      
+      // TRUCO: Crear enlace invisible y pulsarlo
+      const link = document.createElement('a');
+      link.href = 'data:application/pdf;base64,' + res.base64;
+      link.download = res.filename;
+      link.target = '_blank'; // Por seguridad
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      notificarExito("Informe descargado correctamente.");
+
+    }).withFailureHandler(err => {
+      btn.disabled = false;
+      btn.innerHTML = originalText;
+      notificarError("Error al generar PDF: " + err.message);
+    }).generarInformePDF(tipo);
+  }
+
+  // ==========================================
+  // EDICIÓN AVANZADA DE CONTRATOS
+  // ==========================================
+
+  function editContractGlobal(id) {
+      // 1. Abrimos el modal vacío primero para dar feedback visual
+      mostrarModalContrato(); 
+      document.getElementById('contModalTitle').innerText = 'Cargando datos...';
+      document.getElementById('btnContSubmit').disabled = true;
+
+      // 2. Pedimos los datos completos al servidor
+      google.script.run.withSuccessHandler(data => {
+          
+          // Rellenar datos básicos
+          document.getElementById('contModalTitle').innerText = 'Editar Contrato';
+          document.getElementById('contId').value = data.id;
+          document.getElementById('contProv').value = data.proveedor;
+          document.getElementById('contRef').value = data.ref;
+          document.getElementById('contIni').value = data.inicio;
+          document.getElementById('contFin').value = data.fin;
+          document.getElementById('contEstado').value = data.estado;
+
+          // 3. LA CASCADA MÁGICA DE UBICACIÓN
+          // Seleccionamos Campus y forzamos la carga de edificios
+          const selCampus = document.getElementById('contCampus');
+          selCampus.value = data.idCampus;
+          
+          // Ahora cargamos edificios pasando el ID del campus
+          // Usamos una versión manual para poder preseleccionar después
+          const selEdif = document.getElementById('contEdificio');
+          selEdif.innerHTML = '<option>Cargando...</option>';
+          selEdif.disabled = true;
+          
+          google.script.run.withSuccessHandler(edificios => {
+              let h = '<option value="">- Todo el Edificio (Opcional) -</option>';
+              edificios.forEach(e => h += `<option value="${e.id}">${e.nombre}</option>`);
+              selEdif.innerHTML = h;
+              selEdif.disabled = false;
+              
+              // Si el contrato tiene edificio, lo seleccionamos
+              if (data.idEdificio) {
+                  selEdif.value = data.idEdificio;
+                  
+                  // Y cargamos los activos
+                  const selActivo = document.getElementById('contActivo');
+                  selActivo.innerHTML = '<option>Cargando...</option>';
+                  selActivo.disabled = true;
+
+                  google.script.run.withSuccessHandler(activos => {
+                      let ha = '<option value="">- Activo Específico (Opcional) -</option>';
+                      activos.forEach(a => ha += `<option value="${a.id}">${a.nombre}</option>`);
+                      selActivo.innerHTML = ha;
+                      selActivo.disabled = false;
+                      
+                      // Si el contrato tiene activo, lo seleccionamos
+                      if (data.idActivo) {
+                          selActivo.value = data.idActivo;
+                      }
+                      // Habilitamos botón guardar al final de la cadena
+                      document.getElementById('btnContSubmit').disabled = false;
+
+                  }).getActivosPorEdificio(data.idEdificio);
+
+              } else {
+                  // Si no hay edificio, terminamos aquí
+                  document.getElementById('btnContSubmit').disabled = false;
+              }
+
+          }).getEdificiosPorCampus(data.idCampus);
+
+      }).getContratoFullDetails(id);
   }
 </script>
