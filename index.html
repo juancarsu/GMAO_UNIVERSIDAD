@@ -139,8 +139,14 @@
 
     <div id="view-dashboard" class="view-section">
       <div class="page-header">
-        <h1 class="page-title">Resumen General</h1><button class="btn btn-primary"
-          onclick="navTo('activos', null, null)">+ Nuevo Activo</button>
+        <h1 class="page-title">Resumen General</h1>
+        <div class="d-flex gap-2">
+          <select id="dashboardCampusFilter" class="form-select form-select-sm" style="width: 200px;"
+            onchange="loadDashboard()">
+            <option value="">- Todos los Campus -</option>
+          </select>
+          <button class="btn btn-primary" onclick="navTo('activos', null, null)">+ Nuevo Activo</button>
+        </div>
       </div>
 
       <div class="stats-grid mb-4">
