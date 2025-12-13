@@ -83,6 +83,7 @@
       currentUser = u;
       applySecurityUI();
       loadDashboard();
+      loadDashboardFilters();
 
       // Mover aquí la lógica que depende del usuario
       if (u.rol === 'ADMIN') {
@@ -227,6 +228,9 @@
   // 5. DASHBOARD & CALENDARIO
   // ==========================================
   function loadDashboard() {
+    const filter = document.getElementById('dashboardCampusFilter');
+    const idCampus = filter ? filter.value : null;
+
     google.script.run.withSuccessHandler(d => {
       document.getElementById('d-activos').innerText = d.activos;
       document.getElementById('d-vencidas').innerText = d.vencidas;
@@ -263,7 +267,17 @@
       });
       calendar.render();
       ocultarLoader();
-    }).getDatosDashboard();
+    }).getDatosDashboard(idCampus);
+  }
+
+  function loadDashboardFilters() {
+    const sel = document.getElementById('dashboardCampusFilter');
+    if (!sel) return;
+    google.script.run.withSuccessHandler(list => {
+      let html = '<option value="">- Todos los Campus -</option>';
+      list.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+      sel.innerHTML = html;
+    }).getTableData('CAMPUS');
   }
 
   // ==========================================
