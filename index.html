@@ -147,7 +147,8 @@
       <div class="page-header">
         <h1 class="page-title">Resumen General</h1>
         <div class="d-flex gap-2">
-          <select id="dashboardCampusFilter" class="form-select form-select-sm" style="width: 200px;" onchange="loadDashboard()">
+          <select id="dashboardCampusFilter" class="form-select form-select-sm" style="width: 200px;"
+            onchange="loadDashboard()">
             <option value="">- Todos los Campus -</option>
           </select>
           <button class="btn btn-primary" onclick="navTo('activos', null, null)">+ Nuevo Activo</button>
@@ -213,38 +214,41 @@
           </div>
         </div>
       </div>
-    </div> 
+    </div>
     <div id="view-planner" class="view-section d-none">
-        <div class="page-header mb-2">
-            <h1 class="page-title">Planificador de Trabajo</h1>
-            <div>
-                <button class="btn btn-outline-secondary btn-sm" onclick="loadPlannerEvents()">
-                    <i class="bi bi-arrow-clockwise"></i> Recargar
-                </button>
-            </div>
+      <div class="page-header mb-2">
+        <h1 class="page-title">Planificador de Trabajo</h1>
+        <div>
+          <button class="btn btn-outline-secondary btn-sm" onclick="loadPlannerEvents()">
+            <i class="bi bi-arrow-clockwise"></i> Recargar
+          </button>
         </div>
+      </div>
 
-        <div class="d-flex gap-3 mb-3 p-2 bg-white rounded shadow-sm align-items-center">
-            <span class="small fw-bold text-muted text-uppercase">Mostrar:</span>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="chkShowMant" checked onchange="filterPlanner()">
-                <label class="form-check-label small" for="chkShowMant"><span class="dot bg-success"></span>Mantenimiento</label>
-            </div>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="chkShowObras" checked onchange="filterPlanner()">
-                <label class="form-check-label small" for="chkShowObras"><span class="dot" style="background:#0d6efd"></span>Obras</label>
-            </div>
-            <div class="form-check form-check-inline">
-                <input class="form-check-input" type="checkbox" id="chkShowInc" checked onchange="filterPlanner()">
-                <label class="form-check-label small" for="chkShowInc"><span class="dot" style="background:#fd7e14"></span>Incidencias</label>
-            </div>
+      <div class="d-flex gap-3 mb-3 p-2 bg-white rounded shadow-sm align-items-center">
+        <span class="small fw-bold text-muted text-uppercase">Mostrar:</span>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="chkShowMant" checked onchange="filterPlanner()">
+          <label class="form-check-label small" for="chkShowMant"><span
+              class="dot bg-success"></span>Mantenimiento</label>
         </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="chkShowObras" checked onchange="filterPlanner()">
+          <label class="form-check-label small" for="chkShowObras"><span class="dot"
+              style="background:#0d6efd"></span>Obras</label>
+        </div>
+        <div class="form-check form-check-inline">
+          <input class="form-check-input" type="checkbox" id="chkShowInc" checked onchange="filterPlanner()">
+          <label class="form-check-label small" for="chkShowInc"><span class="dot"
+              style="background:#fd7e14"></span>Incidencias</label>
+        </div>
+      </div>
 
-        <div class="card border-0 shadow-sm">
-            <div class="card-body p-3">
-                <div id="plannerCalendar" style="min-height: 600px;"></div>
-            </div>
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-3">
+          <div id="plannerCalendar" style="min-height: 600px;"></div>
         </div>
+      </div>
     </div>
 
     <div id="view-campus" class="view-section d-none">
@@ -417,7 +421,7 @@
             <option value="">- Seleccione -</option>
           </select></div>
         <div class="flex-grow-1"><label class="form-label small text-muted">2. Edificio</label><select
-            id="filterEdificio" class="form-select" disabled onchange="loadActivos(this.value)">
+            id="filterEdificio" class="form-select" onchange="loadActivos(this.value)">
             <option value="">- Seleccione -</option>
           </select></div>
         <div class="flex-grow-1"><label class="form-label small text-muted">3. Filtro Texto</label><input type="text"
@@ -722,10 +726,14 @@
       </div>
       <ul class="nav nav-tabs mb-4">
         <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tab-info">Información</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-docs" onclick="loadDocs()">Documentación</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-maint" onclick="loadMaint()">Mantenimiento</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-contracts" onclick="loadContracts()">Contratos</a></li>
-        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-relaciones" onclick="loadRelacionesActivo()">Relaciones</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-docs"
+            onclick="loadDocs()">Documentación</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-maint"
+            onclick="loadMaint()">Mantenimiento</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-contracts"
+            onclick="loadContracts()">Contratos</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tab-relaciones"
+            onclick="loadRelacionesActivo()">Relaciones</a></li>
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tab-info">
@@ -825,7 +833,7 @@
               <i class="bi bi-plus-lg"></i> Nueva Relación
             </button>
           </div>
-          
+
           <div id="relacionesContainer">
             <div class="text-center py-5">
               <div class="spinner-border"></div>
@@ -885,15 +893,18 @@
           <span class="small fw-bold text-muted text-uppercase">Mostrar:</span>
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowMant" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowMant"><span class="dot bg-success"></span>Mantenimiento</label>
+            <label class="form-check-label small" for="chkShowMant"><span
+                class="dot bg-success"></span>Mantenimiento</label>
           </div>
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowObras" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowObras"><span class="dot" style="background:#0d6efd"></span>Obras</label>
+            <label class="form-check-label small" for="chkShowObras"><span class="dot"
+                style="background:#0d6efd"></span>Obras</label>
           </div>
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowInc" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowInc"><span class="dot" style="background:#fd7e14"></span>Incidencias</label>
+            <label class="form-check-label small" for="chkShowInc"><span class="dot"
+                style="background:#fd7e14"></span>Incidencias</label>
           </div>
         </div>
 
@@ -919,19 +930,18 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
-            
+
             <!-- Paso 1: Buscar Activo -->
             <div class="mb-3">
               <label class="form-label fw-bold">1. Buscar Activo Relacionado</label>
-              <input type="text" class="form-control" id="relSearchInput" 
-                    placeholder="Escribe nombre o tipo..." 
-                    onkeyup="buscarActivosRelacion()">
+              <input type="text" class="form-control" id="relSearchInput" placeholder="Escribe nombre o tipo..."
+                onkeyup="buscarActivosRelacion()">
               <div id="relResultados" class="mt-2"></div>
             </div>
-            
+
             <!-- Activo seleccionado -->
             <div id="relActivoSeleccionado" class="mb-3"></div>
-            
+
             <!-- Tipo de Relación -->
             <div class="mb-3">
               <label class="form-label fw-bold">2. Tipo de Relación</label>
@@ -942,14 +952,14 @@
                 <option value="RELACIONADO">🔄 Relacionado genérico</option>
               </select>
             </div>
-            
+
             <!-- Descripción opcional -->
             <div class="mb-3">
               <label class="form-label">Descripción (opcional)</label>
-              <textarea class="form-control" id="relDescripcion" rows="2" 
-                        placeholder="Ej. Alimenta al circuito norte..."></textarea>
+              <textarea class="form-control" id="relDescripcion" rows="2"
+                placeholder="Ej. Alimenta al circuito norte..."></textarea>
             </div>
-            
+
             <!-- Bidireccional -->
             <div class="form-check mb-3 bg-light p-2 rounded">
               <input class="form-check-input" type="checkbox" id="relBidireccional" checked>
@@ -957,7 +967,7 @@
                 <i class="bi bi-arrow-left-right text-primary"></i> Relación bidireccional (crear en ambos activos)
               </label>
             </div>
-            
+
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
