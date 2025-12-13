@@ -105,7 +105,11 @@
             class="bi bi-exclamation-triangle menu-icon"></i> Incidencias</a></li>
       <li class="menu-item"><a href="#" class="menu-link" onclick="navTo('contratos', this, event)"><i
             class="bi bi-file-earmark-text menu-icon"></i> Contratos</a></li>
-
+      <li class="menu-item">
+        <a href="#" class="menu-link" onclick="navTo('audit', this, event)">
+          <i class="bi bi-briefcase menu-icon"></i> Auditoría
+        </a>
+      </li>
       <li class="menu-item">
         <a href="#" class="menu-link" onclick="navTo('planner', this, event)">
           <i class="bi bi-calendar-week menu-icon"></i> Planificador
@@ -142,6 +146,61 @@
   </aside>
 
   <main id="main-content">
+
+    <div id="view-audit" class="view-section d-none">
+          <div class="page-header">
+            <h1 class="page-title">Panel de Auditoría</h1>
+          </div>
+        
+          <div class="row justify-content-center">
+            <div class="col-md-8 col-lg-6">
+        
+              <div class="card border-0 shadow-sm p-4 text-center">
+                <div class="mb-4">
+                  <div class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center"
+                    style="width: 80px; height: 80px;">
+                    <i class="bi bi-archive text-primary fs-1"></i>
+                  </div>
+                  <h4 class="mt-3">Exportación de Documentación</h4>
+                  <p class="text-muted">Genera una carpeta en Google Drive con todos los certificados e informes organizados
+                    automáticamente.</p>
+                </div>
+        
+                <div class="text-start bg-light p-4 rounded border mb-4">
+                  <div class="mb-3">
+                    <label class="form-label fw-bold">1. Selecciona el Año</label>
+                    <select id="auditYear" class="form-select">
+                        <option value="">Cargando años...</option>
+                    </select>
+                  </div>
+        
+                  <div class="mb-3">
+                    <label class="form-label fw-bold">2. Tipo de Documentación</label>
+                    <select id="auditType" class="form-select">
+                      <option value="Legal" selected>🔍 Solo Revisiones Legales / Normativas</option>
+                      <option value="TODOS">📂 Toda la documentación (Legal + Preventivo + Correctivo)</option>
+                    </select>
+                  </div>
+                </div>
+        
+                <button id="btnAuditRun" class="btn btn-primary btn-lg w-100" onclick="runAudit()">
+                  <i class="bi bi-cloud-arrow-up me-2"></i> Generar Paquete
+                </button>
+        
+                <div id="auditResult" class="mt-4 d-none">
+                  <div class="alert alert-success">
+                    <h5 class="alert-heading"><i class="bi bi-check-circle-fill"></i> ¡Paquete Generado!</h5>
+                    <p class="mb-0" id="auditMsg">Se han copiado X archivos.</p>
+                    <hr>
+                    <a id="auditLink" href="#" target="_blank" class="btn btn-outline-success fw-bold">
+                      <i class="bi bi-folder-symlink"></i> Abrir Carpeta en Drive
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+    </div>
 
     <div id="view-dashboard" class="view-section">
       <div class="page-header">
@@ -976,9 +1035,8 @@
               Guardar Relación
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+
+
   </main>
 
   <div class="modal fade" id="createModal" tabindex="-1">
