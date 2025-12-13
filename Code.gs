@@ -13,8 +13,9 @@
 const PROPS = PropertiesService.getScriptProperties();
 
 function doGet(e) {
-  return HtmlService.createTemplateFromFile('Index')
-      .evaluate().setTitle('GMAO Universidad').addMetaTag('viewport', 'width=device-width, initial-scale=1')
+  var template = HtmlService.createTemplateFromFile('Index');
+  template.urlParams = e ? e.parameter : {};
+  return template.evaluate().setTitle('GMAO Universidad').addMetaTag('viewport', 'width=device-width, initial-scale=1')
       .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
@@ -90,14 +91,51 @@ function getActivosPorEdificio(idEdificio) { const data = getSheetData('ACTIVOS'
 
 function getAssetInfo(idActivo) {
   const data = getSheetData('ACTIVOS');
+  const edificios = getSheetData('EDIFICIOS');
+  const campus = getSheetData('CAMPUS');
+
   for(let i=1; i<data.length; i++){
     if(String(data[i][0]) === String(idActivo)){
       const f = data[i][5];
       const fechaStr = (f instanceof Date) ? Utilities.formatDate(f, Session.getScriptTimeZone(), "dd/MM/yyyy") : "-";
-      return { id: data[i][0], nombre: data[i][3], tipo: data[i][2], marca: data[i][4], fechaAlta: fechaStr };
+      
+      const idEdificio = data[i][1];
+      let nombreEdificio = "Desconocido";
+      let nombreCampus = "Desconocido";
+      let idCampus = null;
+
+      // Buscar Edificio
+      for(let j=1; j<edificios.length; j++){
+        if(String(edificios[j][0]) === String(idEdificio)){
+          nombreEdificio = edificios[j][2];
+          idCampus = edificios[j][1];
+          break;
+        }
+      }
+
+      // Buscar Campus
+      if(idCampus){
+        for(let k=1; k<campus.length; k++){
+          if(String(campus[k][0]) === String(idCampus)){
+            nombreCampus = campus[k][1];
+            break;
+          }
+        }
+      }
+
+      return { 
+        id: data[i][0], 
+        nombre: data[i][3], 
+        tipo: data[i][2], 
+        marca: data[i][4], 
+        fechaAlta: fechaStr,
+        edificio: nombreEdificio,
+        campus: nombreCampus
+      };
     }
   }
-  throw new Error("Activo no encontrado.");
+  // Si llegamos aquí, no se encontró
+  return null; 
 }
 
 function updateAsset(datos) {
@@ -1778,4 +1816,301 @@ function desactivarNotificacionesUsuario(email) {
   }
   
   return { success: false, error: "Usuario no encontrado" };
+}
+
+// ==========================================
+// 24. SISTEMA DE CÓDIGOS QR PARA ACTIVOS
+// ==========================================
+
+/**
+ * Generar código QR para un activo específico
+ * Usa la API gratuita de Google Charts
+ */
+function generarQRActivo(idActivo) {
+  try {
+    // Obtener datos del activo
+    const activo = getAssetInfo(idActivo);
+    
+    if (!activo) {
+      return { success: false, error: "Activo no encontrado" };
+    }
+    
+    // Obtener URL de la aplicación
+    const urlApp = ScriptApp.getService().getUrl();
+    
+    // Crear URL con parámetro para abrir directamente el activo
+    const urlQR = `${urlApp}?activo=${idActivo}`;
+    
+    // Generar QR usando API QRServer (muy fiable)
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(urlQR)}`;
+    
+    // Descargar imagen y convertir a Base64 para evitar bloqueos
+    let qrBase64 = qrImageUrl;
+    try {
+      const resp = UrlFetchApp.fetch(qrImageUrl);
+      if (resp.getResponseCode() === 200) {
+        const blob = resp.getBlob();
+        qrBase64 = "data:image/png;base64," + Utilities.base64Encode(blob.getBytes());
+      }
+    } catch(e) {
+      console.error("Error fetching QR: " + e);
+    }
+
+    return {
+      success: true,
+      qrUrl: qrBase64,
+      targetUrl: urlQR,
+      activo: {
+        id: activo.id,
+        nombre: activo.nombre,
+        tipo: activo.tipo,
+        edificio: activo.edificio,
+        campus: activo.campus
+      }
+    };
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Generar QR para todos los activos de un edificio
+ * Devuelve un array con todos los QR para imprimir
+ */
+function generarQRsEdificio(idEdificio) {
+  try {
+    const activos = getSheetData('ACTIVOS');
+    const edificios = getSheetData('EDIFICIOS');
+    const campus = getSheetData('CAMPUS');
+    
+    // Buscar nombre del edificio
+    let nombreEdificio = '';
+    let idCampus = '';
+    for(let i = 1; i < edificios.length; i++) {
+      if (String(edificios[i][0]) === String(idEdificio)) {
+        nombreEdificio = edificios[i][2];
+        idCampus = edificios[i][1];
+        break;
+      }
+    }
+    
+    // Buscar nombre del campus
+    let nombreCampus = '';
+    for(let i = 1; i < campus.length; i++) {
+      if (String(campus[i][0]) === String(idCampus)) {
+        nombreCampus = campus[i][1];
+        break;
+      }
+    }
+    
+    const urlApp = ScriptApp.getService().getUrl();
+    const qrs = [];
+    
+    // Generar QR para cada activo del edificio
+    for(let i = 1; i < activos.length; i++) {
+      if (String(activos[i][1]) === String(idEdificio)) {
+        const idActivo = activos[i][0];
+        const urlQR = `${urlApp}?activo=${idActivo}`;
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(urlQR)}`;
+        
+        qrs.push({
+          id: idActivo,
+          nombre: activos[i][3],
+          tipo: activos[i][2],
+          marca: activos[i][4] || '-',
+          qrUrl: qrImageUrl,
+          targetUrl: urlQR
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      edificio: nombreEdificio,
+      campus: nombreCampus,
+      totalActivos: qrs.length,
+      qrs: qrs
+    };
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Generar PDF con etiquetas QR para imprimir
+ * Formato: 2 columnas, con nombre del activo y QR
+ */
+function generarPDFEtiquetasQR(idEdificio) {
+  try {
+    const data = generarQRsEdificio(idEdificio);
+    
+    if (!data.success) {
+      return data;
+    }
+
+    // Pre-fetch de imágenes QR para convertirlas a Base64
+    // Esto soluciona el problema de imágenes rotas en el PDF
+    const requests = data.qrs.map(qr => ({
+      url: qr.qrUrl,
+      method: "GET",
+      muteHttpExceptions: true
+    }));
+
+    try {
+      const responses = UrlFetchApp.fetchAll(requests);
+      
+      data.qrs.forEach((qr, index) => {
+        const response = responses[index];
+        if (response.getResponseCode() === 200) {
+          const blob = response.getBlob();
+          const base64 = Utilities.base64Encode(blob.getBytes());
+          qr.qrUrl = "data:image/png;base64," + base64;
+        }
+      });
+    } catch (err) {
+      console.error("Error fetching QR images: " + err);
+      // Si falla, intentamos usar la URL original, aunque puede que no cargue en PDF
+    }
+    
+    const fechaHoy = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "dd/MM/yyyy");
+    
+    // Construir HTML para el PDF
+    let html = `
+      <html>
+        <head>
+          <style>
+            @page { margin: 1cm; size: A4; }
+            body { font-family: Arial, sans-serif; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #CC0605; padding-bottom: 10px; }
+            .header h1 { color: #CC0605; margin: 0; font-size: 18pt; }
+            .header p { margin: 5px 0; font-size: 10pt; color: #666; }
+            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+            .etiqueta { 
+              border: 2px solid #CC0605; 
+              padding: 15px; 
+              text-align: center; 
+              page-break-inside: avoid;
+              border-radius: 8px;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+            .etiqueta img { width: 200px; height: 200px; margin: 10px 0; object-fit: contain; }
+            .etiqueta h3 { color: #CC0605; margin: 5px 0; font-size: 14pt; }
+            .etiqueta p { margin: 3px 0; font-size: 10pt; color: #666; }
+            .etiqueta .tipo { font-weight: bold; color: #333; font-size: 11pt; }
+            .footer { 
+              position: fixed; 
+              bottom: 0; 
+              width: 100%; 
+              text-align: center; 
+              font-size: 8pt; 
+              color: #999; 
+              border-top: 1px solid #eee; 
+              padding-top: 5px; 
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Códigos QR - Activos</h1>
+            <p><strong>${data.edificio}</strong> | ${data.campus}</p>
+            <p>Generado el: ${fechaHoy} | Total: ${data.totalActivos} activos</p>
+          </div>
+          
+          <div class="grid">
+    `;
+    
+    data.qrs.forEach(qr => {
+      html += `
+        <div class="etiqueta">
+          <h3>${qr.nombre}</h3>
+          <p class="tipo">${qr.tipo}</p>
+          ${qr.marca !== '-' ? `<p>Marca: ${qr.marca}</p>` : ''}
+          <img src="${qr.qrUrl}" alt="QR ${qr.nombre}">
+          <p style="font-size: 8pt; color: #999;">Escanea para ver detalles</p>
+        </div>
+      `;
+    });
+    
+    html += `
+          </div>
+          <div class="footer">
+            GMAO - Universidad de Navarra | Sistema de Gestión de Mantenimiento
+          </div>
+        </body>
+      </html>
+    `;
+    
+    // Convertir a PDF
+    const blob = Utilities.newBlob(html, MimeType.HTML).getAs(MimeType.PDF);
+    const filename = `QR_${data.edificio.replace(/\s+/g, '_')}_${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyyMMdd")}.pdf`;
+    blob.setName(filename);
+    
+    return {
+      success: true,
+      base64: Utilities.base64Encode(blob.getBytes()),
+      filename: filename,
+      totalEtiquetas: data.totalActivos
+    };
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * Obtener información del activo cuando se escanea el QR
+ * Esta función se llama cuando alguien accede a la URL del QR
+ */
+function getActivoByQR(idActivo) {
+  try {
+    const activo = getAssetInfo(idActivo);
+    
+    if (!activo) {
+      return { success: false, error: "Activo no encontrado" };
+    }
+    
+    // Obtener últimas revisiones
+    const dataMant = getSheetData('PLAN_MANTENIMIENTO');
+    const revisiones = [];
+    
+    for(let i = 1; i < dataMant.length; i++) {
+      if (String(dataMant[i][1]) === String(idActivo)) {
+        revisiones.push({
+          tipo: dataMant[i][2],
+          fecha: dataMant[i][4] ? Utilities.formatDate(dataMant[i][4], Session.getScriptTimeZone(), "dd/MM/yyyy") : '-',
+          estado: dataMant[i][6] || 'PENDIENTE'
+        });
+      }
+    }
+    
+    // Obtener últimas incidencias
+    const dataInc = getSheetData('INCIDENCIAS');
+    const incidencias = [];
+    
+    for(let i = 1; i < dataInc.length; i++) {
+      if (String(dataInc[i][2]) === String(idActivo) && dataInc[i][1] === 'ACTIVO') {
+        incidencias.push({
+          descripcion: dataInc[i][4],
+          prioridad: dataInc[i][5],
+          estado: dataInc[i][6],
+          fecha: dataInc[i][7] ? Utilities.formatDate(dataInc[i][7], Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm") : '-'
+        });
+      }
+    }
+    
+    return {
+      success: true,
+      activo: activo,
+      revisiones: revisiones.slice(0, 5), // Últimas 5
+      incidencias: incidencias.slice(0, 3) // Últimas 3
+    };
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
 }
