@@ -1292,6 +1292,7 @@ function crearIncidencia(d) {
   const sheet = ss.getSheetByName('INCIDENCIAS');
   const usuario = getMyRole().email;
   const fecha = new Date();
+  
   try {
     let idFoto = "";
     if (d.fotoBase64) {
@@ -1309,7 +1310,26 @@ function crearIncidencia(d) {
        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
        idFoto = file.getId();
     }
+    
+    // Guardar en la hoja
     sheet.appendRow([Utilities.getUuid(), d.tipoOrigen, d.idOrigen, d.nombreOrigen, d.descripcion, d.prioridad, "PENDIENTE", fecha, usuario, idFoto]);
+    
+    // --- NUEVO: ENVIAR EMAIL DE ALERTA ---
+    // Lo envolvemos en un try/catch interno para que, si falla el email, 
+    // la incidencia se guarde igualmente y no dé error al usuario.
+    try {
+      enviarAlertaIncidencia({
+        nombreOrigen: d.nombreOrigen,
+        prioridad: d.prioridad,
+        descripcion: d.descripcion,
+        usuario: usuario,
+        fecha: Utilities.formatDate(fecha, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm")
+      });
+    } catch(mailErr) {
+      console.log("No se pudo enviar el email: " + mailErr);
+    }
+    // -------------------------------------
+
     return { success: true };
   } catch (e) { return { success: false, error: e.toString() }; }
 }
@@ -3217,5 +3237,101 @@ function procesarArchivoRapido(data) {
     
   } catch (e) {
     return { success: false, error: e.toString() };
+  }
+}
+
+// ==========================================
+// NOTIFICACIONES POR EMAIL (NUEVO)
+// ==========================================
+
+/**
+ * Obtiene la lista de emails de usuarios (Admins y Técnicos) que quieren recibir avisos
+ */
+function getDestinatariosAvisos() {
+  const data = getSheetData('USUARIOS');
+  const emails = [];
+  
+  // Empezamos en 1 para saltar cabecera
+  for (let i = 1; i < data.length; i++) {
+    const email = String(data[i][2]).trim();
+    const rol = String(data[i][3]);
+    const recibeAvisos = String(data[i][4]); // Columna 'RECIBIR_AVISOS'
+    
+    // Filtro: Debe tener email, ser ADMIN o TECNICO, y tener AVISOS = SI
+    if (email && (rol === 'ADMIN' || rol === 'TECNICO') && recibeAvisos === 'SI') {
+      emails.push(email);
+    }
+  }
+  return emails;
+}
+
+/**
+ * Envía el email formateado
+ */
+function enviarAlertaIncidencia(datos) {
+  const destinatarios = getDestinatariosAvisos();
+  
+  if (destinatarios.length === 0) {
+    console.log("No hay destinatarios configurados para recibir alertas.");
+    return;
+  }
+
+  // Definir colores según prioridad
+  let colorHeader = "#6c757d"; // Gris (Baja)
+  if (datos.prioridad === 'MEDIA') colorHeader = "#0d6efd"; // Azul
+  if (datos.prioridad === 'ALTA') colorHeader = "#fd7e14";  // Naranja
+  if (datos.prioridad === 'URGENTE') colorHeader = "#dc3545"; // Rojo
+
+  const asunto = `[GMAO] Nueva Incidencia: ${datos.nombreOrigen}`;
+  
+  const htmlBody = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: ${colorHeader}; color: white; padding: 15px; text-align: center;">
+        <h2 style="margin: 0;">Nueva Incidencia Reportada</h2>
+        <p style="margin: 5px 0 0 0; font-size: 14px;">Prioridad: <strong>${datos.prioridad}</strong></p>
+      </div>
+      
+      <div style="padding: 20px;">
+        <p>Se ha registrado una nueva avería en el sistema:</p>
+        
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 8px 0; color: #666; width: 120px;"><strong>Ubicación/Activo:</strong></td>
+            <td style="padding: 8px 0;">${datos.nombreOrigen}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #666;"><strong>Reportado por:</strong></td>
+            <td style="padding: 8px 0;">${datos.usuario}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #666;"><strong>Fecha:</strong></td>
+            <td style="padding: 8px 0;">${datos.fecha}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0; color: #666; vertical-align: top;"><strong>Descripción:</strong></td>
+            <td style="padding: 8px 0; background-color: #f8f9fa; border-radius: 4px; padding: 10px;">${datos.descripcion}</td>
+          </tr>
+        </table>
+
+        <div style="text-align: center; margin-top: 25px;">
+          <a href="${ScriptApp.getService().getUrl()}" style="background-color: #333; color: white; text-decoration: none; padding: 10px 20px; border-radius: 5px; font-size: 14px;">Acceder al GMAO</a>
+        </div>
+      </div>
+      
+      <div style="background-color: #f1f1f1; padding: 10px; text-align: center; font-size: 11px; color: #888;">
+        GMAO Universidad de Navarra | Notificación Automática
+      </div>
+    </div>
+  `;
+
+  try {
+    MailApp.sendEmail({
+      to: destinatarios.join(','), // Enviar a todos separados por coma (o usar bcc si son muchos)
+      subject: asunto,
+      htmlBody: htmlBody
+    });
+    console.log(`Email de incidencia enviado a ${destinatarios.length} destinatarios.`);
+  } catch (e) {
+    console.error("Error enviando email: " + e.toString());
   }
 }
