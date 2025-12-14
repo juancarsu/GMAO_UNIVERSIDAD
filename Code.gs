@@ -714,9 +714,11 @@ function getGlobalMaintenance() {
   return result.sort((a, b) => a.dias - b.dias);
 }
 
+// En Code.gs
+
 function crearRevision(d) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const ss = getDB(); 
   const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
   
   try {
@@ -725,7 +727,6 @@ function crearRevision(d) {
     
     var esRepetitiva = (String(d.esRecursiva) === "true"); 
     var frecuencia = parseInt(d.diasFreq) || 0; 
-    var fechaLimite = d.fechaFin ? textoAFecha(d.fechaFin) : null; 
     var syncCal = (String(d.syncCalendar) === "true");
     
     const infoExtra = syncCal ? getInfoParaCalendar(d.idActivo) : {};
@@ -734,33 +735,47 @@ function crearRevision(d) {
         eventId = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: d.fechaProx }); 
     }
     
-    // --- CAMBIO: Generamos el UUID antes para poder devolverlo ---
     const newId = Utilities.getUuid();
-    // ------------------------------------------------------------
 
+    // 1. Crear la revisión "padre"
     sheet.appendRow([newId, d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventId]);
     
-    // Lógica de repetición (sin cambios, solo usando newId en el log si quisieras)
-    if (esRepetitiva && frecuencia > 0 && fechaLimite && fechaLimite > fechaActual) {
+    // 2. Lógica de repetición BLINDADA (Automática)
+    if (esRepetitiva && frecuencia > 0) {
+      // --- SEGURIDAD ---
+      const MAX_REVISIONES = 12;
+      const HORIZONTE_ANIOS = 10;
+      
+      const hoy = new Date();
+      const fechaTope = new Date(hoy.getFullYear() + HORIZONTE_ANIOS, hoy.getMonth(), hoy.getDate());
+      
+      let fechaSiguiente = new Date(fechaActual);
       let contador = 0;
-      while (contador < 50) { 
-        fechaActual.setDate(fechaActual.getDate() + frecuencia); 
-        if (fechaActual > fechaLimite) break;
+
+      while (contador < MAX_REVISIONES) { 
+        // Sumar frecuencia
+        fechaSiguiente.setDate(fechaSiguiente.getDate() + frecuencia);
         
+        // Freno de emergencia por fecha
+        if (fechaSiguiente > fechaTope) break;
+        
+        // Crear evento calendario si corresponde
         let eventIdLoop = null; 
         if (syncCal) { 
-            let fStr = Utilities.formatDate(fechaActual, Session.getScriptTimeZone(), "yyyy-MM-dd"); 
+            let fStr = Utilities.formatDate(fechaSiguiente, Session.getScriptTimeZone(), "yyyy-MM-dd"); 
             eventIdLoop = gestionarEventoCalendario('CREAR', { ...infoExtra, tipo: d.tipo, fecha: fStr }); 
         }
-        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaActual), frecuencia, "ACTIVO", eventIdLoop]); 
+        
+        // Insertar fila
+        sheet.appendRow([Utilities.getUuid(), d.idActivo, d.tipo, "", new Date(fechaSiguiente), frecuencia, "ACTIVO", eventIdLoop]); 
         contador++;
       }
+      registrarLog("CREAR REVISION", `Activo: ${d.idActivo} | Tipo: ${d.tipo} (+${contador} futuras)`);
+    } else {
+      registrarLog("CREAR REVISION", `Activo: ${d.idActivo} | Tipo: ${d.tipo}`);
     }
     
-    registrarLog("CREAR REVISION", "Activo: " + d.idActivo + " | Tipo: " + d.tipo);
     invalidateCache('PLAN_MANTENIMIENTO');
-    
-    // --- CAMBIO: Devolvemos el ID ---
     return { success: true, newId: newId }; 
     
   } catch (e) { return { success: false, error: e.toString() }; }
@@ -3087,77 +3102,82 @@ function generarPaqueteAuditoria(anio, tipoFiltro) {
   }
 }
 
+/**
+ * Procesa la subida rápida clasificando el archivo y generando revisiones con seguridad.
+ */
 function procesarArchivoRapido(data) {
-  // data incluye ahora: fechaOCA, crearSiguientes, freqDias
   try {
     const ss = getDB();
     let idEntidadDestino = data.idActivo;
     let tipoEntidadDestino = 'ACTIVO';
     let nombreFinal = data.nombreArchivo;
 
+    // A. LÓGICA OCA (Ya implementada)
     if (data.categoria === 'OCA') {
       const sheetMant = ss.getSheetByName('PLAN_MANTENIMIENTO');
       const idRevision = Utilities.getUuid();
-      
-      // 1. Usar la fecha indicada por el usuario (o hoy por defecto)
-      // El input date envía YYYY-MM-DD, nuestro helper textoAFecha lo entiende bien.
       const fechaReal = data.fechaOCA ? textoAFecha(data.fechaOCA) : new Date();
       
-      // 2. Crear la revisión "madre" (la que lleva el documento y está REALIZADA)
       sheetMant.appendRow([
-        idRevision,
-        data.idActivo,
-        'Legal',
-        'OCA - Documento Histórico/Carga',
-        fechaReal,
-        data.freqDias || 365,
-        'REALIZADA', // Importante: Nace ya cerrada
-        null
+        idRevision, data.idActivo, 'Legal', 'OCA - Documento Histórico/Carga',
+        fechaReal, data.freqDias || 365, 'REALIZADA', null
       ]);
 
-      // 3. LOGICA DE REPETICIÓN (Generar las futuras)
       if (data.crearSiguientes && data.freqDias > 0) {
         const frecuencia = parseInt(data.freqDias);
+        const MAX_REVISIONES = 10;
+        const HORIZONTE_ANIOS = 10;
         const hoy = new Date();
-        const limiteAnios = 5; // Generar plan a 5 años vista
-        const fechaLimite = new Date(hoy.getFullYear() + limiteAnios, hoy.getMonth(), hoy.getDate());
-        
+        const fechaTope = new Date(hoy.getFullYear() + HORIZONTE_ANIOS, hoy.getMonth(), hoy.getDate());
         let fechaSiguiente = new Date(fechaReal);
         let contador = 0;
 
-        // Bucle para crear revisiones futuras
-        while (contador < 20) { // Tope de seguridad 20 iteraciones
-          // Sumar frecuencia
+        while (contador < MAX_REVISIONES) {
           fechaSiguiente.setDate(fechaSiguiente.getDate() + frecuencia);
-          
-          // Si la siguiente fecha ya supera el límite, paramos
-          if (fechaSiguiente > fechaLimite) break;
-
-          // Crear revisión pendiente (ACTIVO)
-          // Nota: No lleva documento ni evento de calendario (se crea muda)
+          if (fechaSiguiente > fechaTope) break;
           sheetMant.appendRow([
-            Utilities.getUuid(),
-            data.idActivo,
-            'Legal',
-            'Próxima Inspección Reglamentaria',
-            new Date(fechaSiguiente), // Importante clonar fecha
-            frecuencia,
-            'ACTIVO', // Estado pendiente
-            null
+            Utilities.getUuid(), data.idActivo, 'Legal', 'Próxima Inspección Reglamentaria',
+            new Date(fechaSiguiente), frecuencia, 'ACTIVO', null
           ]);
           contador++;
         }
-        registrarLog("SUBIDA RÁPIDA", `Generada OCA y ${contador} revisiones futuras.`);
-      } else {
-        registrarLog("SUBIDA RÁPIDA", "Generada OCA suelta (sin repetición).");
       }
-      
       idEntidadDestino = idRevision;
       tipoEntidadDestino = 'REVISION';
       nombreFinal = "OCA_" + nombreFinal;
+    } 
+    
+    // B. LÓGICA CONTRATO (NUEVA)
+    else if (data.categoria === 'CONTRATO') {
+      // 1. Crear el registro en la hoja CONTRATOS
+      const sheetCont = ss.getSheetByName('CONTRATOS');
+      const idContrato = Utilities.getUuid();
+      
+      // Datos obligatorios o por defecto
+      const prov = data.contProveedor || "Proveedor Desconocido";
+      const ref = data.contRef || "S/N";
+      const ini = data.contIni ? textoAFecha(data.contIni) : new Date();
+      // Si no pone fin, ponemos 1 año por defecto
+      let fin = data.contFin ? textoAFecha(data.contFin) : new Date();
+      if (!data.contFin) fin.setFullYear(fin.getFullYear() + 1);
 
-    } else if (data.categoria === 'CONTRATO') {
-      nombreFinal = "CONTRATO_" + nombreFinal;
+      sheetCont.appendRow([
+        idContrato,
+        'ACTIVO',       // Tipo Entidad
+        data.idActivo,  // ID Entidad
+        prov,
+        ref,
+        ini,
+        fin,
+        'ACTIVO'        // Estado DB
+      ]);
+
+      // 2. El archivo se guarda asociado al activo, pero con nombre claro
+      nombreFinal = "CONTRATO_" + prov + "_" + nombreFinal;
+      
+      // Opcional: Podríamos vincular el doc al contrato si tuvieras esa estructura, 
+      // pero por ahora lo dejamos en el activo para que sea fácil de encontrar.
+      registrarLog("SUBIDA RÁPIDA", "Contrato creado para activo " + data.idActivo);
     }
 
     return subirArchivo(data.base64, nombreFinal, data.mimeType, idEntidadDestino, tipoEntidadDestino);
