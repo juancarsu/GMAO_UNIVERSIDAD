@@ -333,9 +333,43 @@ function getListaCampus() { const data = getSheetData('CAMPUS'); return data.sli
 function getEdificiosPorCampus(idCampus) { const data = getSheetData('EDIFICIOS'); return data.slice(1).filter(r => String(r[1]) === String(idCampus)).map(r => ({ id: r[0], nombre: r[2] })); }
 
 function getActivosPorEdificio(idEdificio) {
-  const index = buildActivosIndex();
-  return index.byEdificio[String(idEdificio)] || [];
+  try {
+    // Validación del parámetro
+    if (!idEdificio) {
+      Logger.log('ERROR: idEdificio está vacío');
+      return [];
+    }
+    
+    Logger.log('Buscando activos para edificio ID: ' + idEdificio);
+    
+    const index = buildActivosIndex();
+    
+    // Validación del índice
+    if (!index || !index.byEdificio) {
+      Logger.log('ERROR: Índice de activos no válido');
+      return [];
+    }
+    
+    // Convertir a String para comparación segura
+    const idEdificioStr = String(idEdificio).trim();
+    const activos = index.byEdificio[idEdificioStr] || [];
+    
+    Logger.log('Activos encontrados: ' + activos.length);
+    
+    // Log detallado para depuración
+    if (activos.length === 0) {
+      Logger.log('Edificios disponibles en índice: ' + Object.keys(index.byEdificio).join(', '));
+    }
+    
+    return activos;
+    
+  } catch(e) {
+    Logger.log('ERROR CRÍTICO en getActivosPorEdificio: ' + e.toString());
+    Logger.log('Stack: ' + e.stack);
+    return []; // Devolver array vacío en caso de error
+  }
 }
+
 
 function getAllAssetsList() {
   const index = buildActivosIndex();
