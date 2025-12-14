@@ -1,6 +1,6 @@
 // GMAO
 // Universidad de Navarra
-// Versión 1.2
+// Versión 1.3
 // Autor: Juan Carlos Suárez
 //
 // Licencia: Creative Commons Reconocimiento (CC BY) - creativecommons.org
@@ -550,6 +550,18 @@ function getAssetInfo(idActivo) {
   const activo = index.byId[String(idActivo)];
   
   if (!activo) return null;
+
+    // ⭐ DEBUG TEMPORAL
+  Logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  Logger.log('getAssetInfo llamado para: ' + idActivo);
+  Logger.log('Activo encontrado en índice:');
+  Logger.log('├─ ID: ' + activo.id);
+  Logger.log('├─ Nombre: ' + activo.nombre);
+  Logger.log('├─ Campus: ' + activo.campus);
+  Logger.log('├─ idCampus: ' + activo.idCampus + ' (tipo: ' + typeof activo.idCampus + ')');
+  Logger.log('├─ Edificio: ' + activo.edificio);
+  Logger.log('└─ idEdificio: ' + activo.idEdificio + ' (tipo: ' + typeof activo.idEdificio + ')');
+  Logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━');
   
   return {
     id: activo.id,
@@ -559,7 +571,9 @@ function getAssetInfo(idActivo) {
     fechaAlta: activo.fechaAlta instanceof Date ? 
                Utilities.formatDate(activo.fechaAlta, Session.getScriptTimeZone(), "dd/MM/yyyy") : "-",
     edificio: activo.edificio,
-    campus: activo.campus
+    idEdificio: activo.idEdificio,
+    campus: activo.campus,
+    idCampus: activo.idCampus  // ⭐ ASEGURAR QUE ESTO EXISTA
   };
 }
 
@@ -673,24 +687,82 @@ function subirArchivo(dataBase64, nombreArchivo, mimeType, idEntidad, tipoEntida
   try {
     const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
     let carpetaId = null;
+
+    // A. LÓGICA ESTÁNDAR (Entidades directas)
     if (tipoEntidad === 'ACTIVO') {
       const rows = getSheetData('ACTIVOS'); for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][6]; break; }
-    } else if (tipoEntidad === 'EDIFICIO') {
+    } 
+    else if (tipoEntidad === 'EDIFICIO') {
       const rows = getSheetData('EDIFICIOS'); for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][4]; break; }
-    } else if (tipoEntidad === 'OBRA') {
+    } 
+    else if (tipoEntidad === 'OBRA') {
       const rows = getSheetData('OBRAS'); for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(idEntidad)) { carpetaId = rows[i][7]; break; }
-    } else if (tipoEntidad === 'REVISION') {
+    } 
+    else if (tipoEntidad === 'REVISION') {
       const planes = getSheetData('PLAN_MANTENIMIENTO'); let activoId = null;
       for(let i=1; i<planes.length; i++) if(String(planes[i][0]) === String(idEntidad)) { activoId = planes[i][1]; break; }
       if(activoId) { const rows = getSheetData('ACTIVOS'); for(let i=1; i<rows.length; i++) if(String(rows[i][0]) === String(activoId)) { carpetaId = rows[i][6]; break; } }
-    } else { carpetaId = getRootFolderId(); }
+    } 
+    
+    // B. LÓGICA ESPECIAL PARA CONTRATOS
+    else if (tipoEntidad === 'CONTRATO') {
+      const contratos = getSheetData('CONTRATOS');
+      for(let i=1; i<contratos.length; i++) {
+        if(String(contratos[i][0]) === String(idEntidad)) {
+           const tipoTarget = contratos[i][1]; // CAMPUS, EDIFICIO, ACTIVO, ACTIVOS
+           const idTarget = contratos[i][2];
+           
+           // 1. Contrato de ACTIVO ÚNICO
+           if(tipoTarget === 'ACTIVO') {
+              const rows = getSheetData('ACTIVOS'); 
+              for(let k=1; k<rows.length; k++) if(String(rows[k][0]) === String(idTarget)) { carpetaId = rows[k][6]; break; }
+           } 
+           // 2. Contrato de EDIFICIO
+           else if(tipoTarget === 'EDIFICIO') {
+              const rows = getSheetData('EDIFICIOS'); 
+              for(let k=1; k<rows.length; k++) if(String(rows[k][0]) === String(idTarget)) { carpetaId = rows[k][4]; break; }
+           }
+           // 3. Contrato de CAMPUS
+           else if(tipoTarget === 'CAMPUS') {
+              const rows = getSheetData('CAMPUS'); 
+              for(let k=1; k<rows.length; k++) if(String(rows[k][0]) === String(idTarget)) { carpetaId = rows[k][4]; break; } // Col 4 es carpetaID en Campus
+           }
+           // 4. Contrato de MÚLTIPLES ACTIVOS (JSON)
+           else if(tipoTarget === 'ACTIVOS') {
+              try {
+                const ids = JSON.parse(idTarget);
+                if (ids && ids.length > 0) {
+                   const primerId = ids[0]; // Usamos la carpeta del primer activo de la lista
+                   const rows = getSheetData('ACTIVOS'); 
+                   for(let k=1; k<rows.length; k++) if(String(rows[k][0]) === String(primerId)) { carpetaId = rows[k][6]; break; }
+                }
+              } catch(e) { Logger.log("Error parseando activos contrato: " + e); }
+           }
+           break;
+        }
+      }
+    }
+    
+    // Si falla todo, a la raíz
     if (!carpetaId) carpetaId = getRootFolderId();
+    
     const blob = Utilities.newBlob(Utilities.base64Decode(dataBase64), mimeType, nombreArchivo);
     const folder = DriveApp.getFolderById(carpetaId);
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
     if(tipoEntidad !== 'INCIDENCIA') {
-       ss.getSheetByName('DOCS_HISTORICO').appendRow([Utilities.getUuid(), tipoEntidad, idEntidad, nombreArchivo, file.getUrl(), 1, new Date(), Session.getActiveUser().getEmail(), file.getId()]);
+       ss.getSheetByName('DOCS_HISTORICO').appendRow([
+         Utilities.getUuid(), 
+         tipoEntidad, 
+         idEntidad, 
+         nombreArchivo, 
+         file.getUrl(), 
+         1, 
+         new Date(), 
+         Session.getActiveUser().getEmail(), 
+         file.getId()
+       ]);
     }
     return { success: true, fileId: file.getId(), url: file.getUrl() };
   } catch (e) { return { success: false, error: e.toString() }; }
@@ -972,103 +1044,254 @@ function eliminarRevision(idPlan) {
 // ==========================================
 // 8. CONTRATOS
 // ==========================================
+
+// SUSTITUIR EN Code.gs
+
 function obtenerContratos(idEntidad) {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); const sheet = ss.getSheetByName('CONTRATOS'); if (!sheet || sheet.getLastRow() < 2) return []; const data = sheet.getRange(1, 1, sheet.getLastRow(), 8).getValues(); const contratos = []; const hoy = new Date(); for(let i=1; i<data.length; i++) { if(String(data[i][2]) === String(idEntidad)) { const fFin = data[i][6] instanceof Date ? data[i][6] : null; const fIni = data[i][5] instanceof Date ? data[i][5] : null; let estadoDB = (data[i].length > 7) ? data[i][7] : 'ACTIVO'; let estadoCalc = 'VIGENTE'; let color = 'verde'; if (estadoDB === 'INACTIVO') { estadoCalc = 'INACTIVO'; color = 'gris'; } else if (fFin) { const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / (86400000)); if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; } else if (diff <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } } else { estadoCalc = 'SIN FECHA'; color = 'gris'; } contratos.push({ id: data[i][0], proveedor: data[i][3], ref: data[i][4], inicio: fIni?fechaATexto(fIni):"-", fin: fFin?fechaATexto(fFin):"-", estado: estadoCalc, color: color, estadoDB: estadoDB }); } } return contratos.sort((a, b) => a.fin.localeCompare(b.fin));
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
+  const sheet = ss.getSheetByName('CONTRATOS'); 
+  if (!sheet || sheet.getLastRow() < 2) return []; 
+  const data = sheet.getRange(1, 1, sheet.getLastRow(), 8).getValues(); 
+  
+  // Mapa Proveedores
+  const provData = getSheetData('PROVEEDORES');
+  const mapProv = {};
+  if (provData.length > 1) {
+    for (let k = 1; k < provData.length; k++) {
+       if(provData[k][0]) mapProv[String(provData[k][0]).trim()] = provData[k][1];
+    }
+  }
+
+  // Mapa Archivos
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const fileMap = {};
+  if (docsData.length > 1) {
+    for(let j=1; j<docsData.length; j++) {
+       if(String(docsData[j][1]) === 'CONTRATO') {
+          fileMap[String(docsData[j][2]).trim()] = docsData[j][4]; 
+       }
+    }
+  }
+
+  const contratos = []; 
+  const hoy = new Date(); 
+  const idEntidadStr = String(idEntidad).trim(); // Limpiamos el ID que buscamos
+  
+  for(let i=1; i<data.length; i++) { 
+    if(!data[i][0]) continue;
+
+    const tipo = String(data[i][1]).trim();
+    const idVinculado = String(data[i][2]).trim();
+    let esDeEsteActivo = false;
+
+    if (idVinculado === idEntidadStr) {
+        esDeEsteActivo = true;
+    } else if (tipo === 'ACTIVOS' && idVinculado.includes(idEntidadStr)) {
+        esDeEsteActivo = true; 
+    }
+
+    if(esDeEsteActivo) { 
+      const fFin = data[i][6] instanceof Date ? data[i][6] : null; 
+      const fIni = data[i][5] instanceof Date ? data[i][5] : null; 
+      let estadoDB = (data[i].length > 7) ? data[i][7] : 'ACTIVO'; 
+      let estadoCalc = 'VIGENTE'; 
+      let color = 'verde'; 
+      
+      if (estadoDB === 'INACTIVO') { estadoCalc = 'INACTIVO'; color = 'gris'; } 
+      else if (fFin) { 
+        const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / (86400000)); 
+        if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; } 
+        else if (diff <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } 
+      } else { estadoCalc = 'SIN FECHA'; color = 'gris'; } 
+      
+      const idProv = String(data[i][3]).trim();
+      const nombreProv = mapProv[idProv] || idProv;
+
+      contratos.push({ 
+        id: data[i][0], 
+        proveedor: nombreProv, 
+        ref: data[i][4], 
+        inicio: fIni?fechaATexto(fIni):"-", 
+        fin: fFin?fechaATexto(fFin):"-", 
+        estado: estadoCalc, 
+        color: color, 
+        estadoDB: estadoDB,
+        fileUrl: fileMap[String(data[i][0]).trim()] || null
+      }); 
+    } 
+  } 
+  return contratos.sort((a, b) => a.fin.localeCompare(b.fin));
 }
+
+function updateContratoV2(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CONTRATOS');
+  const data = sheet.getDataRange().getValues();
+
+  // Determinar ID Entidad (Si es array de activos, lo convertimos a JSON string)
+  let idEntidadFinal = d.idEntidad;
+  if (d.tipoEntidad === 'ACTIVOS' && d.idsActivos && d.idsActivos.length > 0) {
+      idEntidadFinal = JSON.stringify(d.idsActivos);
+  }
+
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(d.id)) {
+      
+      // Actualizar columnas
+      sheet.getRange(i+1, 2).setValue(d.tipoEntidad); // B: Tipo
+      sheet.getRange(i+1, 3).setValue(idEntidadFinal); // C: ID Entidad
+      sheet.getRange(i+1, 4).setValue(d.idProveedor); // D: Proveedor (Ahora ID)
+      sheet.getRange(i+1, 5).setValue(d.ref);         // E: Ref
+      sheet.getRange(i+1, 6).setValue(textoAFecha(d.fechaIni)); // F: Inicio
+      sheet.getRange(i+1, 7).setValue(textoAFecha(d.fechaFin)); // G: Fin
+      sheet.getRange(i+1, 8).setValue(d.estado);       // H: Estado
+      
+      registrarLog("EDITAR CONTRATO", "ID: " + d.id + " | Ref: " + d.ref);
+      invalidateCache('CONTRATOS');
+      return { success: true };
+    }
+  }
+  return { success: false, error: "Contrato no encontrado para editar" };
+}
+
 function obtenerContratosGlobal() {
   const contratos = getSheetData('CONTRATOS'); 
-  const activos = getSheetData('ACTIVOS'); 
+  // Forzamos recarga de caché de activos por si hay nuevos
+  const activos = getCachedSheetData('ACTIVOS', true); 
   const edificios = getSheetData('EDIFICIOS'); 
   const campus = getSheetData('CAMPUS'); 
+  const proveedores = getListaProveedores();
 
-  // --- 1. MAPEO ROBUSTO (Todo a String y sin espacios) ---
-  const mapCampus = {}; 
-  campus.slice(1).forEach(r => {
-    // Clave: ID Campus limpio
-    mapCampus[String(r[0]).trim()] = r[1];
-  }); 
-
+  // 1. MAPA DE PROVEEDORES (BLINDADO)
+  const mapProveedores = {};
+  if (proveedores && proveedores.length > 0) {
+      proveedores.forEach(p => {
+          // Clave: ID limpio y en minúsculas para asegurar match
+          if (p.id) mapProveedores[String(p.id).trim()] = p.nombre;
+      });
+  }
+  
+  // 2. MAPA DE UBICACIONES
   const mapEdificios = {}; 
   edificios.slice(1).forEach(r => {
-    mapEdificios[String(r[0]).trim()] = { 
-      nombre: r[2], 
-      idCampus: String(r[1]).trim() 
-    }; 
+    if(r[0]) mapEdificios[String(r[0]).trim()] = { nombre: r[2], idCampus: String(r[1]).trim() }; 
   }); 
   
+  const mapCampus = {}; 
+  campus.slice(1).forEach(r => { if(r[0]) mapCampus[String(r[0]).trim()] = r[1]; }); 
+
   const mapActivos = {}; 
   activos.slice(1).forEach(r => { 
-    const idEdif = String(r[1]).trim();
-    const edificioInfo = mapEdificios[idEdif] || {}; 
-    
-    mapActivos[String(r[0]).trim()] = { 
-      nombre: r[3], 
-      idEdif: idEdif, 
-      idCampus: edificioInfo.idCampus || null 
-    }; 
+    if (r[0]) {
+        const idA = String(r[0]).trim();
+        const idE = String(r[1]).trim();
+        const infoEdif = mapEdificios[idE] || {};
+        mapActivos[idA] = { 
+          nombre: r[3], 
+          idEdif: idE, 
+          idCampus: infoEdif.idCampus,
+          nombreEdificio: infoEdif.nombre 
+        }; 
+    }
   });
   
+  // Mapa de Archivos
+  const docsData = getSheetData('DOCS_HISTORICO');
+  const fileMap = {};
+  for(let j=1; j<docsData.length; j++) {
+     if(String(docsData[j][1]) === 'CONTRATO') fileMap[String(docsData[j][2]).trim()] = docsData[j][4]; 
+  }
+
   const result = []; 
   const hoy = new Date();
   
-  // --- 2. PROCESAR CONTRATOS ---
+  // 3. ITERAR CONTRATOS
   for(let i=1; i<contratos.length; i++) {
     const r = contratos[i]; 
-    const idEntidad = String(r[2] || "").trim(); // ID de la entidad (limpio)
-    const tipoEntidad = String(r[1]).trim();     // ACTIVO, EDIFICIO, CAMPUS
+    if (!r[0]) continue; // Saltar filas vacías
+
+    const idContrato = String(r[0]).trim();
+    const tipoEntidad = String(r[1]).trim();
+    const idEntidadRaw = r[2]; // ¡NO convertir a String aún! Puede ser Array
+    const idProveedor = String(r[3] || "").trim();
     
-    let nombreEntidad = "Sin Asignar"; // Texto por defecto si no hay enlace
+    let nombreEntidad = "Sin Asignar";
     let edificioId = null; 
     let campusId = null;
     let campusNombre = "-"; 
-    
-    // LÓGICA DE BÚSQUEDA
-    // A. Es un ACTIVO
-    if (tipoEntidad === 'ACTIVO' && mapActivos[idEntidad]) { 
-      const info = mapActivos[idEntidad]; 
-      const nombreEdif = mapEdificios[info.idEdif] ? mapEdificios[info.idEdif].nombre : 'Sin Edif.';
-      nombreEntidad = `${info.nombre} (${nombreEdif})`; 
-      edificioId = info.idEdif; 
-      campusId = info.idCampus; 
+
+    // --- LÓGICA ACTIVOS MÚLTIPLES (CORREGIDA) ---
+    if (tipoEntidad === 'ACTIVOS') {
+       let ids = [];
+       // Detectar si Google Sheets ya nos dio un Array o un String JSON
+       if (Array.isArray(idEntidadRaw)) {
+           ids = idEntidadRaw;
+       } else if (typeof idEntidadRaw === 'string' && idEntidadRaw.trim().startsWith('[')) {
+           try { ids = JSON.parse(idEntidadRaw); } catch(e) { Logger.log("Error JSON: " + e); }
+       }
+
+       if (ids && ids.length > 0) {
+           nombreEntidad = ids.length + " Activos";
+           // Buscar el primer activo válido para sacar el edificio
+           for(let k=0; k<ids.length; k++) {
+               const idAct = String(ids[k]).trim();
+               if(mapActivos[idAct]) {
+                   const info = mapActivos[idAct];
+                   campusId = info.idCampus;
+                   edificioId = info.idEdif;
+                   nombreEntidad += ` (${info.nombreEdificio || 'Sin Edif.'})`;
+                   break; // Ya tenemos ubicación, salimos
+               }
+           }
+       }
+    }
+    // Lógica Activo Único
+    else if (tipoEntidad === 'ACTIVO') { 
+      const info = mapActivos[String(idEntidadRaw).trim()]; 
+      if (info) {
+          nombreEntidad = `${info.nombre} (${info.nombreEdificio || ''})`; 
+          edificioId = info.idEdif; 
+          campusId = info.idCampus; 
+      }
     } 
-    // B. Es un EDIFICIO
-    else if (tipoEntidad === 'EDIFICIO' && mapEdificios[idEntidad]) { 
-      const info = mapEdificios[idEntidad]; 
-      nombreEntidad = info.nombre; 
-      edificioId = idEntidad; 
-      campusId = info.idCampus; 
+    // Lógica Edificio
+    else if (tipoEntidad === 'EDIFICIO') { 
+      const info = mapEdificios[String(idEntidadRaw).trim()]; 
+      if (info) {
+          nombreEntidad = info.nombre; 
+          edificioId = String(idEntidadRaw).trim(); 
+          campusId = info.idCampus; 
+      }
     }
-    // C. Es un CAMPUS
-    else if (tipoEntidad === 'CAMPUS' && mapCampus[idEntidad]) {
-       campusId = idEntidad;
-       nombreEntidad = "General Campus"; // O el nombre del campus si prefieres
-    }
-
-    // RESOLVER NOMBRE DEL CAMPUS
-    if (campusId && mapCampus[campusId]) {
-        campusNombre = mapCampus[campusId];
-    } else if (campusId) {
-        // Si tenemos ID pero no nombre, es que el campus se borró o el ID está corrupto
-        campusNombre = "Desconocido"; 
+    // Lógica Campus
+    else if (tipoEntidad === 'CAMPUS') {
+       campusId = String(idEntidadRaw).trim();
+       nombreEntidad = "General Campus";
     }
 
-    // ESTADOS Y FECHAS
+    if (campusId && mapCampus[campusId]) campusNombre = mapCampus[campusId];
+
+    // Estados
     const fFin = (r[6] instanceof Date) ? r[6] : null; 
     let estadoDB = r[7] || 'ACTIVO'; 
     let estadoCalc = 'VIGENTE'; 
     let color = 'verde';
-    
     if (estadoDB === 'INACTIVO') { estadoCalc = 'INACTIVO'; color = 'gris'; } 
     else if (fFin) { 
-      const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / 86400000); 
+      const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / (86400000)); 
       if (diff < 0) { estadoCalc = 'CADUCADO'; color = 'rojo'; } 
-      else if (diff <= 90) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } 
-    } else { estadoCalc = 'SIN FECHA'; color = 'gris'; }
+      else if (diff <= 30) { estadoCalc = 'PRÓXIMO'; color = 'amarillo'; } 
+    } else { estadoCalc = 'SIN FECHA'; color = 'gris'; } 
     
+    // --- TRADUCCIÓN PROVEEDOR ---
+    const nombreProveedor = mapProveedores[idProveedor] || idProveedor;
+
     result.push({ 
-      id: r[0], 
+      id: idContrato, 
       nombreEntidad: nombreEntidad, 
-      proveedor: r[3], 
+      proveedor: nombreProveedor, 
+      idProveedor: idProveedor,
       ref: r[4], 
       inicio: r[5] ? fechaATexto(r[5]) : "-", 
       fin: fFin ? fechaATexto(fFin) : "-", 
@@ -1077,11 +1300,12 @@ function obtenerContratosGlobal() {
       estadoDB: estadoDB, 
       edificioId: edificioId, 
       campusId: campusId,
-      campusNombre: campusNombre 
+      campusNombre: campusNombre,
+      fileUrl: fileMap[idContrato] || null
     });
   }
   
-  return result.sort((a, b) => { if (a.fin === "-") return 1; if (b.fin === "-") return -1; return a.fin.localeCompare(b.fin); });
+  return result.sort((a, b) => a.fin.localeCompare(b.fin));
 }
 
 function crearContrato(d) {
@@ -3464,5 +3688,344 @@ function enviarAlertaIncidencia(datos) {
     console.log(`Email de incidencia enviado a ${destinatarios.length} destinatarios.`);
   } catch (e) {
     console.error("Error enviando email: " + e.toString());
+  }
+}
+
+// ==========================================
+// GESTIÓN DE PROVEEDORES
+// ==========================================
+
+/**
+ * Obtener lista completa de proveedores
+ */
+function getListaProveedores() {
+  const data = getSheetData('PROVEEDORES');
+  
+  if (!data || data.length < 2) {
+    return [];
+  }
+  
+  return data.slice(1).map(r => ({
+    id: r[0],
+    nombre: r[1],
+    cif: r[2] || '-',
+    contacto: r[3] || '-',
+    telefono: r[4] || '-',
+    email: r[5] || '-',
+    activo: r[6] !== 'NO' // Si no dice NO, asumimos que sí está activo
+  }));
+}
+
+/**
+ * Crear o actualizar proveedor
+ */
+function saveProveedor(datos) {
+  verificarPermiso(['WRITE']);
+  
+  const ss = getDB();
+  let sheet = ss.getSheetByName('PROVEEDORES');
+  
+  // Si no existe la hoja, crearla
+  if (!sheet) {
+    sheet = ss.insertSheet('PROVEEDORES');
+    sheet.appendRow(['ID', 'NOMBRE', 'CIF', 'CONTACTO', 'TELEFONO', 'EMAIL', 'ACTIVO']);
+    sheet.getRange(1, 1, 1, 7).setBackground('#CC0605').setFontColor('#FFFFFF').setFontWeight('bold');
+  }
+  
+  // Validaciones
+  if (!datos.nombre || datos.nombre.trim() === '') {
+    return { success: false, error: "El nombre es obligatorio" };
+  }
+  
+  const nombre = datos.nombre.trim();
+  const cif = (datos.cif || '').trim();
+  const contacto = (datos.contacto || '').trim();
+  const telefono = (datos.telefono || '').trim();
+  const email = (datos.email || '').trim();
+  const activo = datos.activo === false ? 'NO' : 'SI';
+  
+  // EDICIÓN
+  if (datos.id) {
+    const dataSheet = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < dataSheet.length; i++) {
+      if (String(dataSheet[i][0]) === String(datos.id)) {
+        sheet.getRange(i + 1, 2).setValue(nombre);
+        sheet.getRange(i + 1, 3).setValue(cif);
+        sheet.getRange(i + 1, 4).setValue(contacto);
+        sheet.getRange(i + 1, 5).setValue(telefono);
+        sheet.getRange(i + 1, 6).setValue(email);
+        sheet.getRange(i + 1, 7).setValue(activo);
+        
+        registrarLog("EDITAR PROVEEDOR", `${nombre} (${cif})`);
+        
+        return { success: true };
+      }
+    }
+    
+    return { success: false, error: "Proveedor no encontrado" };
+  }
+  
+  // CREACIÓN
+  const newId = Utilities.getUuid();
+  sheet.appendRow([newId, nombre, cif, contacto, telefono, email, activo]);
+  
+  registrarLog("CREAR PROVEEDOR", `${nombre} (${cif})`);
+  
+  return { success: true, newId: newId };
+}
+
+/**
+ * Eliminar proveedor (solo si no tiene contratos activos)
+ */
+function eliminarProveedor(id) {
+  verificarPermiso(['DELETE']);
+  
+  const ss = getDB();
+  
+  // Verificar que no tenga contratos activos
+  const contratos = getSheetData('CONTRATOS');
+  const tieneContratos = contratos.slice(1).some(r => 
+    String(r[3]) === String(id) || // Si el ID del proveedor coincide (antigua columna)
+    obtenerNombreProveedor(r[3]) === obtenerNombreProveedor(id) // O si el nombre coincide
+  );
+  
+  if (tieneContratos) {
+    return { 
+      success: false, 
+      error: "No se puede eliminar: tiene contratos asociados. Márcalo como inactivo en su lugar." 
+    };
+  }
+  
+  const sheet = ss.getSheetByName('PROVEEDORES');
+  const data = sheet.getDataRange().getValues();
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(id)) {
+      const nombre = data[i][1];
+      sheet.deleteRow(i + 1);
+      
+      registrarLog("ELIMINAR PROVEEDOR", nombre);
+      
+      return { success: true };
+    }
+  }
+  
+  return { success: false, error: "Proveedor no encontrado" };
+}
+
+/**
+ * Helper: Obtener nombre de proveedor por ID
+ */
+function obtenerNombreProveedor(id) {
+  const proveedores = getSheetData('PROVEEDORES');
+  
+  for (let i = 1; i < proveedores.length; i++) {
+    if (String(proveedores[i][0]) === String(id)) {
+      return proveedores[i][1];
+    }
+  }
+  
+  return id; // Si no se encuentra, devolver el ID tal cual (puede ser un nombre antiguo)
+}
+
+/**
+ * Buscar proveedor por nombre (para autocompletar)
+ */
+function buscarProveedores(texto) {
+  if (!texto || texto.length < 2) {
+    return [];
+  }
+  
+  const proveedores = getListaProveedores();
+  const textoLower = texto.toLowerCase();
+  
+  return proveedores
+    .filter(p => p.activo) // Solo activos
+    .filter(p => 
+      p.nombre.toLowerCase().includes(textoLower) ||
+      (p.cif && p.cif.toLowerCase().includes(textoLower))
+    )
+    .slice(0, 10) // Máximo 10 resultados
+    .map(p => ({
+      id: p.id,
+      nombre: p.nombre,
+      cif: p.cif,
+      displayText: p.cif ? `${p.nombre} (${p.cif})` : p.nombre
+    }));
+}
+
+// --- PEGAR ESTO AL FINAL DE Code.gs ---
+
+function getContratoFullDetailsV2(idContrato) {
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CONTRATOS');
+  const data = sheet.getDataRange().getValues();
+  
+  let contrato = null;
+  
+  for(let i=1; i<data.length; i++){
+    if(String(data[i][0]) === String(idContrato)) {
+      
+      const tipoEntidad = data[i][1];
+      const idEntidadRaw = data[i][2];
+      let idsActivos = [];
+
+      // Si es de tipo "ACTIVOS", parseamos el JSON
+      if (tipoEntidad === 'ACTIVOS') {
+        try { idsActivos = JSON.parse(idEntidadRaw); } catch(e) {}
+      }
+
+      contrato = {
+        id: data[i][0],
+        tipoEntidad: tipoEntidad,
+        idEntidad: idEntidadRaw,
+        idsActivos: idsActivos,
+        idProveedor: data[i][3], // Columna D (ID Proveedor)
+        ref: data[i][4],         // Columna E
+        inicio: data[i][5] ? Utilities.formatDate(data[i][5], Session.getScriptTimeZone(), "yyyy-MM-dd") : "",
+        fin: data[i][6] ? Utilities.formatDate(data[i][6], Session.getScriptTimeZone(), "yyyy-MM-dd") : "",
+        estado: data[i][7]
+      };
+      break;
+    }
+  }
+  
+  if(!contrato) throw new Error("Contrato no encontrado");
+
+  // Resolver jerarquía para rellenar los selects
+  let idCampus = "";
+  let idEdificio = "";
+  let idActivo = "";
+
+  if (contrato.tipoEntidad === 'CAMPUS') {
+    idCampus = contrato.idEntidad;
+  } 
+  else if (contrato.tipoEntidad === 'EDIFICIO') {
+    idEdificio = contrato.idEntidad;
+    const edifs = getSheetData('EDIFICIOS');
+    for(let i=1; i<edifs.length; i++) {
+       if(String(edifs[i][0]) === String(idEdificio)) { idCampus = edifs[i][1]; break; }
+    }
+  } 
+  else if (contrato.tipoEntidad === 'ACTIVO') {
+    idActivo = contrato.idEntidad;
+    const activos = getSheetData('ACTIVOS');
+    const edifs = getSheetData('EDIFICIOS');
+    for(let i=1; i<activos.length; i++) {
+       if(String(activos[i][0]) === String(idActivo)) { idEdificio = activos[i][1]; break; }
+    }
+    if (idEdificio) {
+      for(let i=1; i<edifs.length; i++) {
+         if(String(edifs[i][0]) === String(idEdificio)) { idCampus = edifs[i][1]; break; }
+      }
+    }
+  }
+  else if (contrato.tipoEntidad === 'ACTIVOS' && contrato.idsActivos.length > 0) {
+    const primerId = contrato.idsActivos[0];
+    const activos = getSheetData('ACTIVOS');
+    const edifs = getSheetData('EDIFICIOS');
+    
+    for(let i=1; i<activos.length; i++) {
+       if(String(activos[i][0]) === String(primerId)) { idEdificio = activos[i][1]; break; }
+    }
+    if (idEdificio) {
+      for(let i=1; i<edifs.length; i++) {
+         if(String(edifs[i][0]) === String(idEdificio)) { idCampus = edifs[i][1]; break; }
+      }
+    }
+  }
+
+  return {
+    ...contrato,
+    idCampus: idCampus,
+    idEdificio: idEdificio,
+    idActivo: idActivo
+  };
+}
+
+function crearContratoV2(d) {
+  verificarPermiso(['WRITE']);
+  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  const sheet = ss.getSheetByName('CONTRATOS');
+
+  // Determinar ID Entidad (Si es array de activos, lo convertimos a JSON string)
+  let idEntidadFinal = d.idEntidad;
+  let tipoEntidadFinal = d.tipoEntidad;
+
+  if (d.idsActivos && d.idsActivos.length > 0) {
+      tipoEntidadFinal = 'ACTIVOS';
+      idEntidadFinal = JSON.stringify(d.idsActivos);
+  }
+
+  // Columnas: [ID, TIPO, ID_ENTIDAD, ID_PROVEEDOR, REF, INICIO, FIN, ESTADO]
+  const newId = Utilities.getUuid();
+  sheet.appendRow([
+      newId,
+      tipoEntidadFinal,
+      idEntidadFinal,
+      d.idProveedor,
+      d.ref,
+      textoAFecha(d.fechaIni),
+      textoAFecha(d.fechaFin),
+      d.estado
+  ]);
+  
+  registrarLog("CREAR CONTRATO", "Ref: " + d.ref);
+  invalidateCache('CONTRATOS');
+  return { success: true, newId: newId };
+}
+
+function DIAGNOSTICO_CONTRATOS() {
+  const sheetC = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')).getSheetByName('CONTRATOS');
+  const datosC = sheetC.getDataRange().getValues();
+  
+  const sheetP = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')).getSheetByName('PROVEEDORES');
+  const datosP = sheetP.getDataRange().getValues();
+
+  Logger.log("=== 1. ANALIZANDO PROVEEDORES ===");
+  const mapaProv = {};
+  for(let i=1; i<datosP.length; i++) {
+    const id = String(datosP[i][0]).trim();
+    const nombre = datosP[i][1];
+    mapaProv[id] = nombre;
+    Logger.log(`Prov [${i}]: ID="${id}" | Nombre="${nombre}"`);
+  }
+
+  Logger.log("=== 2. ANALIZANDO CONTRATOS (Primeros 5) ===");
+  // Empezamos en 1 (saltar cabecera)
+  for(let i=1; i<Math.min(datosC.length, 6); i++) {
+    const fila = datosC[i];
+    const tipo = fila[1]; // Columna B
+    const entidad = fila[2]; // Columna C (El JSON o ID)
+    const provID = String(fila[3]).trim(); // Columna D (El ID del proveedor)
+
+    Logger.log(`--- Contrato Fila ${i+1} ---`);
+    Logger.log(`Tipo: ${tipo}`);
+    
+    // Test Proveedor
+    const nombreProv = mapaProv[provID];
+    if (nombreProv) {
+      Logger.log(`✅ Proveedor ENCONTRADO: ID="${provID}" -> "${nombreProv}"`);
+    } else {
+      Logger.log(`❌ Proveedor NO encontrado en el mapa. ID en contrato: "${provID}"`);
+    }
+
+    // Test Entidad (JSON)
+    Logger.log(`Entidad Raw (Tipo: ${typeof entidad}): ${entidad}`);
+    if (tipo === 'ACTIVOS') {
+      if (Array.isArray(entidad)) {
+         Logger.log(`ℹ️ Google ya lo convirtió en Array. Longitud: ${entidad.length}`);
+         Logger.log(`Primer ID: ${entidad[0]}`);
+      } else {
+         Logger.log(`ℹ️ Es texto. Intentando parsear...`);
+         try {
+           const parsed = JSON.parse(entidad);
+           Logger.log(`✅ Parseo OK. Primer ID: ${parsed[0]}`);
+         } catch(e) {
+           Logger.log(`❌ ERROR PARSEO JSON: ${e.message}`);
+         }
+      }
+    }
   }
 }
