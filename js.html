@@ -1072,7 +1072,21 @@
   // QR
   function descargarQRActivo() { if(!currentAssetId) return; notificar("Generando..."); google.script.run.withSuccessHandler(r=>{ if(r.success) Swal.fire({title:r.activo.nombre, html:`<img src="${r.qrUrl}" style="width:200px">`, confirmButtonText:'Cerrar'}); else notificarError(r.error); }).generarQRActivo(currentAssetId); }
   function descargarQRsEdificio() { if(!currentBuildingId) return; notificar("Generando PDF..."); google.script.run.withSuccessHandler(r=>{ if(r.success) { const l=document.createElement('a'); l.href='data:application/pdf;base64,'+r.base64; l.download=r.filename; l.click(); } else notificarError(r.error); }).generarPDFEtiquetasQR(currentBuildingId); }
-  function detectingAccesoQR() { const p=new URLSearchParams(window.location.search); const id=p.get('activo')||(window.serverParams&&window.serverParams.activo); if(id) setTimeout(()=>openAssetDetail(id),1500); }
+  // Detección inteligente de acceso (Escritorio vs Móvil)
+  function detectingAccesoQR() {
+    const p = new URLSearchParams(window.location.search);
+    const id = p.get('activo') || (window.serverParams && window.serverParams.activo);
+    
+    if (id) {
+      // Si la pantalla es menor a 768px, asumimos móvil/tablet en campo
+      if (window.innerWidth < 768) {
+        loadMobileAssetView(id);
+      } else {
+        // Escritorio: abrir vista completa normal
+        setTimeout(() => openAssetDetail(id), 1500);
+      }
+    }
+  }
   window.addEventListener('load', detectingAccesoQR);
 
   // RELACIONES
@@ -1400,6 +1414,225 @@
       reader.onerror = error => reject(error);
       reader.readAsDataURL(file);
     });
+  }
+
+  // ==========================================
+  // 28. LÓGICA VISTA MÓVIL (QR)
+  // ==========================================
+  
+  let currentMobileId = null;
+
+  function loadMobileAssetView(id) {
+    currentMobileId = id;
+    currentAssetId = id; // Sincronizamos con la variable global por si acaso
+    
+    // Ocultar sidebar y mostrar loader
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar) sidebar.style.display = 'none'; // Ocultar sidebar completamente en modo móvil puro
+    document.querySelector('.mobile-header').style.display = 'none'; // Ocultar header normal
+    
+    // Mostrar vista
+    document.querySelectorAll('.view-section').forEach(e => e.classList.add('d-none'));
+    const view = document.getElementById('view-mobile-qr');
+    view.classList.remove('d-none');
+    
+    // Feedback de carga
+    document.getElementById('mob-asset-name').innerText = 'Cargando...';
+    
+    // Llamada al backend (Reutilizamos getActivoByQR que ya tenías en Code.gs)
+    google.script.run.withSuccessHandler(data => {
+      if (!data.success) {
+        notificarError(data.error);
+        return;
+      }
+      renderMobileData(data);
+    }).getActivoByQR(id);
+  }
+
+  function renderMobileData(d) {
+    const a = d.activo;
+    
+    // 1. Datos Básicos
+    document.getElementById('mob-asset-name').innerText = a.nombre;
+    document.getElementById('mob-asset-type').innerText = a.tipo;
+    document.getElementById('mob-asset-brand').innerText = a.marca || '-';
+    document.getElementById('mob-asset-loc').innerHTML = `<i class="bi bi-geo-alt-fill text-danger"></i> ${a.edificio} <br><small>${a.campus}</small>`;
+
+    // 2. Última Revisión (Estado)
+    const cardStatus = document.getElementById('mob-card-status');
+    const iconStatus = document.getElementById('mob-status-icon');
+    const lastRev = d.revisiones.length > 0 ? d.revisiones[0] : null;
+
+    if (lastRev) {
+      document.getElementById('mob-last-rev-date').innerText = lastRev.fecha;
+      document.getElementById('mob-last-rev-type').innerText = lastRev.tipo;
+      
+      // Lógica visual simple
+      if (lastRev.estado === 'REALIZADA') {
+         cardStatus.className = "card border-start border-5 border-success shadow-sm";
+         iconStatus.className = "bi bi-check-circle-fill text-success fs-1";
+      } else {
+         // Si la última que sale está pendiente...
+         cardStatus.className = "card border-start border-5 border-warning shadow-sm";
+         iconStatus.className = "bi bi-exclamation-circle-fill text-warning fs-1";
+      }
+    } else {
+      document.getElementById('mob-last-rev-date').innerText = "Sin datos";
+      document.getElementById('mob-last-rev-type').innerText = "Nunca revisado";
+      cardStatus.className = "card border-start border-5 border-secondary shadow-sm";
+      iconStatus.className = "bi bi-question-circle-fill text-secondary fs-1";
+    }
+
+    // 3. Incidencias Abiertas
+    const incBox = document.getElementById('mob-incidencias-container');
+    const incList = document.getElementById('mob-incidencias-list');
+    incList.innerHTML = '';
+    
+    const abiertas = d.incidencias.filter(i => i.estado !== 'RESUELTA');
+    
+    if (abiertas.length > 0) {
+      incBox.classList.remove('d-none');
+      abiertas.forEach(i => {
+        incList.innerHTML += `<li class="mb-2 border-bottom pb-1"><strong>${i.fecha}</strong>: ${i.descripcion} <span class="badge bg-danger">${i.prioridad}</span></li>`;
+      });
+    } else {
+      incBox.classList.add('d-none');
+    }
+  }
+
+// --- ACCIONES DE LOS BOTONES MÓVILES (OPTIMIZADAS CON FEEDBACK) ---
+
+  // Helper para mostrar carga en el botón pulsado
+  function setMobBtnLoading(btn, isLoading) {
+    if (!btn) return;
+    if (isLoading) {
+      btn.dataset.original = btn.innerHTML; // Guardamos el HTML original
+      btn.disabled = true;
+      // Mantenemos la altura para que no salte el diseño
+      btn.innerHTML = `<div class="d-flex align-items-center justify-content-center" style="height: 100%;">
+                         <div class="spinner-border spinner-border-sm" role="status" style="width: 2rem; height: 2rem;"></div>
+                       </div>`;
+    } else {
+      btn.innerHTML = btn.dataset.original;
+      btn.disabled = false;
+    }
+  }
+
+  function openReportFromMobile(btn) {
+    setMobBtnLoading(btn, true);
+
+    // Usamos un pequeño timeout para que el navegador renderice el spinner antes de bloquearse abriendo el modal
+    setTimeout(() => {
+        if (!reportModal) reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
+        
+        document.getElementById('repId').value = '';
+        document.getElementById('repDesc').value = '';
+        
+        // Bloqueamos selects
+        document.getElementById('repCampus').disabled = true; 
+        document.getElementById('repEdificio').disabled = true;
+        
+        // Configurar título/contexto
+        const nombre = document.getElementById('mob-asset-name').innerText;
+        
+        // Pre-selección forzada visual
+        const sActivo = document.getElementById('repActivo');
+        sActivo.innerHTML = `<option value="${currentMobileId}" selected>${nombre}</option>`;
+        sActivo.disabled = false; 
+
+        reportModal.show();
+        
+        // Restauramos el botón después de que el modal haya aparecido
+        setTimeout(() => setMobBtnLoading(btn, false), 500);
+    }, 50);
+  }
+
+  function openMaintFromMobile(btn) {
+    setMobBtnLoading(btn, true);
+    
+    setTimeout(() => {
+        // Configuramos modal de revisión
+        if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
+        
+        // Limpieza estándar
+        document.getElementById('revId').value = "";
+        document.getElementById('revTipo').value = "Legal";
+        document.getElementById('revFecha').value = new Date().toISOString().split('T')[0];
+        document.getElementById('maintModalTitle').innerText = 'Programar Revisión';
+        document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos</div>';
+        
+        // Ocultar selectores complejos, ya sabemos el activo
+        document.getElementById('assetSelector').classList.add('d-none');
+        
+        // Forzamos el ID global para que submitRevision lo coja
+        currentActiveAssetId = currentMobileId; 
+        
+        maintModal.show();
+        
+        // Restaurar botón
+        setTimeout(() => setMobBtnLoading(btn, false), 500);
+    }, 50);
+  }
+
+  function openDocsFromMobile(btn) {
+    setMobBtnLoading(btn, true); // AQUÍ ES DONDE MÁS SE NOTABA EL RETRASO
+
+    google.script.run
+      .withSuccessHandler(docs => {
+         setMobBtnLoading(btn, false); // Restaurar botón al volver del servidor
+
+         if (docs.length === 0) {
+             Swal.fire({
+                 title: 'Sin documentos', 
+                 text: 'Este activo no tiene manuales ni certificados adjuntos.', 
+                 icon: 'info',
+                 confirmButtonColor: '#CC0605'
+             });
+             return;
+         }
+       
+         let html = '<div class="list-group text-start">';
+         docs.forEach(d => {
+           html += `<a href="${d.url}" target="_blank" class="list-group-item list-group-item-action py-3">
+                      <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1 fw-bold text-primary"><i class="bi bi-file-earmark-pdf me-2"></i>${d.nombre}</h6>
+                      </div>
+                      <small class="text-muted">Versión ${d.version} | ${d.fecha}</small>
+                    </a>`;
+         });
+         html += '</div>';
+       
+         Swal.fire({
+           title: 'Documentación Disponible',
+           html: html,
+           showCloseButton: true,
+           showConfirmButton: false,
+           width: '90%' // Más ancho en móvil
+         });
+      })
+      .withFailureHandler(err => {
+          setMobBtnLoading(btn, false);
+          notificarError("Error cargando docs: " + err.message);
+      })
+      .obtenerDocs(currentMobileId);
+  }
+
+  function exitMobileViewToDetail(btn) {
+    setMobBtnLoading(btn, true);
+    setTimeout(() => {
+        const view = document.getElementById('view-mobile-qr');
+        view.classList.add('d-none');
+        
+        const sidebar = document.getElementById('sidebar');
+        if (sidebar) sidebar.style.display = ''; 
+        document.querySelector('.mobile-header').style.display = '';
+        
+        openAssetDetail(currentMobileId);
+        
+        // No necesitamos restaurar el botón porque la vista desaparece, 
+        // pero por limpieza lo hacemos
+        setMobBtnLoading(btn, false);
+    }, 300);
   }
 
 </script>
