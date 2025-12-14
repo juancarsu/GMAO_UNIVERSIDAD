@@ -372,15 +372,54 @@
 
   function renderGlobalMaintTable(data) {
     const tbody = document.getElementById('tableGlobalMaint');
+    
     renderTableLazy(tbody, data, (r, index) => {
+      // 1. Lógica de colores (Semáforo)
       let dotClass = 'bg-secondary';
-      if (r.color === 'rojo') dotClass = 'bg-rojo'; if (r.color === 'amarillo') dotClass = 'bg-amarillo'; if (r.color === 'verde') dotClass = 'bg-verde'; if (r.color === 'azul') dotClass = 'bg-info';
+      if (r.color === 'rojo') dotClass = 'bg-rojo';
+      if (r.color === 'amarillo') dotClass = 'bg-amarillo';
+      if (r.color === 'verde') dotClass = 'bg-verde';
+      if (r.color === 'azul') dotClass = 'bg-info';
+
+      // 2. Iconos informativos
       let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
       let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
+
+      // 3. Texto de Fecha
       let fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small>`;
-      let botones = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-success" onclick="marcarHecho('${r.id}')" data-id="${r.id}"><i class="bi bi-check-lg"></i></button>`;
-      if (r.color === 'azul') { fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted fst-italic ms-1">Histórico</small>`; botones = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})"><i class="bi bi-eye"></i></button>`; }
-      return `<tr><td class="text-center ps-4 small">${index + 1}</td><td><div class="fw-bold">${r.edificio}</div><small class="text-muted">${r.campusNombre}</small></td><td>${r.activo}</td><td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td><td>${fechaTexto}</td><td class="text-end pe-4"><div class="btn-group">${botones}</div></td></tr>`;
+      
+      // --- ZONA DE BOTONES (Corregida) ---
+      
+      // A. Botón Nube (Siempre visible)
+      const btnCloud = `<button class="btn btn-sm btn-outline-secondary border me-1" onclick="openQuickUpload('${r.idActivo}')" title="Subida Rápida"><i class="bi bi-cloud-arrow-up-fill"></i></button>`;
+      
+      // B. Botón Editar (Lápiz) o Ver (Ojo) si es histórico
+      let btnEdit = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>`;
+      
+      // C. Botón Completar (Check) - Solo si NO es histórico
+      let btnCheck = `<button class="btn btn-sm btn-outline-success ms-1" onclick="marcarHecho('${r.id}')" data-id="${r.id}" title="Completar"><i class="bi bi-check-lg"></i></button>`;
+
+      // Ajustes para Histórico (Azul)
+      if (r.color === 'azul') { 
+         fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted fst-italic ms-1">Histórico</small>`; 
+         // En histórico cambiamos Lápiz por Ojo y quitamos el Check
+         btnEdit = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Ver Detalle"><i class="bi bi-eye"></i></button>`;
+         btnCheck = ''; 
+      }
+
+      // Concatenamos todo de forma segura
+      const botones = btnCloud + btnEdit + btnCheck;
+
+      return `<tr>
+        <td class="text-center ps-4 small">${index + 1}</td>
+        <td><div class="fw-bold">${r.edificio}</div><small class="text-muted">${r.campusNombre}</small></td>
+        <td>${r.activo}</td>
+        <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
+        <td>${fechaTexto}</td>
+        <td class="text-end pe-4">
+            <div class="btn-group">${botones}</div>
+        </td>
+      </tr>`;
     });
   }
 
@@ -462,12 +501,95 @@
   }
 
   function marcarHecho(id) {
-    Swal.fire({ title: '¿Completar?', text: "Se marcará como realizada.", icon: 'question', showCancelButton: true, confirmButtonColor: '#198754' }).then((r) => {
-      if (r.isConfirmed) {
-        const btn = document.querySelector(`button[data-id="${id}"]`); if(btn) btn.innerHTML='...';
-        google.script.run.withSuccessHandler(res => { 
-            if(res.success) { notificarExito("Completada"); loadGlobalMaint(); loadDashboard(); } else notificarError(res.error); 
-        }).completarRevision(id);
+    Swal.fire({
+      title: '¿Completar revisión?',
+      text: "Se marcará como realizada y desaparecerá de la lista.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#198754',
+      cancelButtonColor: '#6c757d',
+      confirmButtonText: 'Sí, completar',
+      cancelButtonText: 'Cancelar'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        // 1. Efecto Visual Inmediato (Feedback)
+        const btn = document.querySelector(`button[data-id="${id}"]`);
+        const row = btn ? btn.closest('tr') : null;
+        
+        if (row) {
+          // Cambio a verde suave para indicar "éxito en proceso"
+          row.style.transition = 'all 0.5s ease';
+          row.style.backgroundColor = '#d1fae5'; 
+          
+          // Bloquear botón con spinner
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        }
+
+        // 2. Llamada al Servidor
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              if (row) {
+                // A. Animación de Salida (Deslizar y Desvanecer)
+                row.style.opacity = '0';
+                row.style.transform = 'translateX(50px)';
+                
+                // B. Esperar a que termine el fade-out para colapsar el hueco
+                setTimeout(() => {
+                  row.style.height = row.offsetHeight + 'px'; // Fijar altura actual
+                  row.style.overflow = 'hidden';
+                  row.style.padding = '0';
+                  row.style.border = 'none';
+                  
+                  // Forzar repintado
+                  row.offsetHeight; 
+                  
+                  // Colapsar altura a 0 suavemente
+                  row.style.transition = 'height 0.3s ease, margin 0.3s ease, padding 0.3s ease';
+                  row.style.height = '0';
+                  
+                  // C. Eliminar del DOM tras el colapso
+                  setTimeout(() => {
+                    const tbody = row.closest('tbody');
+                    row.remove();
+                    
+                    // Si no quedan filas, mostrar mensaje de "Vacío"
+                    if (tbody && tbody.children.length === 0) {
+                       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-5 fst-italic">🎉 ¡Todo al día! No hay revisiones pendientes.</td></tr>';
+                    }
+                    
+                    // Notificación final
+                    notificarExito("Revisión completada");
+                    
+                    // Actualizar SOLO los números del dashboard (sin recargar la tabla)
+                    loadDashboard(); 
+                    
+                  }, 300); // Tiempo del colapso
+                }, 500); // Tiempo del fade-out
+              } else {
+                // Fallback si no hay fila (raro)
+                loadGlobalMaint();
+              }
+            } else {
+              // Error: Restaurar estado original
+              if (row) {
+                row.style.backgroundColor = '';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+              }
+              notificarError(res.error);
+            }
+          })
+          .withFailureHandler(err => {
+             if (row) {
+                row.style.backgroundColor = '';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-check-lg"></i>';
+             }
+             notificarError("Error de conexión: " + err.message);
+          })
+          .completarRevision(id);
       }
     });
   }
@@ -556,27 +678,20 @@
 
   function renderAssetsTable(list) {
     renderTableLazy(document.getElementById('tableActivos'), list, (i) => {
+        const clip = i.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2"></i>' : '';
+        const legalIcon = i.hasLegalDocs ? '<i class="bi bi-shield-check text-success ms-2" title="Legal OK"></i>' : '';
         
-        // Icono 1: Documentación general del activo (Clip Azul)
-        const clip = i.hasDocs 
-          ? '<i class="bi bi-paperclip text-primary ms-2" title="Documentación técnica del activo"></i>' 
-          : '';
-
-        // Icono 2 (NUEVO): Documentación de la última legal (Escudo Verde)
-        const legalIcon = i.hasLegalDocs
-          ? '<i class="bi bi-shield-check text-success ms-2" title="Última inspección legal documentada"></i>'
-          : ''; // Si quieres mostrar uno gris cuando NO tiene, pon: '<i class="bi bi-shield-x text-muted ms-2" title="Sin certificado legal reciente"></i>'
-
         return `<tr>
           <td class="fw-bold ps-4">
-              <i class="bi bi-box-seam text-primary me-2"></i>
-              ${i.nombre}
-              ${clip} ${legalIcon}
+              <i class="bi bi-box-seam text-primary me-2"></i>${i.nombre}${clip}${legalIcon}
               <div class="small text-muted fw-normal ms-4">${i.edificioNombre}</div>
           </td>
           <td><span class="badge bg-light text-dark border">${i.tipo}</span></td>
           <td>${i.marca}</td>
           <td class="text-end pe-4">
+              <button class="btn btn-sm btn-outline-secondary me-1" onclick="openQuickUpload('${i.id}')" title="Subida Rápida">
+                <i class="bi bi-cloud-arrow-up-fill"></i>
+              </button>
               <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${i.id}')">Ver Ficha</button>
           </td>
         </tr>`;
@@ -745,5 +860,184 @@
   // AUDIT
   function loadAuditYears() { const s=document.getElementById('auditYear'); s.innerHTML='Loading...'; google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(y=>h+=`<option value="${y}">${y}</option>`); s.innerHTML=h; }).getAniosAuditoria(); }
   function runAudit() { const y=document.getElementById('auditYear').value; if(!y) return; setBtnLoading('btnAuditRun',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnAuditRun',false); if(r.success){ document.getElementById('auditResult').classList.remove('d-none'); document.getElementById('auditMsg').innerText=r.total; document.getElementById('auditLink').href=r.url; } else notificarError(r.error); }).generarPaqueteAuditoria(y, document.getElementById('auditType').value); }
+
+  // ==========================================
+  // SUBIDA RÁPIDA (QUICK UPLOAD)
+  // ==========================================
+  let quickUploadModalInstance = null;
+  let quickUploadFiles = []; // Almacena los archivos seleccionados
+
+  function openQuickUpload(idActivo) {
+    if (!quickUploadModalInstance) quickUploadModalInstance = new bootstrap.Modal(document.getElementById('quickUploadModal'));
+    
+    // Resetear formulario
+    document.getElementById('quIdActivo').value = idActivo;
+    document.getElementById('quFiles').value = '';
+    document.getElementById('quFileListContainer').classList.add('d-none');
+    document.getElementById('quTableBody').innerHTML = '';
+    document.getElementById('btnQuickUpload').disabled = true;
+    quickUploadFiles = [];
+
+    quickUploadModalInstance.show();
+  }
+
+  function renderQuickUploadList() {
+    const input = document.getElementById('quFiles');
+    const tbody = document.getElementById('quTableBody');
+    const container = document.getElementById('quFileListContainer');
+    const btn = document.getElementById('btnQuickUpload');
+
+    if (input.files.length > 0) {
+      container.classList.remove('d-none');
+      btn.disabled = false;
+      quickUploadFiles = Array.from(input.files);
+      
+      let html = '';
+      const hoyISO = new Date().toISOString().split('T')[0]; // Fecha hoy YYYY-MM-DD
+
+      quickUploadFiles.forEach((file, index) => {
+        let defaultSel = 'GENERAL';
+        const name = file.name.toLowerCase();
+        if (name.includes('oca') || name.includes('inspeccion') || name.includes('legal')) defaultSel = 'OCA';
+        if (name.includes('contrato')) defaultSel = 'CONTRATO';
+
+        html += `
+          <tr id="qu-row-${index}">
+            <td class="ps-3 align-top pt-3">
+              <div class="text-truncate" style="max-width: 200px;" title="${file.name}">
+                <i class="bi bi-file-earmark text-muted"></i> <strong>${file.name}</strong>
+              </div>
+            </td>
+            <td class="align-top pt-2">
+              <select class="form-select form-select-sm qu-type-select mb-2" data-index="${index}" onchange="toggleExtraFields(${index})">
+                <option value="GENERAL" ${defaultSel==='GENERAL'?'selected':''}>📄 Doc. General</option>
+                <option value="OCA" ${defaultSel==='OCA'?'selected':''}>🛡️ OCA / Legalización</option>
+                <option value="CONTRATO" ${defaultSel==='CONTRATO'?'selected':''}>📑 Contrato</option>
+              </select>
+
+              <div id="qu-extra-${index}" class="${defaultSel==='OCA'?'':'d-none'} bg-light p-2 rounded border small">
+                
+                <div class="mb-2">
+                  <label class="form-label mb-0 fw-bold text-muted" style="font-size:0.75rem">Fecha Inspección:</label>
+                  <input type="date" class="form-control form-control-sm qu-date" value="${hoyISO}">
+                </div>
+
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="chk-recur-${index}" onchange="toggleFreq(${index})">
+                  <label class="form-check-label" for="chk-recur-${index}">Programar siguientes</label>
+                </div>
+                
+                <div id="div-freq-${index}" class="mt-1 d-none d-flex align-items-center gap-2">
+                  <span class="text-muted">Cada</span>
+                  <input type="number" class="form-control form-control-sm qu-freq" style="width:60px" value="365">
+                  <span class="text-muted">días</span>
+                </div>
+
+              </div>
+            </td>
+            <td class="text-center align-middle" id="qu-status-${index}">
+              <span class="text-muted"><i class="bi bi-hourglass"></i></span>
+            </td>
+          </tr>
+        `;
+      });
+      tbody.innerHTML = html;
+    } else {
+      container.classList.add('d-none');
+      btn.disabled = true;
+    }
+  }
+
+  // Funciones visuales para mostrar/ocultar los campos extra
+  function toggleExtraFields(index) {
+    const sel = document.querySelector(`.qu-type-select[data-index="${index}"]`);
+    const box = document.getElementById(`qu-extra-${index}`);
+    if (sel.value === 'OCA') box.classList.remove('d-none');
+    else box.classList.add('d-none');
+  }
+
+  function toggleFreq(index) {
+    const chk = document.getElementById(`chk-recur-${index}`);
+    const div = document.getElementById(`div-freq-${index}`);
+    if (chk.checked) div.classList.remove('d-none');
+    else div.classList.add('d-none');
+  }
+
+  async function startQuickUpload() {
+    const idActivo = document.getElementById('quIdActivo').value;
+    const btn = document.getElementById('btnQuickUpload');
+    
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+
+    for (let i = 0; i < quickUploadFiles.length; i++) {
+      const file = quickUploadFiles[i];
+      const row = document.getElementById(`qu-row-${i}`);
+      
+      // Recoger datos específicos de la fila
+      const select = row.querySelector('.qu-type-select');
+      const categoria = select.value;
+      
+      // Datos Extra (solo relevantes si es OCA, pero los leemos igual)
+      const fechaInput = row.querySelector('.qu-date').value;
+      const recurCheck = row.querySelector(`#chk-recur-${i}`).checked;
+      const freqInput = row.querySelector('.qu-freq').value;
+
+      const statusCell = document.getElementById(`qu-status-${i}`);
+      statusCell.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
+
+      try {
+        const base64 = await readFileAsBase64(file);
+        
+        await new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(res => {
+              if (res.success) resolve(res);
+              else reject(new Error(res.error));
+            })
+            .withFailureHandler(err => reject(err))
+            .procesarArchivoRapido({
+              idActivo: idActivo,
+              nombreArchivo: file.name,
+              mimeType: file.type,
+              base64: base64,
+              categoria: categoria,
+              // NUEVOS DATOS
+              fechaOCA: fechaInput,
+              crearSiguientes: recurCheck,
+              freqDias: freqInput
+            });
+        });
+
+        statusCell.innerHTML = '<i class="bi bi-check-circle-fill text-success fs-5"></i>';
+
+      } catch (err) {
+        console.error(err);
+        statusCell.innerHTML = '<i class="bi bi-x-circle-fill text-danger fs-5" title="Error"></i>';
+      }
+    }
+
+    btn.innerHTML = '<i class="bi bi-check-all"></i> Terminado';
+    setTimeout(() => {
+        quickUploadModalInstance.hide();
+        notificarExito("Proceso finalizado");
+        
+        if (!document.getElementById('view-activos').classList.contains('d-none')) {
+            loadAllAssets(true); 
+        } else if (!document.getElementById('view-mantenimiento').classList.contains('d-none')) {
+            loadGlobalMaint();
+        }
+    }, 1000);
+  }
+
+  // Helper para convertir FileReader a Promesa (necesario para async/await)
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = error => reject(error);
+      reader.readAsDataURL(file);
+    });
+  }
 
 </script>
