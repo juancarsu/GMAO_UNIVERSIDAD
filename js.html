@@ -1149,17 +1149,31 @@
   function deleteObra(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadBuildingObras()).eliminarObra(id)); }
   
   function loadBuildingAssets() {
-    if (!currentBuildingId) {
-      console.error('❌ ERROR: No hay currentBuildingId definido');
-      const tbody = document.getElementById('buildingAssetsBody');
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: ID de edificio no válido</td></tr>';
-      return;
-    }
-    
+    // ✅ DECLARAR ELEMENTOS DEL DOM PRIMERO
     const tbody = document.getElementById('buildingAssetsBody');
     const filterSelect = document.getElementById('filterAssetTypeBuilding');
     
-    // Spinner de carga
+    // Validar que los elementos existan
+    if (!tbody) {
+      console.error('❌ ERROR FATAL: Elemento buildingAssetsBody no encontrado en el DOM');
+      return;
+    }
+    
+    // Validar que tengamos ID de edificio
+    if (!currentBuildingId) {
+      console.error('❌ ERROR: No hay currentBuildingId definido');
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4" class="text-center text-danger py-4">
+            <i class="bi bi-exclamation-triangle fs-4 d-block mb-2"></i>
+            <strong>Error: ID de edificio no válido</strong>
+          </td>
+        </tr>
+      `;
+      return;
+    }
+    
+    // Mostrar spinner de carga
     tbody.innerHTML = `
       <tr>
         <td colspan="4" class="text-center py-4">
@@ -1171,35 +1185,52 @@
     
     console.log('🔍 Solicitando activos para edificio:', currentBuildingId);
     
+    // Llamada al servidor
     google.script.run
       .withSuccessHandler(activos => {
-        console.log('✅ Respuesta recibida:', activos);
+        console.log('📦 Respuesta recibida del servidor:', activos);
+        console.log('📊 Tipo de dato:', typeof activos);
+        console.log('📏 ¿Es array?:', Array.isArray(activos));
         
-        // VALIDACIÓN ROBUSTA
-        if (!activos) {
+        // ✅ VALIDACIÓN ESTRICTA DE LA RESPUESTA
+        if (activos === null || activos === undefined) {
           console.error('❌ Respuesta nula del servidor');
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" class="text-center text-danger py-4">
+                <i class="bi bi-exclamation-triangle fs-4 d-block mb-2"></i>
+                <strong>Error del servidor</strong><br>
+                <small class="text-muted">La función no devolvió datos válidos</small>
+              </td>
+            </tr>
+          `;
           window.currentBuildingAssetsList = [];
-          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Sin respuesta del servidor</td></tr>';
           return;
         }
         
         if (!Array.isArray(activos)) {
-          console.error('❌ Respuesta no es un array:', typeof activos);
+          console.error('❌ Respuesta no es un array:', activos);
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="4" class="text-center text-danger py-4">
+                <i class="bi bi-exclamation-triangle fs-4 d-block mb-2"></i>
+                <strong>Error: Formato de datos inválido</strong><br>
+                <small class="text-muted">Se esperaba un array, recibido: ${typeof activos}</small>
+              </td>
+            </tr>
+          `;
           window.currentBuildingAssetsList = [];
-          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Formato de datos inválido</td></tr>';
           return;
         }
         
         // Guardar en variable global
         window.currentBuildingAssetsList = activos;
-        console.log(`📊 ${activos.length} activos guardados en memoria`);
+        console.log(`✅ ${activos.length} activos guardados en memoria`);
         
-        // Resetear y poblar el filtro de tipos
+        // Poblar filtro de tipos
         if (filterSelect) {
-          // Limpiar opciones previas
           filterSelect.innerHTML = '<option value="">- Todos los tipos -</option>';
           
-          // Obtener tipos únicos y ordenarlos
           const tipos = [...new Set(activos.map(a => a.tipo || 'Sin tipo'))].sort();
           
           tipos.forEach(tipo => {
@@ -1210,7 +1241,7 @@
           });
         }
         
-        // Renderizar todos los activos
+        // Renderizar tabla
         renderBuildingAssetsTable(activos);
       })
       .withFailureHandler(error => {
@@ -1220,7 +1251,7 @@
             <td colspan="4" class="text-center text-danger py-4">
               <i class="bi bi-exclamation-triangle fs-4 d-block mb-2"></i>
               <strong>Error al cargar los activos</strong><br>
-              <small class="text-muted">${error.message}</small>
+              <small class="text-muted">${error.message || 'Error desconocido'}</small>
             </td>
           </tr>
         `;
@@ -1360,18 +1391,34 @@
     // VALIDACIÓN 2: activos es un array
     if (!Array.isArray(activos)) {
       console.error('❌ ERROR: activos no es un array:', activos);
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Datos corruptos</td></tr>';
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4" class="text-center text-danger py-4">
+            <i class="bi bi-bug fs-4 d-block mb-2"></i>
+            Error: Datos corruptos (tipo: ${typeof activos})
+          </td>
+        </tr>
+      `;
       return;
     }
     
     // VALIDACIÓN 3: Array vacío
     if (activos.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-4">No hay activos en este edificio</td></tr>';
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="4" class="text-center text-muted fst-italic py-5">
+            <i class="bi bi-inbox fs-1 d-block mb-3 text-secondary"></i>
+            <strong>No hay activos instalados en este edificio</strong>
+            <div class="small mt-2">Puedes añadirlos desde la sección "Activos" del menú</div>
+          </td>
+        </tr>
+      `;
       return;
     }
     
     console.log(`🎨 Renderizando ${activos.length} activos`);
     
+    // Construir HTML
     let html = '';
     activos.forEach((a, index) => {
       // VALIDACIÓN 4: Cada activo tiene las propiedades mínimas
@@ -1380,9 +1427,9 @@
       const tipo = a.tipo || 'Sin tipo';
       const marca = a.marca || '-';
       
-      // Advertencia si falta el ID (no podremos abrir detalle)
+      // Advertencia si falta el ID
       if (!id) {
-        console.warn('⚠️ Activo sin ID:', a);
+        console.warn('⚠️ Activo sin ID en posición ' + index + ':', a);
       }
       
       html += `
@@ -1407,7 +1454,7 @@
     
     tbody.innerHTML = html;
     
-    console.log('✅ Renderizado completado');
+    console.log('✅ Renderizado completado exitosamente');
     
     // Aplicar seguridad de permisos
     if (typeof refreshSecurityIcons === 'function') {
@@ -1745,13 +1792,133 @@
   window.addEventListener('load', detectingAccesoQR);
 
   // RELACIONES
-  function loadRelacionesActivo() { if(!currentAssetId) return; document.getElementById('relacionesContainer').innerHTML='...'; google.script.run.withSuccessHandler(d=>renderRelaciones(d.relaciones, d.alertas)).obtenerDatosRelaciones(currentAssetId); }
-  function renderRelaciones(l,a) { const c=document.getElementById('relacionesContainer'); if(!l.length){ c.innerHTML='Sin relaciones'; return; } let h='<ul class="list-group">'; l.forEach(r=>h+=`<li class="list-group-item d-flex justify-content-between">${r.nombreActivo} (${r.tipoRelacion}) <button class="btn btn-sm btn-outline-danger" onclick="eliminarRelacion('${r.id}')">&times;</button></li>`); c.innerHTML=h+'</ul>'; }
-  function openRelacionModal() { if(!currentAssetId) return; if(!relacionModal) relacionModal=new bootstrap.Modal(document.getElementById('relacionModal')); document.getElementById('relResultados').innerHTML=''; document.getElementById('relSearchInput').value=''; relacionModal.show(); }
-  function buscarActivosRelacion() { const t=document.getElementById('relSearchInput').value; if(t.length<3) return; google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(a=>h+=`<button class="list-group-item" onclick="seleccionarActivoRelacion('${a.id}','${a.nombre}','${a.tipo}','${a.edificio}')">${a.nombre}</button>`); document.getElementById('relResultados').innerHTML=h; }).buscarActivosParaRelacionar(currentAssetId, t); }
-  let activoSelId=null; function seleccionarActivoRelacion(id,n){ activoSelId=id; document.getElementById('relActivoSeleccionado').innerHTML=`Seleccionado: ${n}`; }
-  function submitRelacion() { if(!activoSelId) return; setBtnLoading('btnRelSubmit',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnRelSubmit',false); if(r.success){ relacionModal.hide(); loadRelacionesActivo(); } }).crearRelacionActivo({idActivoA:currentAssetId, idActivoB:activoSelId, tipoRelacion:document.getElementById('relTipoRelacion').value, bidireccional:document.getElementById('relBidireccional').checked}); }
-  function eliminarRelacion(id) { confirmarAccion("¿Eliminar?","",()=>google.script.run.withSuccessHandler(()=>loadRelacionesActivo()).eliminarRelacionActivo(currentAssetId,id)); }
+  function loadRelacionesActivo() { 
+    if(!currentAssetId) return; 
+    document.getElementById('relacionesContainer').innerHTML='<div class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div> Cargando ecosistema...</div>'; 
+    google.script.run.withSuccessHandler(d => renderRelaciones(d.relaciones, d.alertas)).obtenerDatosRelaciones(currentAssetId); 
+  }
+  function renderRelaciones(relaciones, alertas) { 
+    const container = document.getElementById('relacionesContainer');
+    let html = '';
+
+    // 1. MOSTRAR ALERTAS (Si hay activos relacionados con incidencias)
+    if (alertas && alertas.length > 0) {
+      html += '<div class="alert alert-warning border-warning shadow-sm mb-4">';
+      html += '<h6 class="alert-heading fw-bold"><i class="bi bi-exclamation-triangle-fill me-2"></i>Atención: Problemas en cadena</h6>';
+      html += '<ul class="mb-0 ps-3 small">';
+      alertas.forEach(a => {
+        html += `<li>El activo <strong>${a.nombreActivo}</strong> (${formatearTipoRelacion(a.tipoRelacion)}) tiene una incidencia: <span class="fw-bold">${a.problema}</span> <span class="badge bg-danger">${a.prioridad}</span></li>`;
+      });
+      html += '</ul></div>';
+    }
+
+    // 2. LISTA DE RELACIONES
+    if (!relaciones || relaciones.length === 0) {
+      html += `
+        <div class="text-center text-muted py-5 border rounded bg-light">
+          <i class="bi bi-diagram-3 fs-1 d-block mb-2 text-secondary"></i>
+          <p class="mb-0">Este activo no tiene relaciones definidas.</p>
+          <small>Conecta este activo con otros (ej. cuadros eléctricos, bombas...) para trazar averías.</small>
+        </div>
+      `;
+    } else {
+      html += '<div class="list-group shadow-sm">';
+      
+      relaciones.forEach(rel => {
+        const icono = obtenerIconoRelacion(rel.tipoRelacion);
+        const colorBadge = obtenerColorRelacion(rel.tipoRelacion);
+        const nombreRel = formatearTipoRelacion(rel.tipoRelacion);
+
+        html += `
+          <div class="list-group-item list-group-item-action p-3 border-start-0 border-end-0">
+            <div class="d-flex justify-content-between align-items-center">
+              
+              <div class="d-flex align-items-center gap-3">
+                <div class="rounded-circle bg-light d-flex align-items-center justify-content-center border" style="width: 45px; height: 45px; font-size: 1.2rem;">
+                  ${icono}
+                </div>
+                <div>
+                  <h6 class="mb-0 fw-bold text-primary">${rel.nombreActivo}</h6>
+                  <div class="d-flex align-items-center gap-2 mt-1">
+                    <span class="badge ${colorBadge} fw-normal">${nombreRel}</span>
+                    <span class="text-muted small border-start ps-2">${rel.tipoActivo}</span>
+                  </div>
+                  ${rel.descripcion ? `<div class="small text-muted fst-italic mt-1"><i class="bi bi-chat-left-text me-1"></i>${rel.descripcion}</div>` : ''}
+                </div>
+              </div>
+
+              <div class="btn-group">
+                <button class="btn btn-outline-primary btn-sm" onclick="openAssetDetail('${rel.idActivoRelacionado}')" title="Ir a ficha del activo">
+                  <i class="bi bi-box-arrow-in-up-right"></i> Ver
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="eliminarRelacion('${rel.id}')" title="Romper relación">
+                  <i class="bi bi-link-45deg"></i> Romper
+                </button>
+              </div>
+
+            </div>
+          </div>
+        `;
+      });
+      html += '</div>';
+    }
+    
+    container.innerHTML = html;
+  }
+  function openRelacionModal() { 
+    if(!currentAssetId) return notificarError("No hay activo seleccionado"); 
+    if(!relacionModal) relacionModal=new bootstrap.Modal(document.getElementById('relacionModal')); 
+    // Resetear form
+    document.getElementById('relResultados').innerHTML=''; 
+    document.getElementById('relSearchInput').value=''; 
+    document.getElementById('relActivoSeleccionado').innerHTML='<div class="text-muted small fst-italic">Busca y selecciona un activo arriba</div>';
+    activoSelId = null;
+    relacionModal.show(); 
+  }
+  function buscarActivosRelacion() { 
+    const t=document.getElementById('relSearchInput').value; 
+    if(t.length<3) return; 
+    document.getElementById('relResultados').innerHTML = '<div class="spinner-border spinner-border-sm text-secondary"></div>';
+    
+    google.script.run.withSuccessHandler(l => { 
+      let h=''; 
+      if(!l.length) h='<small class="text-muted">Sin coincidencias</small>';
+      else l.forEach(a => h+=`<button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" onclick="seleccionarActivoRelacion('${a.id}','${a.nombre}','${a.tipo}','${a.edificio}')"><div><strong>${a.nombre}</strong><br><small class="text-muted">${a.tipo}</small></div><span class="badge bg-light text-dark">${a.edificio}</span></button>`); 
+      document.getElementById('relResultados').innerHTML=h; 
+    }).buscarActivosParaRelacionar(currentAssetId, t); 
+  }
+  let activoSelId=null; 
+  
+  function seleccionarActivoRelacion(id,n,t,e){ 
+    activoSelId=id; 
+    document.getElementById('relActivoSeleccionado').innerHTML=`<div class="alert alert-success mb-0 border-success"><i class="bi bi-check-circle-fill me-2"></i><strong>${n}</strong> <span class="small text-muted">(${t})</span></div>`; 
+    document.getElementById('relResultados').innerHTML = ''; // Limpiar búsqueda para que quede limpio
+  }
+
+  function submitRelacion() { 
+    if(!activoSelId) return notificarError("Selecciona un activo primero"); 
+    setBtnLoading('btnRelSubmit',true); 
+    google.script.run.withSuccessHandler(r=>{ 
+      setBtnLoading('btnRelSubmit',false); 
+      if(r.success){ relacionModal.hide(); loadRelacionesActivo(); notificarExito("Vinculación creada"); } 
+      else notificarError(r.error); 
+    }).crearRelacionActivo({
+      idActivoA:currentAssetId, 
+      idActivoB:activoSelId, 
+      tipoRelacion:document.getElementById('relTipoRelacion').value, 
+      descripcion:document.getElementById('relDescripcion').value, // Asegúrate de que este ID existe en el HTML del modal
+      bidireccional:document.getElementById('relBidireccional').checked
+    }); 
+  }
+
+  function eliminarRelacion(id) { 
+    confirmarAccion("¿Romper vínculo?", "No se borrarán los activos, solo la relación.", () => 
+      google.script.run.withSuccessHandler(() => { 
+        notificarExito("Relación eliminada"); 
+        loadRelacionesActivo(); 
+      }).eliminarRelacionActivo(currentAssetId, id)
+    ); 
+  }
 
   // PLANNER
   function initPlannerCalendar() {
@@ -2470,5 +2637,43 @@ function diagnosticarCargaActivos() {
     console.error('❌ No se puede cargar sin currentBuildingId');
   }
 }
+
+  function obtenerIconoRelacion(tipo) {
+    const mapa = {
+      "DEPENDE_DE": "🔗",        // Cadena
+      "ES_REQUERIDO_POR": "🧱",  // Ladrillo base
+      "ALIMENTA": "⚡",          // Rayo
+      "ES_ALIMENTADO_POR": "🔌", // Enchufe
+      "PERTENECE_A": "📦",       // Caja
+      "CONTIENE": "📂",          // Carpeta
+      "RELACIONADO": "🔄"        // Ciclo
+    };
+    return mapa[tipo] || "🔗";
+  }
+
+  function obtenerColorRelacion(tipo) {
+    const mapa = {
+      "DEPENDE_DE": "bg-danger",       // Crítico
+      "ALIMENTA": "bg-warning text-dark", // Energía
+      "PERTENECE_A": "bg-secondary",   // Jerarquía
+      "RELACIONADO": "bg-info text-dark"
+    };
+    // Si es inverso o no está, usa uno genérico o deriva
+    if (tipo.includes("ALIMENTADO")) return "bg-warning text-dark bg-opacity-75";
+    return mapa[tipo] || "bg-light text-dark border";
+  }
+
+  function formatearTipoRelacion(tipo) {
+    const mapa = {
+      "DEPENDE_DE": "Depende de",
+      "ES_REQUERIDO_POR": "Es vital para",
+      "ALIMENTA": "Alimenta a",
+      "ES_ALIMENTADO_POR": "Recibe de",
+      "PERTENECE_A": "Parte de",
+      "CONTIENE": "Compone a",
+      "RELACIONADO": "Vinculado con"
+    };
+    return mapa[tipo] || tipo;
+  }
 
 </script>
