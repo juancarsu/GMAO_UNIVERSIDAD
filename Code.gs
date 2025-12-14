@@ -337,28 +337,65 @@ function getActivosPorEdificio(idEdificio) {
   return index.byEdificio[String(idEdificio)] || [];
 }
 
-// En Code.gs
-
 function getAllAssetsList() {
   const index = buildActivosIndex();
   const allIds = Object.keys(index.byId);
   const list = [];
   
-  // --- NUEVO: Mapear qué activos tienen documentos ---
+  // 1. Cargar datos necesarios
   const docsData = getCachedSheetData('DOCS_HISTORICO');
-  const docsMap = {};
-  
+  const planData = getCachedSheetData('PLAN_MANTENIMIENTO');
+
+  // 2. Mapear qué IDs (Activos o Revisiones) tienen documentos
+  //    docsSet: Set con los IDs de las entidades que tienen docs
+  const docsSet = new Set();
   if (docsData && docsData.length > 1) {
     docsData.slice(1).forEach(r => {
-      // Columna 1 (B) es el TIPO ENTIDAD, Columna 2 (C) es el ID ENTIDAD
-      if (String(r[1]) === 'ACTIVO') {
-        docsMap[String(r[2])] = true;
-      }
+      // r[1] = TIPO (ACTIVO, REVISION...), r[2] = ID
+      docsSet.add(String(r[2])); 
     });
   }
 
+  // 3. Encontrar la ÚLTIMA revisión LEGAL REALIZADA con documentos para cada activo
+  const mapLegalDocs = {}; // { idActivo: true/false }
+
+  if (planData && planData.length > 1) {
+    // Ordenamos cronológicamente ascendente para procesar fechas
+    // (O simplemente recorremos y comparamos fechas)
+    for (let i = 1; i < planData.length; i++) {
+      const r = planData[i];
+      const idPlan = String(r[0]);
+      const idActivo = String(r[1]);
+      const tipo = r[2];
+      const fecha = r[4]; // Fecha programada o realizada
+      const estado = r[6]; // Estado (REALIZADA, ACTIVO...)
+
+      // Criterio: Debe ser LEGAL y estar REALIZADA
+      if (tipo === 'Legal' && estado === 'REALIZADA') {
+        const fechaObj = (fecha instanceof Date) ? fecha : new Date(fecha);
+        
+        // Si esta revisión tiene documentos
+        const tieneDocs = docsSet.has(idPlan);
+
+        // Lógica de "la última":
+        // Si no tenemos dato previo para este activo, o esta fecha es más reciente que la guardada
+        if (!mapLegalDocs[idActivo] || mapLegalDocs[idActivo].fecha < fechaObj) {
+          mapLegalDocs[idActivo] = {
+            fecha: fechaObj,
+            hasDocs: tieneDocs
+          };
+        }
+      }
+    }
+  }
+
+  // 4. Construir la lista final
   for (const id of allIds) {
     const a = index.byId[id];
+    // Verificar si existe registro legal y si tiene docs
+    const legalInfo = mapLegalDocs[id];
+    const legalOk = legalInfo ? legalInfo.hasDocs : false;
+
     list.push({
       id: a.id,
       nombre: a.nombre,
@@ -368,7 +405,8 @@ function getAllAssetsList() {
       edificioNombre: a.edificio,
       idCampus: a.idCampus,
       campusNombre: a.campus,
-      hasDocs: docsMap[id] || false 
+      hasDocs: docsSet.has(a.id), // Documentos generales del activo
+      hasLegalDocs: legalOk       // NUEVO: Documentos de la última legal
     });
   }
   
@@ -539,11 +577,10 @@ function eliminarDocumento(idDoc) {
 // ==========================================
 // 7. MANTENIMIENTO Y CALENDARIO
 // ==========================================
-function getCalendarId() { return Session.getActiveUser().getEmail(); } 
 
 function gestionarEventoCalendario(accion, datos, eventIdExistente) {
   try {
-    const cal = CalendarApp.getCalendarById(getCalendarId());
+    const cal = CalendarApp.getCalendarById(Session.getActiveUser().getEmail());
     if (!cal) return null;
     const titulo = `MANT: ${datos.tipo} - ${datos.nombreActivo}`;
     const descripcion = `Activo: ${datos.nombreActivo}\nMarca: ${datos.marca}\nEdificio: ${datos.edificio}\n\nGestión desde GMAO.`;
@@ -1198,49 +1235,8 @@ function buscarGlobal(texto) {
     
   } catch(e) {
     Logger.log('Error en buscarGlobal: ' + e.toString());
-    // Fallback a búsqueda tradicional si falla el índice
-    return buscarGlobalFallback(texto);
+    return [];
   }
-}
-
-/**
- * Fallback de búsqueda (sin caché) por si falla la optimizada
- */
-function buscarGlobalFallback(texto) {
-  if (!texto || texto.length < 3) return [];
-  
-  texto = texto.toLowerCase();
-  const resultados = [];
-  
-  const activos = getSheetData('ACTIVOS');
-  for(let i = 1; i < activos.length && resultados.length < 10; i++) {
-    const r = activos[i];
-    if (String(r[3]).toLowerCase().includes(texto) || 
-        String(r[2]).toLowerCase().includes(texto) || 
-        String(r[4]).toLowerCase().includes(texto)) {
-      resultados.push({
-        id: r[0],
-        tipo: 'ACTIVO',
-        texto: r[3],
-        subtexto: r[2] + (r[4] ? " - " + r[4] : "")
-      });
-    }
-  }
-  
-  const edificios = getSheetData('EDIFICIOS');
-  for(let i = 1; i < edificios.length && resultados.length < 10; i++) {
-    const r = edificios[i];
-    if (String(r[2]).toLowerCase().includes(texto)) {
-      resultados.push({
-        id: r[0],
-        tipo: 'EDIFICIO',
-        texto: r[2],
-        subtexto: 'Edificio'
-      });
-    }
-  }
-  
-  return resultados;
 }
 
 // ==========================================
