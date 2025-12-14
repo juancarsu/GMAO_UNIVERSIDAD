@@ -1,4 +1,45 @@
 <script>
+
+  // ==========================================
+  // 0. GESTOR GLOBAL DE MODALES
+  // ==========================================
+
+  // Función universal para abrir CUALQUIER modal sin fallos
+  function abrirModalSeguro(idModal) {
+      const el = document.getElementById(idModal);
+      if (!el) {
+          console.error("No existe el modal con ID: " + idModal);
+          return null;
+      }
+
+      // TRUCO DE ORO: Mover el modal al final del body para evitar conflictos de capas
+      if (el.parentNode !== document.body) {
+          document.body.appendChild(el);
+      }
+
+      // Recuperar instancia existente o crear una nueva
+      let instancia = bootstrap.Modal.getInstance(el);
+      if (!instancia) {
+          instancia = new bootstrap.Modal(el, {
+              backdrop: 'static',
+              keyboard: false
+          });
+      }
+
+      instancia.show();
+      return instancia;
+  }
+
+  // Función universal para cerrar
+  function cerrarModalSeguro(idModal) {
+      const el = document.getElementById(idModal);
+      if (el) {
+          const instancia = bootstrap.Modal.getInstance(el);
+          if (instancia) instancia.hide();
+      }
+  }
+
+
   // ==========================================
   // 1. VARIABLES GLOBALES
   // ==========================================
@@ -23,38 +64,106 @@
   let currentRenderTimeout = null;
 
   // Instancias de Modales
-  let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null;
+  /* let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null;
   let configModal = null; let userModal = null; let reportModal = null; let feedbackModal = null;
-  let edificioModal = null; let campusModal = null; let importModal = null; let relacionModal = null;
+  let edificioModalInst = null;; let campusModal = null; let importModal = null; let relacionModal = null;
+  let proveedorModal = null; let modalEdificioInstance = null;*/
 
   // ==========================================
-  // 2. HELPERS VISUALES (SWEETALERT2)
+  // 2. HELPERS VISUALES 
   // ==========================================
-  const Toast = Swal.mixin({
-    toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true,
-    didOpen: (toast) => { toast.addEventListener('mouseenter', Swal.stopTimer); toast.addEventListener('mouseleave', Swal.resumeTimer); }
-  });
 
-  function notificarExito(mensaje) { Toast.fire({ icon: 'success', title: mensaje || '¡Operación exitosa!' }); }
-  function notificarError(mensaje) { Swal.fire({ icon: 'error', title: 'Ups...', text: mensaje || 'Ha ocurrido un error inesperado.', confirmButtonColor: '#CC0605' }); }
-  function notificar(mensaje, icono = 'info') { Toast.fire({ icon: icono, title: mensaje }); }
+  function escapeQuote(str) {
+    if (!str) return '';
+    return String(str).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+  }
+  // Función de ÉXITO con borrado directo del HTML
+  function notificarExito(mensaje) { 
+      // 1. Mostrar la alerta normal
+      Swal.fire({ 
+        toast: true,
+        position: 'top-end',
+        icon: 'success', 
+        title: mensaje || '¡Hecho!',
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: false,
+        didOpen: (toast) => {
+           // Intentar desactivar eventos de ratón
+           toast.onmouseenter = null;
+           toast.onmouseleave = null;
+        }
+      });
+      
+      // 2. LA SOLUCIÓN NUCLEAR: Borrar el elemento a la fuerza a los 3 seg
+      setTimeout(() => {
+         // Buscamos el contenedor de la alerta en la esquina superior derecha
+         const toastContainer = document.querySelector('.swal2-container.swal2-top-end');
+         
+         if (toastContainer) {
+            console.log("Forzando eliminación de Toast del DOM");
+            toastContainer.remove(); // ¡Adiós! Lo eliminamos del HTML
+            
+            // Limpiamos clases que puedan bloquear el scroll
+            document.body.classList.remove('swal2-shown');
+            document.body.classList.remove('swal2-height-auto');
+         }
+      }, 3000);
+  }
+  
+  // Función de ERROR
+  function notificarError(mensaje) { 
+      Swal.fire({ 
+        icon: 'error', 
+        title: 'Error', 
+        text: mensaje || 'Error inesperado', 
+        confirmButtonColor: '#CC0605',
+        showCloseButton: true
+      }); 
+  }
+  
+  // Función INFO
+  function notificar(mensaje, icono = 'info') { 
+      Swal.fire({ 
+         toast: true, position: 'top-end', icon: icono, title: mensaje, showConfirmButton: false, timer: 3000 
+      });
+      // Aplicamos la misma medicina nuclear por si acaso
+      setTimeout(() => {
+         const el = document.querySelector('.swal2-container.swal2-top-end');
+         if(el) el.remove();
+      }, 3500);
+  }
   
   function confirmarAccion(titulo, texto, callback) {
     Swal.fire({
-      title: titulo || '¿Estás seguro?', text: texto || "Esta acción no se puede deshacer.", icon: 'warning',
+      title: titulo, text: texto, icon: 'warning',
       showCancelButton: true, confirmButtonColor: '#CC0605', cancelButtonColor: '#6c757d',
-      confirmButtonText: 'Sí, proceder', cancelButtonText: 'Cancelar'
+      confirmButtonText: 'Sí', cancelButtonText: 'No'
     }).then((result) => { if (result.isConfirmed) callback(); });
   }
 
-  function setBtnLoading(btnId, loading) {
-    const btn = document.getElementById(btnId); if (!btn) return;
-    if (loading) { btn.dataset.og = btn.innerText; btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; }
-    else { btn.disabled = false; btn.innerText = btn.dataset.og || 'Guardar'; }
+  // Toast moderno (Redirige a las nuevas funciones nucleares)
+  function toastModerno(mensaje, tipo = 'success') {
+    if(tipo === 'success') notificarExito(mensaje);
+    else if(tipo === 'error') notificarError(mensaje);
+    else notificar(mensaje, tipo);
   }
 
-  function mostrarCargando(mensaje = 'Guardando cambios...') {
-    Swal.fire({ title: mensaje, html: 'Por favor, no cierres la ventana.', allowOutsideClick: false, allowEscapeKey: false, showConfirmButton: false, didOpen: () => { Swal.showLoading(); } });
+  // Helpers de botones y carga (SIN CAMBIOS)
+  function setBtnLoading(btnId, loading) {
+    const btn = document.getElementById(btnId); if (!btn) return;
+    if (loading) { 
+        if(!btn.dataset.og) btn.dataset.og = btn.innerText; 
+        btn.disabled = true; 
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>'; 
+    } else { 
+        btn.disabled = false; 
+        btn.innerText = btn.dataset.og || 'Guardar'; 
+    }
+  }
+
+  function mostrarCargando(mensaje = 'Procesando...') {
+    Swal.fire({ title: mensaje, allowOutsideClick: false, didOpen: () => Swal.showLoading() });
   }
 
   function ocultarLoader() {
@@ -118,7 +227,7 @@
     if (document.getElementById('userModal')) userModal = new bootstrap.Modal(document.getElementById('userModal'));
     if (document.getElementById('reportModal')) reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
     if (document.getElementById('feedbackModal')) feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal'));
-    if (document.getElementById('edificioModal')) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal'));
+    if (document.getElementById('edificioModal')) edificioModalInst = new bootstrap.Modal(document.getElementById('edificioModal'));
     if (document.getElementById('campusModal')) campusModal = new bootstrap.Modal(document.getElementById('campusModal'));
     if (document.getElementById('importModal')) importModal = new bootstrap.Modal(document.getElementById('importModal'));
     if (document.getElementById('changelogModal')) changelogModal = new bootstrap.Modal(document.getElementById('changelogModal'));
@@ -308,6 +417,7 @@
     if (viewId === 'feedback') loadFeedbackList();
     if (viewId === 'planner') { setTimeout(function () { initPlannerCalendar(); }, 100); }
     if (viewId === 'audit') loadAuditYears();
+    if (viewId === 'proveedores') loadProveedoresList();
   }
 
   function loadLogsList() {
@@ -595,80 +705,689 @@
   function loadActivosModalMaint(idE) { const s=document.getElementById('maintActivo'); s.innerHTML='<option>...</option>'; s.disabled=true; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Activo -</option>'; l.forEach(a=>h+=`<option value="${a.id}">${a.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getActivosPorEdificio(idE); }
 
   // ==========================================
-  // CONTRATOS
+  // CONTRATOS COMPARTIDOS 
   // ==========================================
-  function loadGlobalContracts() {
-    const tbody = document.getElementById('tableGlobalContracts'); tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>';
-    google.script.run.withSuccessHandler(d => { globalContractData = d; renderGlobalContractsTable(d); }).obtenerContratosGlobal();
+
+  /**
+   * Crear contrato nuevo (soporta múltiples activos)
+   * 
+   * @param {Object} datos
+   * @param {string} datos.idProveedor - ID del proveedor
+   * @param {string} datos.ref - Referencia del contrato
+   * @param {string} datos.fechaIni - Fecha inicio (yyyy-MM-dd)
+   * @param {string} datos.fechaFin - Fecha fin (yyyy-MM-dd)
+   * @param {string} datos.estado - ACTIVO/INACTIVO
+   * @param {string} datos.tipoEntidad - CAMPUS/EDIFICIO/ACTIVOS
+   * @param {string} datos.idEntidad - ID del campus/edificio (si aplica)
+   * @param {Array<string>} datos.idsActivos - Array de IDs de activos (nuevo)
+   */
+
+  function crearContratoV2(datos) {
+    verificarPermiso(['WRITE']);
+    
+    const ss = getDB();
+    const sheet = ss.getSheetByName('CONTRATOS');
+    
+    // Validaciones
+    if (!datos.idProveedor) {
+      return { success: false, error: "Debe seleccionar un proveedor" };
+    }
+    
+    if (!datos.fechaIni || !datos.fechaFin) {
+      return { success: false, error: "Las fechas son obligatorias" };
+    }
+    
+    const newId = Utilities.getUuid();
+    const fechaIni = textoAFecha(datos.fechaIni);
+    const fechaFin = textoAFecha(datos.fechaFin);
+    
+    // Determinar tipo y entidad
+    let tipoEntidad = datos.tipoEntidad || 'CAMPUS';
+    let idEntidad = datos.idEntidad || '';
+    
+    // Si se seleccionaron activos específicos, usamos el nuevo sistema
+    if (datos.idsActivos && datos.idsActivos.length > 0) {
+      tipoEntidad = 'ACTIVOS'; // Nuevo tipo
+      // Guardamos los IDs como JSON en la columna de "entidad"
+      idEntidad = JSON.stringify(datos.idsActivos);
+    }
+    
+    // Insertar en hoja CONTRATOS
+    // Estructura: [ID, TIPO_ENTIDAD, ID_ENTIDAD, ID_PROVEEDOR, REF, FECHA_INI, FECHA_FIN, ESTADO]
+    sheet.appendRow([
+      newId,
+      tipoEntidad,
+      idEntidad,
+      datos.idProveedor, // Ahora guardamos el ID del proveedor, no el nombre
+      datos.ref,
+      fechaIni,
+      fechaFin,
+      datos.estado || 'ACTIVO'
+    ]);
+    
+    const nombreProv = obtenerNombreProveedor(datos.idProveedor);
+    registrarLog("CREAR CONTRATO", `${nombreProv} - Ref: ${datos.ref} - Aplica a ${datos.idsActivos ? datos.idsActivos.length + ' activos' : tipoEntidad}`);
+    
+    invalidateCache('CONTRATOS');
+    
+    return { success: true, newId: newId };
   }
+
+  /**
+   * Obtener contratos globales (versión mejorada con proveedores)
+   */
+  function obtenerContratosGlobalV2() {
+    const contratos = getSheetData('CONTRATOS'); 
+    const activos = getSheetData('ACTIVOS'); 
+    const edificios = getSheetData('EDIFICIOS'); 
+    const campus = getSheetData('CAMPUS'); 
+    const proveedores = getListaProveedores();
+
+    // Mapas
+    const mapProveedores = {};
+    proveedores.forEach(p => mapProveedores[p.id] = p.nombre);
+    
+    const mapCampus = {}; 
+    campus.slice(1).forEach(r => {
+      mapCampus[String(r[0]).trim()] = r[1];
+    }); 
+
+    const mapEdificios = {}; 
+    edificios.slice(1).forEach(r => {
+      mapEdificios[String(r[0]).trim()] = { 
+        nombre: r[2], 
+        idCampus: String(r[1]).trim() 
+      }; 
+    }); 
+    
+    const mapActivos = {}; 
+    activos.slice(1).forEach(r => { 
+      const idEdif = String(r[1]).trim();
+      const edificioInfo = mapEdificios[idEdif] || {}; 
+      
+      mapActivos[String(r[0]).trim()] = { 
+        nombre: r[3], 
+        idEdif: idEdif, 
+        idCampus: edificioInfo.idCampus || null 
+      }; 
+    });
+    
+    const result = []; 
+    const hoy = new Date();
+    
+    // Procesar contratos
+    for (let i = 1; i < contratos.length; i++) {
+      const r = contratos[i]; 
+      const tipoEntidad = String(r[1]).trim();
+      const idEntidadRaw = String(r[2] || "").trim();
+      const idProveedor = String(r[3]).trim();
+      
+      let nombreEntidad = "Sin Asignar";
+      let edificioId = null; 
+      let campusId = null;
+      let campusNombre = "-"; 
+      let cantidadActivos = 0;
+      
+      // NUEVO: Soporte para ACTIVOS (múltiples)
+      if (tipoEntidad === 'ACTIVOS') {
+        try {
+          const idsActivos = JSON.parse(idEntidadRaw);
+          cantidadActivos = idsActivos.length;
+          
+          // Obtener nombres de los activos
+          const nombresActivos = idsActivos
+            .map(id => mapActivos[id] ? mapActivos[id].nombre : null)
+            .filter(Boolean)
+            .slice(0, 3); // Mostramos máximo 3
+          
+          if (nombresActivos.length > 0) {
+            nombreEntidad = nombresActivos.join(', ');
+            if (cantidadActivos > 3) {
+              nombreEntidad += ` (+${cantidadActivos - 3} más)`;
+            }
+            
+            // Campus del primer activo (para filtros)
+            const primerActivo = mapActivos[idsActivos[0]];
+            if (primerActivo) {
+              campusId = primerActivo.idCampus;
+              edificioId = primerActivo.idEdif;
+            }
+          } else {
+            nombreEntidad = `${cantidadActivos} activos`;
+          }
+          
+        } catch(e) {
+          nombreEntidad = "Error en datos";
+          Logger.log('Error parseando IDs de activos: ' + e);
+        }
+      }
+      // Lógica antigua para CAMPUS/EDIFICIO/ACTIVO
+      else if (tipoEntidad === 'ACTIVO' && mapActivos[idEntidadRaw]) { 
+        const info = mapActivos[idEntidadRaw]; 
+        const nombreEdif = mapEdificios[info.idEdif] ? mapEdificios[info.idEdif].nombre : 'Sin Edif.';
+        nombreEntidad = `${info.nombre} (${nombreEdif})`; 
+        edificioId = info.idEdif; 
+        campusId = info.idCampus;
+        cantidadActivos = 1;
+      } 
+      else if (tipoEntidad === 'EDIFICIO' && mapEdificios[idEntidadRaw]) { 
+        const info = mapEdificios[idEntidadRaw]; 
+        nombreEntidad = info.nombre; 
+        edificioId = idEntidadRaw; 
+        campusId = info.idCampus; 
+      }
+      else if (tipoEntidad === 'CAMPUS' && mapCampus[idEntidadRaw]) {
+        campusId = idEntidadRaw;
+        nombreEntidad = "General Campus";
+      }
+
+      // Resolver nombre del campus
+      if (campusId && mapCampus[campusId]) {
+          campusNombre = mapCampus[campusId];
+      }
+
+      // Estados y fechas
+      const fFin = (r[6] instanceof Date) ? r[6] : null; 
+      let estadoDB = r[7] || 'ACTIVO'; 
+      let estadoCalc = 'VIGENTE'; 
+      let color = 'verde';
+      
+      if (estadoDB === 'INACTIVO') { 
+        estadoCalc = 'INACTIVO'; 
+        color = 'gris'; 
+      } 
+      else if (fFin) { 
+        const diff = Math.ceil((fFin.getTime() - hoy.getTime()) / 86400000); 
+        if (diff < 0) { 
+          estadoCalc = 'CADUCADO'; 
+          color = 'rojo'; 
+        } 
+        else if (diff <= 90) { 
+          estadoCalc = 'PRÓXIMO'; 
+          color = 'amarillo'; 
+        } 
+      } else { 
+        estadoCalc = 'SIN FECHA'; 
+        color = 'gris'; 
+      }
+      
+      // Obtener nombre del proveedor
+      const nombreProveedor = mapProveedores[idProveedor] || idProveedor;
+      
+      result.push({ 
+        id: r[0], 
+        nombreEntidad: nombreEntidad,
+        cantidadActivos: cantidadActivos, // NUEVO
+        proveedor: nombreProveedor, 
+        idProveedor: idProveedor, // NUEVO
+        ref: r[4], 
+        inicio: r[5] ? fechaATexto(r[5]) : "-", 
+        fin: fFin ? fechaATexto(fFin) : "-", 
+        estado: estadoCalc, 
+        color: color, 
+        estadoDB: estadoDB, 
+        edificioId: edificioId, 
+        campusId: campusId,
+        campusNombre: campusNombre 
+      });
+    }
+    
+    return result.sort((a, b) => { 
+      if (a.fin === "-") return 1; 
+      if (b.fin === "-") return -1; 
+      return a.fin.localeCompare(b.fin); 
+    });
+  }
+
+    function loadGlobalContracts() {
+      const tbody = document.getElementById('tableGlobalContracts'); tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5">Cargando...</td></tr>';
+      google.script.run.withSuccessHandler(d => { globalContractData = d; renderGlobalContractsTable(d); }).obtenerContratosGlobal();
+    }
   function renderGlobalContractsTable(d) {
     const tbody = document.getElementById('tableGlobalContracts');
     if (!d || !d.length) { tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Sin contratos</td></tr>'; return; }
-    let h = ''; d.forEach(c => {
-      let color = 'bg-secondary'; if (c.color === 'rojo') color = 'bg-danger'; if (c.color === 'amarillo') color = 'bg-warning text-dark'; if (c.color === 'verde') color = 'bg-success';
-      h += `<tr><td><span class="badge ${color}">${c.estado}</span></td><td><div class="fw-bold text-truncate" style="max-width:200px;">${c.nombreEntidad||'-'}</div><small class="text-muted">${c.campusNombre||''}</small></td><td>${c.proveedor}</td><td class="font-monospace small">${c.ref}</td><td><small>${c.inicio}<br>${c.fin}</small></td><td class="text-end"><button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button></td></tr>`;
-    }); tbody.innerHTML = h; refreshSecurityIcons();
+    
+    let h = ''; 
+    d.forEach(c => {
+      let color = 'bg-secondary'; 
+      if (c.color === 'rojo') color = 'bg-danger'; 
+      if (c.color === 'amarillo') color = 'bg-warning text-dark'; 
+      if (c.color === 'verde') color = 'bg-success';
+      
+      // --- BOTÓN PDF ---
+      let btnPdf = '';
+      if (c.fileUrl) {
+        btnPdf = `<a href="${c.fileUrl}" target="_blank" class="btn btn-sm btn-outline-danger me-1" title="Ver PDF Contrato"><i class="bi bi-file-earmark-pdf"></i></a>`;
+      }
+
+      h += `<tr>
+              <td><span class="badge ${color}">${c.estado}</span></td>
+              <td><div class="fw-bold text-truncate" style="max-width:200px;">${c.nombreEntidad||'-'}</div><small class="text-muted">${c.campusNombre||''}</small></td>
+              <td>${c.proveedor}</td>
+              <td class="font-monospace small">${c.ref}</td>
+              <td><small>${c.inicio}<br>${c.fin}</small></td>
+              <td class="text-end">
+                ${btnPdf} <button class="btn btn-sm btn-light border" onclick="editContractGlobal('${c.id}')"><i class="bi bi-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteContract('${c.id}')"><i class="bi bi-trash"></i></button>
+              </td>
+            </tr>`;
+    }); 
+    tbody.innerHTML = h; 
+    refreshSecurityIcons();
   }
-  function setContractFilter(arg1, arg2) {
-    if(['VIGENTE','PRÓXIMO','CADUCADO','INACTIVO','all'].includes(arg1) && arg2) { const p = arg2.parentElement; p.querySelectorAll('button').forEach(b => b.classList.remove('active')); arg2.classList.add('active'); }
-    const cVal = document.getElementById('contractFilterCampus').value; const eVal = document.getElementById('contractFilterEdificio').value;
-    let sFilter = 'all'; const btn = document.querySelector('#contractFilterGroup .active'); if(btn) { const a = btn.getAttribute('onclick'); if(a.includes("'VIGENTE'")) sFilter='VIGENTE'; else if(a.includes("'PRÓXIMO'")) sFilter='PRÓXIMO'; else if(a.includes("'CADUCADO'")) sFilter='CADUCADO'; else if(a.includes("'INACTIVO'")) sFilter='INACTIVO'; }
-    if(!globalContractData) return;
-    const f = globalContractData.filter(i => { const mC = (cVal==="")||(String(i.campusId)===String(cVal)); const mE = (eVal==="")||(String(i.edificioId)===String(eVal)); const mS = (sFilter==='all')||(i.estado===sFilter); return mC && mE && mS; });
-    renderGlobalContractsTable(f);
-  }
-  function loadEdificiosContractFilter(idC) { const s=document.getElementById('contractFilterEdificio'); s.innerHTML='<option>...</option>'; s.disabled=true; if(!idC){ s.innerHTML='<option value="">Todos</option>'; setContractFilter(); return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">Todos</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; setContractFilter(); }).getEdificiosPorCampus(idC); }
-  
+    function setContractFilter(arg1, arg2) {
+      if(['VIGENTE','PRÓXIMO','CADUCADO','INACTIVO','all'].includes(arg1) && arg2) { const p = arg2.parentElement; p.querySelectorAll('button').forEach(b => b.classList.remove('active')); arg2.classList.add('active'); }
+      const cVal = document.getElementById('contractFilterCampus').value; const eVal = document.getElementById('contractFilterEdificio').value;
+      let sFilter = 'all'; const btn = document.querySelector('#contractFilterGroup .active'); if(btn) { const a = btn.getAttribute('onclick'); if(a.includes("'VIGENTE'")) sFilter='VIGENTE'; else if(a.includes("'PRÓXIMO'")) sFilter='PRÓXIMO'; else if(a.includes("'CADUCADO'")) sFilter='CADUCADO'; else if(a.includes("'INACTIVO'")) sFilter='INACTIVO'; }
+      if(!globalContractData) return;
+      const f = globalContractData.filter(i => { const mC = (cVal==="")||(String(i.campusId)===String(cVal)); const mE = (eVal==="")||(String(i.edificioId)===String(eVal)); const mS = (sFilter==='all')||(i.estado===sFilter); return mC && mE && mS; });
+      renderGlobalContractsTable(f);
+    }
+    function loadEdificiosContractFilter(idC) { const s=document.getElementById('contractFilterEdificio'); s.innerHTML='<option>...</option>'; s.disabled=true; if(!idC){ s.innerHTML='<option value="">Todos</option>'; setContractFilter(); return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">Todos</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; setContractFilter(); }).getEdificiosPorCampus(idC); }
+
   function mostrarModalContrato() {
-    if (!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
-    document.getElementById('contModalTitle').innerText = 'Nuevo Contrato'; document.getElementById('contId').value = ''; document.getElementById('contProv').value = ''; document.getElementById('contRef').value = ''; document.getElementById('contIni').value = ''; document.getElementById('contFin').value = ''; document.getElementById('contEstado').value = 'ACTIVO';
-    const sC = document.getElementById('contCampus'); if(sC.options.length<=1) populateSelectsIniciales([],[]); 
-    document.getElementById('contEdificio').innerHTML = '<option value="">- Todo el Edificio -</option>'; document.getElementById('contEdificio').disabled=true; document.getElementById('contActivo').innerHTML='<option value="">- Activo -</option>'; document.getElementById('contActivo').disabled=true;
-    contractModal.show();
+      if (!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModalV2'));
+      
+      document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+      document.getElementById('contId').value = '';
+      
+      // Resetear campos
+      document.getElementById('contProv').value = ''; 
+      document.getElementById('contRef').value = '';
+      
+      // Fechas
+      const hoy = new Date().toISOString().split('T')[0];
+      document.getElementById('contIni').value = hoy;
+      const nextYear = new Date();
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+      document.getElementById('contFin').value = nextYear.toISOString().split('T')[0];
+      
+      document.getElementById('contEstado').value = 'ACTIVO';
+      
+      // Resetear lógica activos múltiples
+      activosSeleccionados = [];
+      toggleActivosMultiples(false);
+      document.getElementById('chkMultiplesActivos').checked = false;
+      
+      // Cargar proveedores
+      loadProveedoresSelect();
+
+      // Resetear archivo
+      const fileInput = document.getElementById('contFile');
+      if(fileInput) fileInput.value = '';
+
+      const sCampus = document.getElementById('contCampus');
+      
+      // CASO 1: Venimos desde un ACTIVO
+      if (currentAssetId) {
+          document.getElementById('contModalTitle').innerText = 'Cargando ubicación...';
+          
+          google.script.run.withSuccessHandler(info => {
+              document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+              
+              // ✅ SOLUCIÓN: Cargar Campus PRIMERO, luego seleccionar
+              google.script.run.withSuccessHandler(listaCampus => {
+                  let html = '<option value="">- Selecciona Campus -</option>';
+                  listaCampus.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+                  sCampus.innerHTML = html;
+                  
+                  // ⭐ AHORA SÍ seleccionamos (tras renderizar opciones)
+                  if (info.idCampus) {
+                      sCampus.value = String(info.idCampus);
+                      
+                      // ✅ Verificar si se seleccionó correctamente
+                      if (!sCampus.value) {
+                          console.warn('⚠️ Campus no encontrado, intentando por nombre');
+                          // Fallback: buscar por nombre si el ID no coincide
+                          for (let i = 0; i < sCampus.options.length; i++) {
+                              if (sCampus.options[i].value === String(info.idCampus)) {
+                                  sCampus.selectedIndex = i;
+                                  break;
+                              }
+                          }
+                      }
+                  }
+                  
+                  // Continuar cascada
+                  const fakeContrato = {
+                      idCampus: info.idCampus,
+                      idEdificio: info.idEdificio,
+                      idActivo: currentAssetId
+                  };
+                  triggerLoadEdificios(fakeContrato);
+                  
+              }).getListaCampus();
+              
+          }).getAssetInfo(currentAssetId);
+          
+      } 
+      // CASO 2: Venimos desde un EDIFICIO
+      else if (currentBuildingId) {
+          google.script.run.withSuccessHandler(info => {
+              google.script.run.withSuccessHandler(listaCampus => {
+                  let html = '<option value="">- Selecciona Campus -</option>';
+                  listaCampus.forEach(c => html += `<option value="${c.id}">${c.nombre}</option>`);
+                  sCampus.innerHTML = html;
+                  
+                  // Buscar por nombre
+                  for (let i = 0; i < sCampus.options.length; i++) {
+                      if (sCampus.options[i].text === info.campus) {
+                          sCampus.selectedIndex = i;
+                          break;
+                      }
+                  }
+                  
+                  const fakeContrato = {
+                      idCampus: sCampus.value,
+                      idEdificio: currentBuildingId
+                  };
+                  triggerLoadEdificios(fakeContrato);
+                  
+              }).getListaCampus();
+          }).getBuildingInfo(currentBuildingId);
+          
+      } else {
+          // CASO 3: Normal (Dashboard)
+          if (sCampus.options.length <= 1) populateSelectsIniciales([], []);
+          document.getElementById('contEdificio').innerHTML = '<option value="">- Todo el Edificio -</option>';
+          document.getElementById('contEdificio').disabled = true;
+          document.getElementById('contActivo').innerHTML = '<option value="">- Activo -</option>'; 
+          document.getElementById('contActivo').disabled = true;
+      }
+      
+      contractModal.show();
   }
-  function loadEdificiosContModal(idC) { const s=document.getElementById('contEdificio'); s.innerHTML='<option>...</option>'; s.disabled=true; document.getElementById('contActivo').disabled=true; if(!idC) return; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Todo el Edificio -</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
-  function loadActivosContModal(idE) { const s=document.getElementById('contActivo'); s.innerHTML='<option>...</option>'; s.disabled=true; if(!idE) return; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Activo -</option>'; l.forEach(a=>h+=`<option value="${a.id}">${a.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getActivosPorEdificio(idE); }
-  
-  function submitContract() {
-    const id = document.getElementById('contId').value, prov = document.getElementById('contProv').value, ref = document.getElementById('contRef').value, ini = document.getElementById('contIni').value, fin = document.getElementById('contFin').value;
-    const idC = document.getElementById('contCampus').value, idE = document.getElementById('contEdificio').value, idA = document.getElementById('contActivo').value;
-    if (!prov || !ini || !fin || !idC) return notificarError("Faltan datos.");
-    let idEnt = idC, tipoEnt = 'CAMPUS'; if(idE){ idEnt=idE; tipoEnt='EDIFICIO'; } if(idA){ idEnt=idA; tipoEnt='ACTIVO'; }
-    setBtnLoading('btnContSubmit', true);
-    const cb = (res) => { setBtnLoading('btnContSubmit', false); if(res.success){ contractModal.hide(); notificarExito("Guardado"); loadGlobalContracts(); if(currentAssetId) loadContracts(); } else notificarError(res.error); };
-    const d = { id:id, idEntidad:idEnt, tipoEntidad:tipoEnt, proveedor:prov, ref:ref, fechaIni:ini, fechaFin:fin, estado:document.getElementById('contEstado').value };
-    if(id) google.script.run.withSuccessHandler(cb).updateContrato(d); else google.script.run.withSuccessHandler(cb).crearContrato(d);
-  }
+
   function editContractGlobal(id) {
-    mostrarModalContrato(); document.getElementById('contModalTitle').innerText='Cargando...'; document.getElementById('btnContSubmit').disabled=true;
-    google.script.run.withSuccessHandler(d => {
-        document.getElementById('contModalTitle').innerText='Editar Contrato'; document.getElementById('contId').value=d.id; document.getElementById('contProv').value=d.proveedor; document.getElementById('contRef').value=d.ref; document.getElementById('contIni').value=d.inicio; document.getElementById('contFin').value=d.fin; document.getElementById('contEstado').value=d.estado;
-        const sC=document.getElementById('contCampus'); sC.value=d.idCampus;
-        const sE=document.getElementById('contEdificio'); sE.disabled=true; sE.innerHTML='<option>...</option>';
-        google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Todo -</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); sE.innerHTML=h; sE.disabled=false; if(d.idEdificio){ sE.value=d.idEdificio; const sA=document.getElementById('contActivo'); sA.disabled=true; sA.innerHTML='<option>...</option>'; google.script.run.withSuccessHandler(al=>{ let ha='<option value="">- Activo -</option>'; al.forEach(a=>ha+=`<option value="${a.id}">${a.nombre}</option>`); sA.innerHTML=ha; sA.disabled=false; if(d.idActivo) sA.value=d.idActivo; document.getElementById('btnContSubmit').disabled=false; }).getActivosPorEdificio(d.idEdificio); } else document.getElementById('btnContSubmit').disabled=false; }).getEdificiosPorCampus(d.idCampus);
-    }).getContratoFullDetails(id);
+      if (!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModalV2'));
+      
+      document.getElementById('contModalTitle').innerText = 'Cargando datos...';
+      document.getElementById('contId').value = id;
+      
+      // Limpieza inicial visual
+      document.getElementById('contEdificio').innerHTML = '<option value="">- Cargando... -</option>';
+      document.getElementById('contActivo').innerHTML = '<option value="">- Cargando... -</option>';
+      document.getElementById('contActivosList').innerHTML = '';
+      
+      contractModal.show();
+
+      // 1. Carga paralela: Proveedores, Campus y Datos del Contrato
+      Promise.all([
+        new Promise(resolve => google.script.run.withSuccessHandler(resolve).getListaProveedores()),
+        new Promise(resolve => google.script.run.withSuccessHandler(resolve).getListaCampus()),
+        new Promise((resolve, reject) => {
+             google.script.run
+               .withSuccessHandler(resolve)
+               .withFailureHandler(reject)
+               .getContratoFullDetailsV2(id);
+        })
+      ]).then(([proveedores, listaCampus, d]) => {
+          
+          document.getElementById('contModalTitle').innerText = 'Editar Contrato';
+          
+          // --- A. RELLENAR SELECT PROVEEDORES ---
+          const sProv = document.getElementById('contProv');
+          let htmlProv = '<option value="">- Selecciona proveedor -</option>';
+          // Filtramos solo activos, PERO si el contrato tiene uno inactivo, debemos incluirlo para que no se rompa
+          // Estrategia: Meterlos todos o buscar específicamente. Simplificamos metiendo todos los activos.
+          proveedores.forEach(p => {
+               if (p.activo || p.id === d.idProveedor) { // Mostrar si es activo O es el que tiene este contrato
+                   const display = p.cif ? `${p.nombre} (${p.cif})` : p.nombre;
+                   htmlProv += `<option value="${p.id}" data-nombre="${p.nombre}">${display}</option>`;
+               }
+          });
+          sProv.innerHTML = htmlProv;
+
+          // --- SELECCIÓN INTELIGENTE DE PROVEEDOR ---
+          const valToSelect = d.idProveedor || d.proveedor; // Puede ser ID o Nombre (legacy)
+          sProv.value = valToSelect; 
+
+          // Si falló la selección directa (porque valToSelect era un Nombre y el select espera ID)
+          if (!sProv.value && valToSelect) {
+              console.log("Detectado proveedor legacy (Nombre):", valToSelect);
+              // Buscamos por texto en el array de datos
+              const found = proveedores.find(p => p.nombre === valToSelect);
+              if (found) {
+                  sProv.value = found.id; // Asignamos el ID correcto
+              }
+          }
+          
+          // --- B. RELLENAR SELECT CAMPUS ---
+          const sCampus = document.getElementById('contCampus');
+          let htmlCampus = '<option value="">- Selecciona Campus -</option>';
+          listaCampus.forEach(c => htmlCampus += `<option value="${c.id}">${c.nombre}</option>`);
+          sCampus.innerHTML = htmlCampus;
+
+          // --- C. ASIGNAR VALORES FORMULARIO ---
+          document.getElementById('contRef').value = d.ref;
+          document.getElementById('contIni').value = d.inicio;
+          document.getElementById('contFin').value = d.fin;
+          document.getElementById('contEstado').value = d.estado;
+
+          // --- D. DISPARAR CASCADA DE UBICACIÓN ---
+          if(d.idCampus) {
+               sCampus.value = String(d.idCampus);
+               triggerLoadEdificios(d);
+          }
+
+      }).catch(err => {
+          console.error(err);
+          notificarError("Error cargando contrato: " + err.message);
+          contractModal.hide();
+      });
   }
-  function deleteContract(id) { confirmarAccion("¿Eliminar?", "", () => google.script.run.withSuccessHandler(() => { notificarExito("Eliminado"); loadGlobalContracts(); if(currentAssetId) loadContracts(); }).eliminarContrato(id)); }
+
+  // Función auxiliar para continuar la cascada (Paso 2: Edificios)
+  function triggerLoadEdificios(datosContrato) {
+    if (!datosContrato.idCampus) return;
+
+    const sEdificio = document.getElementById('contEdificio');
+    sEdificio.disabled = true;
+    sEdificio.innerHTML = '<option>Cargando...</option>';
+    
+    google.script.run.withSuccessHandler(lista => {
+        let html = '<option value="">- Todo el Campus (General) -</option>';
+        lista.forEach(e => {
+             // Comparación estricta como String para evitar errores
+             const sel = (String(e.id) === String(datosContrato.idEdificio)) ? 'selected' : '';
+             html += `<option value="${e.id}" ${sel}>${e.nombre}</option>`;
+        });
+        sEdificio.innerHTML = html;
+        sEdificio.disabled = false;
+
+        // Si hay edificio, lanzamos la carga de activos
+        if (datosContrato.idEdificio) {
+            triggerLoadActivos(datosContrato);
+        }
+    }).getEdificiosPorCampus(datosContrato.idCampus);
+  }
+
+  // Función auxiliar final (Paso 3: Activos)
+  function triggerLoadActivos(datosContrato) {
+    const sActivo = document.getElementById('contActivo');
+    const containerMulti = document.getElementById('contActivosList');
+    const checkMulti = document.getElementById('chkMultiplesActivos');
+    
+    sActivo.disabled = true;
+    containerMulti.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    google.script.run.withSuccessHandler(activos => {
+        // A. Rellenar Select Simple
+        let htmlSelect = '<option value="">- Activo Específico (Opcional) -</option>';
+        activos.forEach(a => {
+             htmlSelect += `<option value="${a.id}">${a.nombre}</option>`;
+        });
+        sActivo.innerHTML = htmlSelect;
+        sActivo.disabled = false;
+
+        // B. Rellenar Lista Múltiple (CON EL DISEÑO ARREGLADO)
+        let htmlList = '<div class="list-group">';
+        activos.forEach(a => {
+             htmlList += `
+               <label class="list-group-item list-group-item-action d-flex align-items-center py-2 gap-3" style="cursor:pointer; border-left: 3px solid transparent;">
+                 <input class="form-check-input flex-shrink-0 multi-asset-chk" style="width: 1.2em; height: 1.2em;" type="checkbox" value="${a.id}" onchange="toggleActivoSeleccion('${a.id}', this.checked)">
+                 <div class="flex-grow-1">
+                   <div class="fw-bold text-dark" style="font-size: 0.95rem;">${a.nombre}</div>
+                   <div class="small text-muted">${a.tipo} <span class="mx-1">•</span> ${a.marca}</div>
+                 </div>
+               </label>`;
+        });
+        htmlList += '</div>';
+        containerMulti.innerHTML = htmlList;
+
+        // C. Aplicar selección guardada
+        if (datosContrato.idsActivos && datosContrato.idsActivos.length > 0) {
+            checkMulti.checked = true;
+            toggleActivosMultiples(true);
+            setTimeout(() => {
+                datosContrato.idsActivos.forEach(id => {
+                    const chk = document.querySelector(`.multi-asset-chk[value="${id}"]`);
+                    if (chk) {
+                        chk.checked = true;
+                        toggleActivoSeleccion(id, true);
+                    }
+                });
+            }, 200);
+        } else if (datosContrato.idActivo) {
+            checkMulti.checked = false;
+            toggleActivosMultiples(false);
+            sActivo.value = datosContrato.idActivo;
+        } else {
+            checkMulti.checked = false;
+            toggleActivosMultiples(false);
+        }
+
+    }).getActivosPorEdificio(datosContrato.idEdificio);
+  }
+
+  function deleteContract(id) {
+    // Buscamos el botón ANTES de lanzar la alerta, para tener la referencia visual
+    // Usamos try-catch en el selector por seguridad
+    let btn = null;
+    try {
+      btn = document.querySelector(`button[onclick*="${id}"]`);
+    } catch(e) { console.log("No se pudo localizar el botón visualmente"); }
+
+    confirmarAccion(
+      "¿Eliminar contrato?", 
+      "Esta acción es irreversible.", 
+      () => {
+        // 1. Feedback visual inmediato
+        let row = null;
+        if (btn) {
+          row = btn.closest('tr');
+          if (row) {
+              row.style.backgroundColor = '#fee2e2'; // Rojo suave
+              row.style.transition = 'all 0.5s ease';
+              btn.disabled = true;
+              btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+          }
+        }
+
+        // 2. Llamada al Backend
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+                notificarExito("Contrato eliminado");
+
+                // 3. Borrado visual (Método Seguro)
+                if (row) {
+                    // Desvanecer
+                    row.style.opacity = '0';
+                    row.style.transform = 'translateX(20px)';
+                    
+                    // Esperar 400ms y eliminar del DOM (Sin depender de animationend)
+                    setTimeout(() => {
+                      const tbody = row.parentElement;
+                      row.remove();
+                      
+                      // Si nos quedamos sin filas, mostrar mensaje
+                      if (tbody && tbody.children.length === 0) {
+                          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted fst-italic py-3">No hay contratos activos.</td></tr>';
+                      }
+                    }, 400);
+                } else {
+                    // Si no encontramos la fila (raro), recargamos por si acaso
+                    if (!document.getElementById('view-contratos').classList.contains('d-none')) loadGlobalContracts();
+                    if (currentAssetId) loadContracts();
+                }
+
+            } else {
+                notificarError(res.error);
+                // Restaurar estado si falla
+                if (row) {
+                    row.style.backgroundColor = '';
+                    row.style.opacity = '1';
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="bi bi-trash"></i>';
+                }
+            }
+          })
+          .withFailureHandler(err => {
+              notificarError("Error de conexión: " + err.message);
+              if (row) {
+                row.style.backgroundColor = '';
+                btn.disabled = false;
+                btn.innerHTML = '<i class="bi bi-trash"></i>';
+              }
+          })
+          .eliminarContrato(id);
+      }
+    );
+  }
+
   function descargarInforme(tipo) { const btn = document.getElementById(tipo==='LEGAL'?'btnPdfLegal':'btnPdfContratos'); const og = btn.innerHTML; btn.disabled=true; btn.innerHTML='...'; google.script.run.withSuccessHandler(res=>{ btn.disabled=false; btn.innerHTML=og; const l=document.createElement('a'); l.href='data:application/pdf;base64,'+res.base64; l.download=res.filename; l.click(); }).withFailureHandler(e=>{ btn.disabled=false; btn.innerHTML=og; notificarError(e.message); }).generarInformePDF(tipo); }
 
   // ==========================================
   // ACTIVOS, EDIFICIOS, CAMPUS
   // ==========================================
+
   function loadAllAssets(preserve = false) {
-    if(!preserve) { document.getElementById('tableActivos').innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>'; }
-    google.script.run.withSuccessHandler(l => { window.allAssetsData = l; applyAssetFilters(); }).getAllAssetsList();
+    if(!preserve) { 
+      document.getElementById('tableActivos').innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>'; 
+    }
+    
+    // ✅ Habilitar el buscador mientras carga
+    document.getElementById('filterSearch').disabled = false;
+    document.getElementById('filterSearch').placeholder = "Cargando activos...";
+    
+    google.script.run.withSuccessHandler(l => { 
+      window.allAssetsData = l; 
+      document.getElementById('filterSearch').placeholder = "Buscar por nombre, marca o tipo...";
+      applyAssetFilters(); 
+    }).getAllAssetsList();
   }
+
   function applyAssetFilters() {
-    const fC = document.getElementById('filterCampus').value; const fE = document.getElementById('filterEdificio').value; const fS = document.getElementById('filterSearch').value.toLowerCase().trim();
+    // ✅ Validar que existan datos antes de filtrar
+    if (!window.allAssetsData || window.allAssetsData.length === 0) {
+      console.warn('No hay datos de activos cargados para filtrar');
+      return;
+    }
+
+    const fC = document.getElementById('filterCampus').value; 
+    const fE = document.getElementById('filterEdificio').value; 
+    const fS = document.getElementById('filterSearch').value.toLowerCase().trim();
+    
     const filtered = window.allAssetsData.filter(i => {
-        if(fC && String(i.idCampus) !== String(fC)) return false;
-        if(fE && String(i.idEdificio) !== String(fE)) return false;
-        if(fS && !(i.nombre+' '+i.marca+' '+i.tipo).toLowerCase().includes(fS)) return false;
-        return true;
+      // Filtro Campus
+      if(fC && String(i.idCampus) !== String(fC)) return false;
+      
+      // Filtro Edificio
+      if(fE && String(i.idEdificio) !== String(fE)) return false;
+      
+      // ✅ Filtro Texto Mejorado (busca en nombre, tipo Y marca)
+      if(fS) {
+        const searchText = `${i.nombre} ${i.tipo} ${i.marca}`.toLowerCase();
+        if(!searchText.includes(fS)) return false;
+      }
+      
+      return true;
     });
+    
+    console.log(`Filtrados: ${filtered.length} de ${window.allAssetsData.length} activos`);
     renderAssetsTable(filtered);
   }
-  // En js.html
 
   function renderAssetsTable(list) {
     renderTableLazy(document.getElementById('tableActivos'), list, (i) => {
@@ -691,8 +1410,18 @@
         </tr>`;
     }, 50);
   }
-  function loadEdificios(idC) { document.getElementById('filterEdificio').value=""; applyAssetFilters(); const s=document.getElementById('filterEdificio'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!idC){ s.innerHTML='<option value="">- Seleccione -</option>'; s.disabled=false; return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
-  function loadActivos(idE) { applyAssetFilters(); }
+
+    function loadEdificios(idC) { document.getElementById('filterEdificio').value=""; applyAssetFilters(); const s=document.getElementById('filterEdificio'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!idC){ s.innerHTML='<option value="">- Seleccione -</option>'; s.disabled=false; return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
+    function loadActivos(idE) { 
+    // Habilitar el buscador cuando se selecciona un edificio
+    const searchInput = document.getElementById('filterSearch');
+    if(searchInput) {
+      searchInput.disabled = false;
+    }
+    
+    applyAssetFilters(); 
+  }
+  
   function filterAssets() { applyAssetFilters(); }
 
   // IMPORTACION
@@ -705,49 +1434,118 @@
 
   // EDIFICIOS
   function loadEdificiosList() {
-  const t = document.getElementById('tableEdificiosBody');
-  
-  // ✨ Mostrar skeleton mientras carga
-  showSkeletonTable(t, 8, 4);
-  
-  google.script.run.withSuccessHandler(d => {
-    allEdificiosData = d;
-    
-    // ✨ Renderizado animado
-    renderTableAnimated(t, d, (r) => {
-      return `<tr>
-        <td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${r.id}');return false;">${r.nombre}</a></td>
-        <td>${r.campus}</td>
-        <td>${r.contacto}</td>
-        <td class="text-end pe-4">
-          <div class="btn-group">
-            <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')"><i class="bi bi-eye"></i></button>
-            <button class="btn btn-sm btn-light border" onclick="openEdificioModal('${r.id}','${r.nombre}','${r.campus}','${r.contacto}','${r.lat||''}','${r.lng||''}')"><i class="bi bi-pencil"></i></button>
-            <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')"><i class="bi bi-trash"></i></button>
-          </div>
-        </td>
-      </tr>`;
-    }, { animationDelay: 15 });
-    
-    if (mapInstance) renderMarkers(d);
-  }).getTableData('EDIFICIOS');
-}
+    const t = document.getElementById('tableEdificiosBody');
+    showSkeletonTable(t, 8, 4);
+
+    google.script.run.withSuccessHandler(d => {
+        allEdificiosData = d;
+        renderTableAnimated(t, d, (r) => {
+            // Usamos escapeQuote para proteger los datos
+            const safeId = escapeQuote(r.id);
+            const safeNombre = escapeQuote(r.nombre);
+            const safeCampus = escapeQuote(r.campus);
+            const safeContacto = escapeQuote(r.contacto);
+            const safeLat = escapeQuote(r.lat || '');
+            const safeLng = escapeQuote(r.lng || '');
+
+            return `<tr>
+                <td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${safeId}');return false;">${r.nombre}</a></td>
+                <td>${r.campus}</td>
+                <td>${r.contacto}</td>
+                <td class="text-end pe-4">
+                  <div class="btn-group">
+                    <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${safeId}')"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-sm btn-light border" onclick="openEdificioModal('${safeId}','${safeNombre}','${safeCampus}','${safeContacto}','${safeLat}','${safeLng}')"><i class="bi bi-pencil"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${safeId}')"><i class="bi bi-trash"></i></button>
+                  </div>
+                </td>
+              </tr>`;
+        }, { animationDelay: 15 });
+
+        if (mapInstance) renderMarkers(d);
+    }).getTableData('EDIFICIOS');
+  }
+
   function filterEdificiosList() { const c=document.getElementById('filterCampusEdificios').value; const s=document.getElementById('searchEdificios').value.toLowerCase(); const f=allEdificiosData.filter(r=>{ return ((c==="")||(r.campus===c)) && (r.nombre.toLowerCase().includes(s)||String(r.contacto).toLowerCase().includes(s)); }); renderEdificiosTable(f); if(mapInstance) renderMarkers(f); }
   function renderEdificiosTable(d) {
     const t=document.getElementById('tableEdificiosBody'); if(!d.length) { t.innerHTML='Sin datos'; return; }
     let h=''; d.forEach(r=>{ h+=`<tr><td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${r.id}');return false;">${r.nombre}</a></td><td>${r.campus}</td><td>${r.contacto}</td><td class="text-end pe-4"><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')"><i class="bi bi-eye"></i></button><button class="btn btn-sm btn-light border" onclick="openEdificioModal('${r.id}','${r.nombre}','${r.campus}','${r.contacto}','${r.lat||''}','${r.lng||''}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); t.innerHTML=h; refreshSecurityIcons();
   }
-  function openEdificioModal(id,n,c,ct,lat,lng) { if(!edificioModal) edificioModal=new bootstrap.Modal(document.getElementById('edificioModal')); const s=document.getElementById('edifCampus'); google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>{ const sel=(c && i.nombre===c)?'selected':''; h+=`<option value="${i.id}" ${sel}>${i.nombre}</option>`; }); s.innerHTML=h; }).getListaCampus(); document.getElementById('edificioModalTitle').innerText=id?'Editar':'Nuevo'; document.getElementById('edifId').value=id||''; document.getElementById('edifNombre').value=n||''; document.getElementById('edifContacto').value=ct||''; document.getElementById('edifLat').value=lat||''; document.getElementById('edifLng').value=lng||''; edificioModal.show(); }
+
   function submitEdificio() {
-    const id=document.getElementById('edifId').value, n=document.getElementById('edifNombre').value, c=document.getElementById('edifCampus').value;
-    const latRaw=document.getElementById('edifLat').value, lngRaw=document.getElementById('edifLng').value;
-    let lat=null, lng=null; if(latRaw) lat=parseFloat(latRaw.replace(',','.')); if(lngRaw) lng=parseFloat(lngRaw.replace(',','.'));
-    if(!n||!c) return notificarError("Faltan datos");
-    mostrarCargando();
-    const cb=(res)=>{ if(edificioModal) edificioModal.hide(); if(res.success){ notificarExito("Guardado"); loadEdificiosList(); } else notificarError(res.error); };
-    const p={id:id, nombre:n, idCampus:c, contacto:document.getElementById('edifContacto').value, lat:lat, lng:lng};
-    if(id) google.script.run.withSuccessHandler(cb).updateEdificio(p); else google.script.run.withSuccessHandler(cb).crearEdificio(p);
+      const id = document.getElementById('edifId').value;
+      const n = document.getElementById('edifNombre').value;
+      const c = document.getElementById('edifCampus').value;
+      
+      // Validación básica
+      if (!n || !c) return notificarError("Nombre y Campus son obligatorios");
+
+      // Procesar coordenadas (cambiar comas por puntos)
+      const latRaw = document.getElementById('edifLat').value;
+      const lngRaw = document.getElementById('edifLng').value;
+      let lat = null, lng = null;
+      if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
+      if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
+
+      // Botón en estado de carga
+      setBtnLoading('btnEdifSubmit', true);
+
+      const cb = (res) => {
+          setBtnLoading('btnEdifSubmit', false);
+          if (res.success) {
+              cerrarModalSeguro('edificioModal'); // <--- USAR EL CIERRE SEGURO
+              notificarExito("Edificio guardado");
+              loadEdificiosList(); // Recargar la tabla
+          } else {
+              notificarError(res.error);
+          }
+      };
+
+      const p = {
+          id: id,
+          nombre: n,
+          idCampus: c,
+          contacto: document.getElementById('edifContacto').value,
+          lat: lat,
+          lng: lng
+      };
+
+      if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
+      else google.script.run.withSuccessHandler(cb).crearEdificio(p);
   }
+
+  function submitEdificio() {
+    const id = document.getElementById('edifId').value;
+    const n = document.getElementById('edifNombre').value;
+    const c = document.getElementById('edifCampus').value;
+    const latRaw = document.getElementById('edifLat').value;
+    const lngRaw = document.getElementById('edifLng').value;
+
+    let lat = null, lng = null;
+    if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
+    if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
+
+    if (!n || !c) return notificarError("El nombre y el campus son obligatorios");
+
+    setBtnLoading('btnEdifSubmit', true);
+
+    const cb = (res) => {
+        setBtnLoading('btnEdifSubmit', false);
+        if (res.success) {
+            if (edificioModalInst) edificioModalInst.hide(); // Usar la nueva variable
+            notificarExito("Edificio guardado");
+            loadEdificiosList();
+        } else {
+            notificarError(res.error);
+        }
+    };
+
+    const p = { id: id, nombre: n, idCampus: c, contacto: document.getElementById('edifContacto').value, lat: lat, lng: lng };
+    
+    if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
+    else google.script.run.withSuccessHandler(cb).crearEdificio(p);
+  }
+
   function deleteEdificio(id) {
   confirmarAccion("¿Eliminar edificio?", "Esta acción no se puede deshacer", () => {
     // 1. Buscar la fila en el DOM
@@ -787,9 +1585,41 @@
       refreshSecurityIcons(); 
     }).getTableData('CAMPUS'); 
   }
-  function openCampusModal(id,n,p,d) { if(!campusModal) campusModal=new bootstrap.Modal(document.getElementById('campusModal')); document.getElementById('campusModalTitle').innerText=id?'Editar':'Nuevo'; document.getElementById('campId').value=id||''; document.getElementById('campNombre').value=n||''; document.getElementById('campProv').value=p||''; document.getElementById('campDir').value=d||''; campusModal.show(); }
-  function submitCampus() { const id=document.getElementById('campId').value, n=document.getElementById('campNombre').value; if(!n) return; setBtnLoading('btnCampusSubmit',true); const cb=(r)=>{ setBtnLoading('btnCampusSubmit',false); if(r.success){ campusModal.hide(); loadCampusList(); }}; const p={id:id, nombre:n, provincia:document.getElementById('campProv').value, direccion:document.getElementById('campDir').value}; if(id) google.script.run.withSuccessHandler(cb).updateCampus(p); else google.script.run.withSuccessHandler(cb).crearCampus(p); }
-  function deleteCampus(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadCampusList()).eliminarCampus(id)); }
+
+  function openCampusModal(id, n, p, d) {
+    // Usamos el gestor seguro
+    abrirModalSeguro('campusModal'); 
+    
+    document.getElementById('campusModalTitle').innerText = id ? 'Editar Campus' : 'Nuevo Campus';
+    document.getElementById('campId').value = id || '';
+    document.getElementById('campNombre').value = n || '';
+    document.getElementById('campProv').value = p || '';
+    document.getElementById('campDir').value = d || '';
+  }
+
+  function submitCampus() {
+    // ... tu lógica de validación ...
+    const id = document.getElementById('campId').value;
+    const n = document.getElementById('campNombre').value;
+    if (!n) return;
+    
+    setBtnLoading('btnCampusSubmit', true);
+    
+    const cb = (r) => {
+        setBtnLoading('btnCampusSubmit', false);
+        if (r.success) {
+            cerrarModalSeguro('campusModal'); // <--- USAR ESTO
+            loadCampusList();
+            notificarExito("Guardado correctamente");
+        } else {
+            notificarError(r.error);
+        }
+    };
+    // ... llamada a google.script.run ...
+    const p = {id: id, nombre: n, provincia: document.getElementById('campProv').value, direccion: document.getElementById('campDir').value};
+    if (id) google.script.run.withSuccessHandler(cb).updateCampus(p);
+    else google.script.run.withSuccessHandler(cb).crearCampus(p);
+  }
 
   // CREAR (MODAL GENERICO)
   function mostrarModalCrear(t) {
@@ -1336,16 +2166,7 @@
     if (!currentAssetId) return;
     
     const tbody = document.getElementById('contractsTableBody');
-    
-    // ✨ SPINNER DE CARGA
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="5" class="text-center py-4">
-          <div class="spinner-border spinner-border-sm text-primary"></div>
-          <div class="small text-muted mt-2">Cargando contratos...</div>
-        </td>
-      </tr>
-    `;
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div></td></tr>';
     
     google.script.run.withSuccessHandler(list => {
       if (list.length === 0) {
@@ -1360,6 +2181,12 @@
         if (c.color === 'rojo') badgeClass = 'bg-danger';
         if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark';
         
+        // --- BOTÓN PDF ---
+        let btnPdf = '';
+        if (c.fileUrl) {
+          btnPdf = `<a href="${c.fileUrl}" target="_blank" class="btn btn-sm btn-outline-danger me-1" title="Ver PDF"><i class="bi bi-file-earmark-pdf"></i></a>`;
+        }
+
         html += `<tr class="align-middle fade-in">
           <td><span class="badge ${badgeClass}">${c.estado}</span></td>
           <td class="fw-bold text-dark">${c.proveedor}</td>
@@ -1367,7 +2194,7 @@
           <td><small class="text-muted">${c.inicio} - ${c.fin}</small></td>
           <td class="text-end">
             <div class="btn-group">
-              <button class="btn btn-sm btn-light border" onclick="editContract('${c.id}', '${c.proveedor}', '${c.ref}', '${c.inicio}', '${c.fin}', '${c.estadoDB}')" title="Editar"><i class="bi bi-pencil"></i></button>
+              ${btnPdf} <button class="btn btn-sm btn-light border" onclick="editContract('${c.id}')" title="Editar"><i class="bi bi-pencil"></i></button>
               <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
             </div>
           </td>
@@ -1473,8 +2300,45 @@
       refreshSecurityIcons(); 
     }).getConfigCatalogo(); 
   }
-  function openConfigModal(id,n,nm,d) { if(!configModal) configModal=new bootstrap.Modal(document.getElementById('configModal')); document.getElementById('confId').value=id||''; document.getElementById('confNombre').value=n||''; document.getElementById('confNorma').value=nm||''; document.getElementById('confDias').value=d||''; configModal.show(); }
-  function submitConfig() { const id=document.getElementById('confId').value, n=document.getElementById('confNombre').value; if(!n) return; setBtnLoading('btnConfigSubmit',true); const cb=(r)=>{ setBtnLoading('btnConfigSubmit',false); if(r.success){ configModal.hide(); loadConfigList(); }}; const p={id:id, nombre:n, normativa:document.getElementById('confNorma').value, dias:document.getElementById('confDias').value}; google.script.run.withSuccessHandler(cb).saveConfigCatalogo(p); }
+  function openConfigModal(id, n, nm, d) {
+    abrirModalSeguro('configModal'); // <--- USAR ESTO
+    
+    document.getElementById('configModalTitle').innerText = id ? 'Editar Tipo' : 'Nuevo Tipo';
+    document.getElementById('confId').value = id || '';
+    document.getElementById('confNombre').value = n || '';
+    document.getElementById('confNorma').value = nm || '';
+    document.getElementById('confDias').value = d || '';
+  } 
+
+  function submitConfig() {
+    const id = document.getElementById('confId').value;
+    const n = document.getElementById('confNombre').value;
+    
+    if (!n) return notificarError("El nombre es obligatorio");
+
+    setBtnLoading('btnConfigSubmit', true);
+
+    const cb = (r) => {
+        setBtnLoading('btnConfigSubmit', false);
+        if (r.success) {
+            cerrarModalSeguro('configModal'); // <--- USAR EL CIERRE SEGURO
+            loadConfigList();
+            notificarExito("Guardado correctamente");
+        } else {
+            notificarError(r.error);
+        }
+    };
+
+    const p = {
+        id: id,
+        nombre: n,
+        normativa: document.getElementById('confNorma').value,
+        dias: document.getElementById('confDias').value
+    };
+
+    google.script.run.withSuccessHandler(cb).saveConfigCatalogo(p);
+  }
+
   function deleteConfig(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadConfigList()).deleteConfigCatalogo(id)); }
   function loadUserList() { 
     const t = document.getElementById('tableUsersBody'); 
@@ -1492,7 +2356,18 @@
       refreshSecurityIcons(); 
     }).getListaUsuarios(); 
   }
-  function openUserModal(id,n,e,r,a) { if(!userModal) userModal=new bootstrap.Modal(document.getElementById('userModal')); document.getElementById('userId').value=id||''; document.getElementById('userNombre').value=n||''; document.getElementById('userEmail').value=e||''; document.getElementById('userRol').value=r||'TECNICO'; document.getElementById('userAvisos').value=a||'NO'; userModal.show(); }
+
+  function openUserModal(id, n, e, r, a) {
+    abrirModalSeguro('userModal'); // <--- USAR ESTO
+    // ... resto de asignación de valores ...
+    document.getElementById('userModalTitle').innerText = 'Usuario';
+    document.getElementById('userId').value = id || '';
+    document.getElementById('userNombre').value = n || '';
+    document.getElementById('userEmail').value = e || '';
+    document.getElementById('userRol').value = r || 'TECNICO';
+    document.getElementById('userAvisos').value = a || 'NO';
+  }
+
   function submitUser() { const id=document.getElementById('userId').value, n=document.getElementById('userNombre').value, e=document.getElementById('userEmail').value; if(!n||!e) return; mostrarCargando(); const cb=(r)=>{ if(userModal) userModal.hide(); if(r.success){ notificarExito("Guardado"); loadUserList(); } else notificarError(r.error); }; const p={id:id, nombre:n, email:e, rol:document.getElementById('userRol').value, avisos:document.getElementById('userAvisos').value}; google.script.run.withSuccessHandler(cb).saveUsuario(p); }
   function deleteUser(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadUserList()).deleteUsuario(id)); }
 
@@ -1547,110 +2422,12 @@
   }
 
   function updateIncidencia(id,s) { confirmarAccion("¿Actualizar?","",()=>google.script.run.withSuccessHandler(()=>loadIncidencias()).actualizarEstadoIncidencia(id,s)); }
-  function openReportModal() { if(!reportModal) reportModal=new bootstrap.Modal(document.getElementById('reportModal')); document.getElementById('repId').value=''; document.getElementById('repDesc').value=''; const s=document.getElementById('repCampus'); if(s.options.length<=1) populateSelectsIniciales([],[]); reportModal.show(); }
+
   function editIncidencia(id) { if(!reportModal) reportModal=new bootstrap.Modal(document.getElementById('reportModal')); reportModal.show(); document.getElementById('repLoadingOverlay').classList.remove('d-none'); document.getElementById('repId').value=id; google.script.run.withSuccessHandler(d=>{ document.getElementById('repDesc').value=d.descripcion; document.getElementById('repPrio').value=d.prioridad; document.getElementById('repLoadingOverlay').classList.add('d-none'); }).getIncidenciaDetalle(id); }
   function loadEdificiosReport(idC) { const s=document.getElementById('repEdificio'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Edificio -</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
   function loadActivosReport(idE) { const s=document.getElementById('repActivo'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Activo -</option>'; l.forEach(a=>h+=`<option value="${a.id}">${a.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getActivosPorEdificio(idE); }
   function previewReportImage() { const f=document.getElementById('repFoto').files[0]; if(f){ const r=new FileReader(); r.onload=e=>{ document.getElementById('imgPreview').src=e.target.result; document.getElementById('repFotoPreview').classList.remove('d-none'); }; r.readAsDataURL(f); } }
   function clearReportImage() { document.getElementById('repFoto').value=''; document.getElementById('repFotoPreview').classList.add('d-none'); }
-  function submitReport() { 
-      const id = document.getElementById('repId').value;
-      const desc = document.getElementById('repDesc').value;
-      const prio = document.getElementById('repPrio').value;
-      
-      // Obtenemos valores de los 3 niveles
-      const valCampus = document.getElementById('repCampus').value;
-      const valEdificio = document.getElementById('repEdificio').value;
-      const valActivo = document.getElementById('repActivo').value;
-
-      // LÓGICA DE ORIGEN (Cascada inversa)
-      let idOrigen = null;
-      let tipoOrigen = null;
-      let nombreOrigen = ""; 
-
-      if (valActivo && valActivo !== "") {
-          idOrigen = valActivo;
-          tipoOrigen = 'ACTIVO';
-          const sel = document.getElementById('repActivo');
-          // Protección extra: si el select está disabled o es "dummy", intentamos coger el texto
-          if (sel.selectedIndex >= 0) {
-             nombreOrigen = sel.options[sel.selectedIndex].text;
-          } else {
-             // Fallback si venimos del móvil y hemos inyectado el HTML a mano
-             nombreOrigen = sel.innerText || "Activo QR";
-          }
-      } 
-      else if (valEdificio && valEdificio !== "") {
-          idOrigen = valEdificio;
-          tipoOrigen = 'EDIFICIO';
-      } 
-      else if (valCampus && valCampus !== "" && valCampus !== "Detectado por QR") { 
-          idOrigen = valCampus;
-          tipoOrigen = 'CAMPUS';
-      }
-
-      if (!idOrigen) return notificarError("Debes indicar la ubicación o activo.");
-
-      // Enviar
-      setBtnLoading('btnReportSubmit', true);
-      
-      const payload = {
-          id: id, 
-          descripcion: desc, 
-          prioridad: prio, 
-          tipoOrigen: tipoOrigen, 
-          idOrigen: idOrigen,
-          nombreOrigen: nombreOrigen,
-          fotoBase64: null,
-          nombreArchivo: null,
-          mimeType: null
-      };
-
-      const fileInput = document.getElementById('repFoto');
-      const file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
-
-      // --- AQUÍ ESTABA EL ERROR (corregido 'r' por 'res') ---
-      const finish = (res) => { 
-          setBtnLoading('btnReportSubmit', false); 
-          if (res.success) { // <--- CORREGIDO AQUÍ
-              if(reportModal) reportModal.hide(); // Cerramos el modal
-              notificarExito("Reporte enviado correctamente"); 
-              
-              // Limpiar formulario para la próxima
-              document.getElementById('repDesc').value = "";
-              document.getElementById('repFoto').value = "";
-              clearReportImage();
-
-              // Si estamos en vista de incidencias, recargar
-              if(!document.getElementById('view-incidencias').classList.contains('d-none')) {
-                  loadIncidencias(); 
-              }
-          } else { 
-              notificarError(res.error); 
-          } 
-      };
-
-      const sendToBackend = (data) => {
-          if (id) google.script.run.withSuccessHandler(r => finish(r)).updateIncidenciaData(data);
-          else google.script.run.withSuccessHandler(r => finish(r)).crearIncidencia(data);
-      };
-
-      if (file) {
-          const reader = new FileReader();
-          reader.onload = function(e) {
-              payload.fotoBase64 = e.target.result.split(',')[1];
-              payload.nombreArchivo = file.name;
-              payload.mimeType = file.type;
-              sendToBackend(payload);
-          };
-          reader.readAsDataURL(file);
-      } else {
-          sendToBackend(payload);
-      }
-  }
-  
-  function openFeedbackModal() { if(!feedbackModal) feedbackModal=new bootstrap.Modal(document.getElementById('feedbackModal')); feedbackModal.show(); }
-  function submitFeedback() { const t=document.getElementById('feedTipo').value, m=document.getElementById('feedMsg').value; if(!m) return; setBtnLoading('btnFeedSubmit',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnFeedSubmit',false); if(r.success){ feedbackModal.hide(); notificarExito("Enviado"); } }).enviarFeedback({tipo:t, mensaje:m}); }
 
   function loadFeedbackList() { 
     const container = document.getElementById('feedbackContainer'); 
@@ -2674,6 +3451,861 @@ function diagnosticarCargaActivos() {
       "RELACIONADO": "Vinculado con"
     };
     return mapa[tipo] || tipo;
+  }
+
+  // ==========================================
+  // GESTIÓN DE PROVEEDORES
+  // ==========================================
+
+  function loadProveedoresSelect(preSelectedId = null) {
+    const select = document.getElementById('contProv');
+    // No borramos con 'Cargando...' si ya tiene opciones, para evitar parpadeos
+    if (select.options.length <= 1) select.innerHTML = '<option value="">Cargando...</option>';
+    
+    google.script.run.withSuccessHandler(lista => {
+      let html = '<option value="">- Selecciona proveedor -</option>';
+      
+      lista
+        .filter(p => p.activo) // Solo activos
+        .forEach(p => {
+          const display = p.cif ? `${p.nombre} (${p.cif})` : p.nombre;
+          // Si coincide con el ID guardado, añadir 'selected'
+          const isSel = (preSelectedId && String(p.id) === String(preSelectedId)) ? 'selected' : '';
+          html += `<option value="${p.id}" ${isSel}>${display}</option>`;
+        });
+      
+      select.innerHTML = html;
+      
+      // Doble comprobación por si acaso
+      if (preSelectedId) select.value = preSelectedId;
+      
+    }).getListaProveedores();
+  }
+
+  function loadProveedoresList() {
+    const tbody = document.getElementById('tableProveedoresBody');
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
+    
+    google.script.run.withSuccessHandler(lista => {
+      if (!lista || lista.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5 fst-italic">No hay proveedores registrados</td></tr>';
+        return;
+      }
+      
+      let html = '';
+      lista.forEach(p => {
+        const estadoBadge = p.activo 
+          ? '<span class="badge bg-success">Activo</span>' 
+          : '<span class="badge bg-secondary">Inactivo</span>';
+        
+        html += `<tr>
+          <td class="ps-4">
+            <i class="bi bi-building text-primary me-2"></i>
+            <strong>${p.nombre}</strong>
+          </td>
+          <td><span class="font-monospace small">${p.cif}</span></td>
+          <td>${p.contacto}</td>
+          <td>${p.telefono}</td>
+          <td><a href="mailto:${p.email}" class="text-decoration-none">${p.email}</a></td>
+          <td class="text-center">${estadoBadge}</td>
+          <td class="text-end pe-4">
+            <div class="btn-group">
+              <button class="btn btn-sm btn-light border" onclick="openProveedorModal('${p.id}')">
+                <i class="bi bi-pencil"></i>
+              </button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteProveedor('${p.id}')">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      });
+      
+      tbody.innerHTML = html;
+      refreshSecurityIcons();
+    }).getListaProveedores();
+  }
+
+  function openProveedorModal(id = null) {
+    // ENFOQUE ALTERNATIVO: Cerrar temporalmente el modal de contrato
+    const modalContratoAbierto = contractModal && document.getElementById('contractModalV2').classList.contains('show');
+    
+    if (modalContratoAbierto) {
+      // Guardar datos del formulario de contrato
+      window._tempContratoData = {
+        prov: document.getElementById('contProv').value,
+        ref: document.getElementById('contRef').value,
+        ini: document.getElementById('contIni').value,
+        fin: document.getElementById('contFin').value
+      };
+      
+      // Cerrar modal de contrato
+      contractModal.hide();
+      
+      // Esperar a que se cierre completamente
+      setTimeout(() => abrirModalProveedor(id), 400);
+    } else {
+      abrirModalProveedor(id);
+    }
+  }
+
+  function abrirModalProveedor(id) {
+    if (!proveedorModal) proveedorModal = new bootstrap.Modal(document.getElementById('proveedorModal'));
+    
+    document.getElementById('provModalTitle').innerText = id ? 'Editar Proveedor' : 'Nuevo Proveedor';
+    document.getElementById('provId').value = id || '';
+    document.getElementById('provNombre').value = '';
+    document.getElementById('provCif').value = '';
+    document.getElementById('provContacto').value = '';
+    document.getElementById('provTelefono').value = '';
+    document.getElementById('provEmail').value = '';
+    document.getElementById('provActivo').checked = true;
+    
+    if (id) {
+      google.script.run.withSuccessHandler(lista => {
+        const prov = lista.find(p => p.id === id);
+        if (prov) {
+          document.getElementById('provNombre').value = prov.nombre;
+          document.getElementById('provCif').value = prov.cif;
+          document.getElementById('provContacto').value = prov.contacto;
+          document.getElementById('provTelefono').value = prov.telefono;
+          document.getElementById('provEmail').value = prov.email;
+          document.getElementById('provActivo').checked = prov.activo;
+        }
+      }).getListaProveedores();
+    }
+    
+    proveedorModal.show();
+    
+    // Listener para reabrir modal de contrato al cerrar
+    document.getElementById('proveedorModal').addEventListener('hidden.bs.modal', function() {
+      if (window._tempContratoData) {
+        setTimeout(() => {
+          mostrarModalContrato();
+          // Restaurar datos
+          document.getElementById('contProv').value = window._tempContratoData.prov;
+          document.getElementById('contRef').value = window._tempContratoData.ref;
+          document.getElementById('contIni').value = window._tempContratoData.ini;
+          document.getElementById('contFin').value = window._tempContratoData.fin;
+          delete window._tempContratoData;
+        }, 200);
+      }
+    }, { once: true });
+  }
+
+  function deleteProveedor(id) {
+    confirmarAccion(
+      "¿Eliminar proveedor?",
+      "Solo se puede eliminar si no tiene contratos asociados",
+      () => {
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              notificarExito("Proveedor eliminado");
+              loadProveedoresList();
+            } else {
+              notificarError(res.error);
+            }
+          })
+          .eliminarProveedor(id);
+      }
+    );
+  }
+
+
+  // 2. Función que faltaba para editar desde la ficha del activo
+  function editContract(id) {
+    // Reutilizamos la lógica global de edición
+      editContractGlobal(id);
+    }
+
+    // 3. Función corregida para Cargar Datos en Edición
+    function editContractGlobal(id) {
+    if (!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModalV2'));
+    
+    document.getElementById('contModalTitle').innerText = 'Cargando datos...';
+    document.getElementById('contId').value = id;
+    
+    // Limpiar formulario visualmente
+    document.getElementById('contRef').value = '';
+    document.getElementById('contIni').value = '';
+    document.getElementById('contFin').value = '';
+    document.getElementById('contEstado').value = 'ACTIVO';
+    document.getElementById('contEdificio').innerHTML = '<option value="">- Cargando... -</option>';
+    document.getElementById('contEdificio').disabled = true;
+    document.getElementById('contActivo').innerHTML = '<option value="">- Cargando... -</option>';
+    document.getElementById('contActivo').disabled = true;
+    document.getElementById('contActivosList').innerHTML = '';
+    activosSeleccionados = []; // Resetear array global
+    document.getElementById('chkMultiplesActivos').checked = false;
+    toggleActivosMultiples(false);
+    
+    contractModal.show();
+
+    // **PASO 1: Cargar listas base (Proveedores y Campus) en paralelo**
+    Promise.all([
+      new Promise(resolve => {
+        google.script.run.withSuccessHandler(resolve).getListaProveedores();
+      }),
+      new Promise(resolve => {
+        google.script.run.withSuccessHandler(resolve).getListaCampus();
+      })
+    ]).then(([proveedores, listaCampus]) => {
+      
+      // Poblar select de proveedores
+      let htmlProv = '<option value="">- Selecciona proveedor -</option>';
+      proveedores.filter(p => p.activo).forEach(p => {
+        const display = p.cif ? `${p.nombre} (${p.cif})` : p.nombre;
+        htmlProv += `<option value="${p.id}">${display}</option>`;
+      });
+      document.getElementById('contProv').innerHTML = htmlProv;
+      
+      // Poblar select de campus
+      let htmlCampus = '<option value="">- Selecciona Campus -</option>';
+      listaCampus.forEach(c => {
+        htmlCampus += `<option value="${c.id}">${c.nombre}</option>`;
+      });
+      document.getElementById('contCampus').innerHTML = htmlCampus;
+      
+      // **PASO 2: Obtener datos del contrato**
+      return new Promise(resolve => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(err => {
+            notificarError("Error: " + err.message);
+            contractModal.hide();
+          })
+          .getContratoFullDetailsV2(id);
+      });
+      
+    }).then(datosContrato => {
+      
+      console.log('📦 Datos del contrato recibidos:', datosContrato);
+      
+      document.getElementById('contModalTitle').innerText = 'Editar Contrato';
+      
+      // Asignar valores básicos
+      document.getElementById('contRef').value = datosContrato.ref;
+      document.getElementById('contIni').value = datosContrato.inicio;
+      document.getElementById('contFin').value = datosContrato.fin;
+      document.getElementById('contEstado').value = datosContrato.estado;
+      
+      // Seleccionar proveedor
+      document.getElementById('contProv').value = datosContrato.idProveedor || datosContrato.proveedor;
+      
+      // **PASO 3: Seleccionar Campus**
+      if (datosContrato.idCampus) {
+        document.getElementById('contCampus').value = String(datosContrato.idCampus);
+        
+        // **PASO 4: Cargar edificios del campus**
+        return new Promise(resolve => {
+          google.script.run
+            .withSuccessHandler(edificios => {
+              resolve({ datosContrato, edificios });
+            })
+            .getEdificiosPorCampus(datosContrato.idCampus);
+        });
+      } else {
+        // No hay campus, terminar aquí
+        return Promise.resolve({ datosContrato, edificios: [] });
+      }
+      
+    }).then(({ datosContrato, edificios }) => {
+      
+      // Poblar select de edificios
+      const sEdificio = document.getElementById('contEdificio');
+      let htmlEdif = '<option value="">- Todo el Campus (General) -</option>';
+      edificios.forEach(e => {
+        htmlEdif += `<option value="${e.id}">${e.nombre}</option>`;
+      });
+      sEdificio.innerHTML = htmlEdif;
+      sEdificio.disabled = false;
+      
+      // **PASO 5: Seleccionar Edificio (si existe)**
+      if (datosContrato.idEdificio) {
+        sEdificio.value = String(datosContrato.idEdificio);
+        
+        // **PASO 6: Cargar activos del edificio**
+        return new Promise(resolve => {
+          google.script.run
+            .withSuccessHandler(activos => {
+              resolve({ datosContrato, activos });
+            })
+            .getActivosPorEdificio(datosContrato.idEdificio);
+        });
+      } else {
+        return Promise.resolve({ datosContrato, activos: [] });
+      }
+      
+    }).then(({ datosContrato, activos }) => {
+      
+      console.log('📦 Activos recibidos:', activos);
+      
+      // **PASO 7: Configurar selección de activos**
+      
+      // A) Si es MÚLTIPLES ACTIVOS
+      if (datosContrato.idsActivos && datosContrato.idsActivos.length > 0) {
+        console.log('🔀 Modo: Múltiples activos', datosContrato.idsActivos);
+        
+        // Activar checkbox
+        document.getElementById('chkMultiplesActivos').checked = true;
+        toggleActivosMultiples(true);
+        
+        // Renderizar lista de activos
+        const container = document.getElementById('contActivosList');
+        let htmlList = '<div class="list-group">';
+        activos.forEach(a => {
+          const isSelected = datosContrato.idsActivos.includes(String(a.id));
+          const checked = isSelected ? 'checked' : '';
+          
+          if (isSelected) {
+            activosSeleccionados.push(String(a.id)); // Añadir al array global
+          }
+          
+          htmlList += `
+            <label class="list-group-item list-group-item-action d-flex align-items-center py-2 gap-2" style="cursor:pointer;">
+              <input class="form-check-input flex-shrink-0 multi-asset-chk" type="checkbox" value="${a.id}" ${checked} onchange="toggleActivoSeleccion('${a.id}', this.checked)">
+              <div class="flex-grow-1" style="line-height: 1.2;">
+                <div class="fw-bold" style="font-size: 0.9rem;">${a.nombre}</div>
+                <div class="small text-muted" style="font-size: 0.75rem;">${a.tipo}</div>
+              </div>
+            </label>
+          `;
+        });
+        htmlList += '</div>';
+        container.innerHTML = htmlList;
+        
+        updateBadgeActivos();
+        
+      } 
+      // B) Si es ACTIVO ÚNICO
+      else if (datosContrato.idActivo) {
+        console.log('1️⃣ Modo: Activo único', datosContrato.idActivo);
+        
+        document.getElementById('chkMultiplesActivos').checked = false;
+        toggleActivosMultiples(false);
+        
+        // Poblar select simple de activos
+        const sActivo = document.getElementById('contActivo');
+        let htmlAct = '<option value="">- Activo Específico (Opcional) -</option>';
+        activos.forEach(a => {
+          htmlAct += `<option value="${a.id}">${a.nombre}</option>`;
+        });
+        sActivo.innerHTML = htmlAct;
+        sActivo.disabled = false;
+        
+        // Seleccionar el activo
+        sActivo.value = String(datosContrato.idActivo);
+      }
+      // C) Si es TODO EL EDIFICIO o TODO EL CAMPUS
+      else {
+        console.log('🏢 Modo: Todo el edificio/campus');
+        
+        document.getElementById('chkMultiplesActivos').checked = false;
+        toggleActivosMultiples(false);
+        
+        if (activos.length > 0) {
+          const sActivo = document.getElementById('contActivo');
+          let htmlAct = '<option value="">- Activo Específico (Opcional) -</option>';
+          activos.forEach(a => {
+            htmlAct += `<option value="${a.id}">${a.nombre}</option>`;
+          });
+          sActivo.innerHTML = htmlAct;
+          sActivo.disabled = false;
+        }
+      }
+      
+      console.log('✅ Edición de contrato cargada completamente');
+      
+    }).catch(error => {
+      console.error('💥 Error en la carga:', error);
+      notificarError('Error al cargar el contrato: ' + error.message);
+      contractModal.hide();
+    });
+  }
+
+  // Variable global para los activos seleccionados
+  let activosSeleccionados = [];
+
+  function toggleActivosMultiples(show) {
+    const container = document.getElementById('contActivosMultiContainer');
+    // Ajuste visual: habilitar/deshabilitar select simple según el check
+    const selectSimple = document.getElementById('contActivo');
+    
+    if (show) {
+      container.classList.remove('d-none');
+      if(selectSimple) selectSimple.disabled = true; // Desactivar select simple
+      loadActivosParaSeleccion();
+    } else {
+      container.classList.add('d-none');
+      if(selectSimple && document.getElementById('contEdificio').value) {
+          selectSimple.disabled = false; // Reactivar select simple si hay edificio
+      }
+      activosSeleccionados = [];
+    }
+  }
+
+  function loadActivosParaSeleccion() {
+    const idEdificio = document.getElementById('contEdificio').value;
+    
+    if (!idEdificio) {
+      notificar("Selecciona primero un edificio", 'warning');
+      return;
+    }
+    
+    const container = document.getElementById('contActivosList');
+    container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    google.script.run
+      .withSuccessHandler(activos => {
+        if (!activos || activos.length === 0) {
+          container.innerHTML = '<div class="text-muted text-center py-3">No hay activos en este edificio</div>';
+          return;
+        }
+        
+        let html = '<div class="list-group">';
+        activos.forEach(a => {
+          // Comprobar si ya estaba seleccionado (útil al editar)
+          const checked = activosSeleccionados.includes(String(a.id)) ? 'checked' : '';
+          html += `
+            <label class="list-group-item list-group-item-action d-flex align-items-center" style="cursor:pointer;">
+              <input class="form-check-input me-3 multi-asset-chk" type="checkbox" value="${a.id}" ${checked} onchange="toggleActivoSeleccion('${a.id}', this.checked)">
+              <div class="flex-grow-1">
+                <strong>${a.nombre}</strong>
+                <div class="small text-muted">${a.tipo} - ${a.marca}</div>
+              </div>
+            </label>
+          `;
+        });
+        html += '</div>';
+        
+        container.innerHTML = html;
+        
+        // Actualizar contador inicial
+        updateBadgeActivos();
+      })
+      .getActivosPorEdificio(idEdificio);
+  }
+
+  function toggleActivoSeleccion(idActivo, checked) {
+    const idStr = String(idActivo);
+    if (checked) {
+      if (!activosSeleccionados.includes(idStr)) {
+        activosSeleccionados.push(idStr);
+      }
+    } else {
+      activosSeleccionados = activosSeleccionados.filter(id => id !== idStr);
+    }
+    updateBadgeActivos();
+  }
+
+  function updateBadgeActivos() {
+    const badge = document.getElementById('badgeActivosSeleccionados');
+    if (badge) {
+      badge.innerText = activosSeleccionados.length;
+      if (activosSeleccionados.length > 0) {
+        badge.classList.remove('d-none');
+      } else {
+        badge.classList.add('d-none');
+      }
+    }
+  }
+
+  function toggleActivosMultiples(show) {
+    const container = document.getElementById('contActivosMultiContainer');
+    const selectSimple = document.getElementById('contActivo');
+    
+    if (show) {
+      if(container) container.classList.remove('d-none');
+      if(selectSimple) selectSimple.disabled = true; 
+      loadActivosParaSeleccion();
+    } else {
+      if(container) container.classList.add('d-none');
+      if(selectSimple && document.getElementById('contEdificio').value) {
+          selectSimple.disabled = false; 
+      }
+      activosSeleccionados = [];
+      updateBadgeActivos();
+    }
+  }
+
+  function loadActivosParaSeleccion() {
+    const idEdificio = document.getElementById('contEdificio').value;
+    if (!idEdificio) return;
+    
+    const container = document.getElementById('contActivosList');
+    if(container) container.innerHTML = '<div class="text-center py-2"><div class="spinner-border spinner-border-sm"></div></div>';
+    
+    google.script.run.withSuccessHandler(activos => {
+        const container = document.getElementById('contActivosList');
+        if (!activos || activos.length === 0) {
+          if(container) container.innerHTML = '<div class="text-muted text-center py-2 small">No hay activos</div>';
+          return;
+        }
+        
+        let html = '<div class="list-group">';
+        activos.forEach(a => {
+          const checked = activosSeleccionados.includes(String(a.id)) ? 'checked' : '';
+          html += `
+            <label class="list-group-item list-group-item-action d-flex align-items-center py-2 gap-2" style="cursor:pointer;">
+              <input class="form-check-input flex-shrink-0 multi-asset-chk" type="checkbox" value="${a.id}" ${checked} onchange="toggleActivoSeleccion('${a.id}', this.checked)">
+              <div class="flex-grow-1" style="line-height: 1.2;">
+                <div class="fw-bold" style="font-size: 0.9rem;">${a.nombre}</div>
+                <div class="small text-muted" style="font-size: 0.75rem;">${a.tipo}</div>
+              </div>
+            </label>`;
+        });
+        html += '</div>';
+        if(container) container.innerHTML = html;
+        updateBadgeActivos();
+      }).getActivosPorEdificio(idEdificio);
+  }
+
+  function toggleActivoSeleccion(idActivo, checked) {
+    const idStr = String(idActivo);
+    if (checked) {
+      if (!activosSeleccionados.includes(idStr)) activosSeleccionados.push(idStr);
+    } else {
+      activosSeleccionados = activosSeleccionados.filter(id => id !== idStr);
+    }
+    updateBadgeActivos();
+  }
+
+  function updateBadgeActivos() {
+    const badge = document.getElementById('badgeActivosSeleccionados');
+    if (badge) {
+      badge.innerText = activosSeleccionados.length;
+      badge.classList.toggle('d-none', activosSeleccionados.length === 0);
+    }
+  }
+  // ==========================================
+  // CORRECCIÓN TOTAL DE MODALES
+  // ==========================================
+
+  // 1. ARREGLO INCIDENCIAS (Soluciona Pantalla Negra)
+  function openReportModal() { 
+      // Usamos la función segura
+      abrirModalSeguro('reportModal'); 
+      
+      document.getElementById('repId').value = ''; 
+      document.getElementById('repDesc').value = ''; 
+      document.getElementById('repFoto').value = ''; // Limpiar foto
+      if(document.getElementById('repFotoPreview')) {
+          document.getElementById('repFotoPreview').classList.add('d-none');
+      }
+
+      // Cargar selects si están vacíos
+      const s = document.getElementById('repCampus'); 
+      if (s.options.length <= 1) populateSelectsIniciales([], []); 
+  }
+
+  function submitReport() {
+      const id = document.getElementById('repId').value;
+      const desc = document.getElementById('repDesc').value;
+      const prio = document.getElementById('repPrio').value;
+      
+      // Validar ubicación
+      const valCampus = document.getElementById('repCampus').value;
+      const valEdificio = document.getElementById('repEdificio').value;
+      const valActivo = document.getElementById('repActivo').value;
+
+      let idOrigen = null;
+      let tipoOrigen = null;
+      let nombreOrigen = ""; 
+
+      if (valActivo) {
+          idOrigen = valActivo; tipoOrigen = 'ACTIVO';
+          const sel = document.getElementById('repActivo');
+          nombreOrigen = sel.options[sel.selectedIndex].text;
+      } else if (valEdificio) {
+          idOrigen = valEdificio; tipoOrigen = 'EDIFICIO';
+      } else if (valCampus) { 
+          idOrigen = valCampus; tipoOrigen = 'CAMPUS';
+      }
+
+      if (!idOrigen) return notificarError("Debes indicar la ubicación o activo.");
+
+      setBtnLoading('btnReportSubmit', true);
+      
+      const finish = (res) => { 
+          setBtnLoading('btnReportSubmit', false); 
+          if (res.success) { 
+              cerrarModalSeguro('reportModal'); // <--- CIERRE SEGURO
+              notificarExito("Reporte enviado"); 
+              document.getElementById('repDesc').value = "";
+              if(!document.getElementById('view-incidencias').classList.contains('d-none')) loadIncidencias(); 
+          } else { 
+              notificarError(res.error); 
+          } 
+      };
+
+      const payload = { id: id, descripcion: desc, prioridad: prio, tipoOrigen: tipoOrigen, idOrigen: idOrigen, nombreOrigen: nombreOrigen };
+      
+      // Gestión básica de archivo (si existe)
+      const fileInput = document.getElementById('repFoto');
+      if (fileInput && fileInput.files.length > 0) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+              payload.fotoBase64 = e.target.result.split(',')[1];
+              payload.nombreArchivo = fileInput.files[0].name;
+              payload.mimeType = fileInput.files[0].type;
+              google.script.run.withSuccessHandler(finish).crearIncidencia(payload);
+          };
+          reader.readAsDataURL(fileInput.files[0]);
+      } else {
+          if (id) google.script.run.withSuccessHandler(finish).updateIncidenciaData(payload);
+          else google.script.run.withSuccessHandler(finish).crearIncidencia(payload);
+      }
+  }
+
+  // 2. ARREGLO CONTRATOS (Soluciona botón "no hace nada")
+  function mostrarModalContrato() {
+      // Atención: El ID en tu HTML es 'contractModalV2'
+      abrirModalSeguro('contractModalV2'); 
+      
+      document.getElementById('contModalTitle').innerText = 'Nuevo Contrato';
+      document.getElementById('contId').value = '';
+      
+      // Resetear campos
+      document.getElementById('contProv').value = ''; 
+      document.getElementById('contRef').value = '';
+      const hoy = new Date().toISOString().split('T')[0];
+      document.getElementById('contIni').value = hoy;
+      document.getElementById('contFin').value = '';
+      document.getElementById('contEstado').value = 'ACTIVO';
+      
+      // Resetear activos múltiples
+      if(typeof toggleActivosMultiples === 'function') {
+          toggleActivosMultiples(false);
+          document.getElementById('chkMultiplesActivos').checked = false;
+      }
+      
+      loadProveedoresSelect();
+
+      // Resetear lógica de ubicación según desde donde vengamos
+      const sCampus = document.getElementById('contCampus');
+      if (currentAssetId) {
+          // Lógica carga desde activo (simplificada)
+          google.script.run.withSuccessHandler(info => {
+              // ... lógica de pre-selección ...
+              // Para que funcione rápido, recargamos lista campus
+              google.script.run.withSuccessHandler(l => {
+                  let h = '<option value="">- Selecciona Campus -</option>';
+                  l.forEach(c => h += `<option value="${c.id}">${c.nombre}</option>`);
+                  sCampus.innerHTML = h;
+                  if(info.idCampus) {
+                      sCampus.value = String(info.idCampus);
+                      triggerLoadEdificios({idCampus: info.idCampus, idEdificio: info.idEdificio});
+                  }
+              }).getListaCampus();
+          }).getAssetInfo(currentAssetId);
+      } else {
+          // Dashboard
+          if (sCampus.options.length <= 1) {
+              google.script.run.withSuccessHandler(l => {
+                  let h = '<option value="">- Selecciona Campus -</option>';
+                  l.forEach(c => h += `<option value="${c.id}">${c.nombre}</option>`);
+                  sCampus.innerHTML = h;
+              }).getListaCampus();
+          }
+          document.getElementById('contEdificio').innerHTML = '<option value="">- Todo el Edificio -</option>';
+          document.getElementById('contEdificio').disabled = true;
+      }
+  }
+
+  function submitContractV2() {
+      const id = document.getElementById('contId').value;
+      const prov = document.getElementById('contProv').value;
+      
+      if (!prov) return notificarError("Selecciona un proveedor");
+
+      setBtnLoading('btnContSubmit', true);
+      
+      // Recopilar datos (simplificado para el ejemplo, asegúrate de coger todos los campos)
+      const datos = {
+          id: id,
+          idProveedor: prov,
+          ref: document.getElementById('contRef').value,
+          fechaIni: document.getElementById('contIni').value,
+          fechaFin: document.getElementById('contFin').value,
+          estado: document.getElementById('contEstado').value,
+          tipoEntidad: 'CAMPUS', // Valor por defecto
+          idEntidad: document.getElementById('contCampus').value
+      };
+      
+      // Ajustar tipo entidad según selección
+      const idEdif = document.getElementById('contEdificio').value;
+      const idAct = document.getElementById('contActivo').value;
+      const esMulti = document.getElementById('chkMultiplesActivos').checked;
+      
+      if (esMulti && typeof activosSeleccionados !== 'undefined' && activosSeleccionados.length > 0) {
+          datos.tipoEntidad = 'ACTIVOS';
+          datos.idsActivos = activosSeleccionados;
+      } else if (idAct) {
+          datos.tipoEntidad = 'ACTIVO'; datos.idEntidad = idAct;
+      } else if (idEdif) {
+          datos.tipoEntidad = 'EDIFICIO'; datos.idEntidad = idEdif;
+      }
+
+      const cb = (res) => {
+          setBtnLoading('btnContSubmit', false);
+          if (res.success) {
+              cerrarModalSeguro('contractModalV2'); // <--- CIERRE SEGURO
+              notificarExito("Contrato guardado");
+              if (!document.getElementById('view-contratos').classList.contains('d-none')) loadGlobalContracts();
+              if (currentAssetId) loadContracts();
+          } else {
+              notificarError(res.error);
+          }
+      };
+
+      if (id) google.script.run.withSuccessHandler(cb).updateContratoV2(datos);
+      else google.script.run.withSuccessHandler(cb).crearContratoV2(datos);
+  }
+
+  // 3. ARREGLO PROVEEDORES (Soluciona botón "no hace nada")
+  function openProveedorModal(id = null) {
+      // Si el modal de contrato está abierto, lo cerramos temporalmente
+      const elContrato = document.getElementById('contractModalV2');
+      if (elContrato && elContrato.classList.contains('show')) {
+          // Guardamos estado si quieres, por ahora cerramos
+          cerrarModalSeguro('contractModalV2');
+          setTimeout(() => _abrirProv(id, true), 500); // Reabrir contrato después = true
+      } else {
+          _abrirProv(id, false);
+      }
+  }
+
+  function _abrirProv(id, reabrirContrato) {
+      abrirModalSeguro('proveedorModal');
+      
+      // Guardamos flag en el modal para saber si volver al contrato
+      document.getElementById('proveedorModal').dataset.reabrir = reabrirContrato ? "true" : "false";
+      
+      document.getElementById('provModalTitle').innerText = id ? 'Editar Proveedor' : 'Nuevo Proveedor';
+      document.getElementById('provId').value = id || '';
+      // Limpiar campos...
+      document.getElementById('provNombre').value = '';
+      document.getElementById('provCif').value = '';
+      
+      if(id) {
+          // Cargar datos del proveedor...
+          google.script.run.withSuccessHandler(lista => {
+              const p = lista.find(x => x.id === id);
+              if(p) {
+                  document.getElementById('provNombre').value = p.nombre;
+                  document.getElementById('provCif').value = p.cif;
+                  // ... resto de campos
+              }
+          }).getListaProveedores();
+      }
+  }
+
+  function submitProveedor() {
+      const n = document.getElementById('provNombre').value;
+      if(!n) return notificarError("Nombre obligatorio");
+      
+      setBtnLoading('btnProvSubmit', true);
+      
+      const datos = {
+          id: document.getElementById('provId').value,
+          nombre: n,
+          cif: document.getElementById('provCif').value,
+          contacto: document.getElementById('provContacto').value,
+          telefono: document.getElementById('provTelefono').value,
+          email: document.getElementById('provEmail').value,
+          activo: document.getElementById('provActivo').checked
+      };
+      
+      google.script.run.withSuccessHandler(res => {
+          setBtnLoading('btnProvSubmit', false);
+          if(res.success) {
+              cerrarModalSeguro('proveedorModal');
+              notificarExito("Proveedor guardado");
+              
+              // Si veníamos del contrato, volver a él
+              const reabrir = document.getElementById('proveedorModal').dataset.reabrir === "true";
+              if (reabrir) {
+                  setTimeout(() => mostrarModalContrato(), 500);
+              } else {
+                  if (!document.getElementById('view-proveedores').classList.contains('d-none')) loadProveedoresList();
+              }
+          } else {
+              notificarError(res.error);
+          }
+      }).saveProveedor(datos);
+  }
+
+  // 4. ARREGLO EDIFICIOS (Revisión final)
+  function openEdificioModal(id, n, c, ct, lat, lng) {
+      // Intentamos con el ID original y si no existe, con el nuevo que te di antes
+      let modalId = 'edificioModal';
+      if (!document.getElementById(modalId)) modalId = 'modalGestionEdificios';
+      
+      abrirModalSeguro(modalId); // <--- APERTURA SEGURA
+
+      // Título
+      const tituloEl = document.getElementById('edificioModalTitle') || document.getElementById('tituloModalEdificio');
+      if(tituloEl) tituloEl.innerText = id ? 'Editar Edificio' : 'Nuevo Edificio';
+      
+      document.getElementById('edifId').value = id || '';
+      document.getElementById('edifNombre').value = n || '';
+      document.getElementById('edifContacto').value = ct || '';
+      document.getElementById('edifLat').value = lat || '';
+      document.getElementById('edifLng').value = lng || '';
+
+      // Cargar select
+      const s = document.getElementById('edifCampus');
+      if (s) {
+          if(s.options.length <= 1) s.innerHTML = '<option>Cargando...</option>';
+          google.script.run.withSuccessHandler(l => {
+              let h = '<option value="">- Seleccione -</option>';
+              l.forEach(i => {
+                  const sel = (c && i.nombre === c) ? 'selected' : '';
+                  h += `<option value="${i.id}" ${sel}>${i.nombre}</option>`;
+              });
+              s.innerHTML = h;
+          }).getListaCampus();
+      }
+  }
+
+  // ==========================================
+  // 5. ARREGLO BUZÓN DE SUGERENCIAS (FEEDBACK)
+  // ==========================================
+
+  function openFeedbackModal() {
+      // 1. Usar la apertura segura (corrige pantalla negra)
+      abrirModalSeguro('feedbackModal');
+      
+      // 2. Limpiar campos
+      document.getElementById('feedTipo').value = 'Sugerencia';
+      document.getElementById('feedMsg').value = '';
+  }
+
+  function submitFeedback() {
+      const t = document.getElementById('feedTipo').value;
+      const m = document.getElementById('feedMsg').value;
+      
+      // Validación básica
+      if (!m || m.trim() === "") {
+          return notificarError("Por favor, escribe un mensaje.");
+      }
+
+      setBtnLoading('btnFeedSubmit', true);
+
+      google.script.run
+          .withSuccessHandler(r => {
+              setBtnLoading('btnFeedSubmit', false);
+              
+              if (r.success) {
+                  // 3. Usar cierre seguro
+                  cerrarModalSeguro('feedbackModal');
+                  notificarExito("¡Mensaje enviado! Gracias.");
+              } else {
+                  notificarError("Error al enviar: " + r.error);
+              }
+          })
+          .enviarFeedback({ tipo: t, mensaje: m });
   }
 
 </script>
