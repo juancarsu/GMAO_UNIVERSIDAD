@@ -1085,9 +1085,123 @@
   function eliminarRelacion(id) { confirmarAccion("¿Eliminar?","",()=>google.script.run.withSuccessHandler(()=>loadRelacionesActivo()).eliminarRelacionActivo(currentAssetId,id)); }
 
   // PLANNER
-  function initPlannerCalendar() { const el=document.getElementById('plannerCalendar'); if(plannerCalendar){ plannerCalendar.render(); if(!allPlannerEvents.length) loadPlannerEvents(); return; } plannerCalendar=new FullCalendar.Calendar(el,{ initialView:'dayGridMonth', locale:'es', headerToolbar:{left:'prev,next today', center:'title', right:'dayGridMonth,listWeek'}, editable:true, eventClick:i=>{ const p=i.event.extendedProps; if(p.tipo==='MANTENIMIENTO') editRevision(i.event.id,i.event.title,i.event.startStr,null,false); }, eventDrop:i=>{ const p=i.event.extendedProps; if(!p.editable){ i.revert(); return; } google.script.run.withSuccessHandler(r=>{ if(!r.success) i.revert(); }).updateEventDate(i.event.id,p.tipo,i.event.startStr); } }); plannerCalendar.render(); loadPlannerEvents(); }
-  function loadPlannerEvents() { google.script.run.withSuccessHandler(e=>{ allPlannerEvents=e; filterPlanner(); }).getPlannerEvents(); }
-  function filterPlanner() { if(!plannerCalendar) return; const m=document.getElementById('chkShowMant').checked, o=document.getElementById('chkShowObras').checked, i=document.getElementById('chkShowInc').checked; const f=allPlannerEvents.filter(e=>{ if(e.extendedProps.tipo==='MANTENIMIENTO'&&!m)return false; if(e.extendedProps.tipo==='OBRA'&&!o)return false; if(e.extendedProps.tipo==='INCIDENCIA'&&!i)return false; return true; }); plannerCalendar.removeAllEvents(); plannerCalendar.addEventSource(f); }
+  function initPlannerCalendar() {
+    const el = document.getElementById('plannerCalendar');
+    
+    // Si ya existe, solo renderizamos y cargamos si está vacío
+    if (plannerCalendar) {
+      plannerCalendar.render();
+      // Forzamos actualización de tamaño por si estaba oculto
+      plannerCalendar.updateSize(); 
+      if (!allPlannerEvents.length) loadPlannerEvents();
+      return;
+    }
+
+    plannerCalendar = new FullCalendar.Calendar(el, {
+      initialView: 'dayGridMonth',
+      locale: 'es',
+      height: 'auto',
+      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
+      editable: true,       // Permite Drag & Drop
+      droppable: true,
+      eventResizableFromStart: false, // Simplificamos resize
+
+      // CLIC EN EVENTO
+      eventClick: i => {
+        const p = i.event.extendedProps;
+        if (p.tipo === 'MANTENIMIENTO') {
+          // Abrir modal de revisión
+          editRevision(i.event.id, i.event.title.split('-')[0].trim(), i.event.startStr, null, false);
+        } else if (p.tipo === 'CONTRATO') {
+          // Abrir modal de contrato
+          editContractGlobal(i.event.id);
+        } else if (p.tipo === 'INCIDENCIA') {
+          editIncidencia(i.event.id);
+        } else {
+          // Obra u otros
+          Swal.fire({ title: i.event.title, text: p.descripcion, icon: 'info' });
+        }
+      },
+
+      // ARRASTRAR Y SOLTAR (Lógica mejorada)
+      eventDrop: i => {
+        const p = i.event.extendedProps;
+        
+        // Si no es editable, revertimos
+        if (!p.editable) { i.revert(); return; }
+
+        // Feedback visual inmediato
+        const originalTitle = i.event.title;
+        // i.event.setProp('title', '⏳ Guardando...'); // Opcional: cambiar título mientras guarda
+
+        google.script.run
+          .withSuccessHandler(res => {
+            if (res.success) {
+              notificarExito("Fecha actualizada");
+              // i.event.setProp('title', originalTitle); // Restaurar título
+              
+              // Si movimos un contrato, sería ideal recargar la lista de contratos en segundo plano
+              if (p.tipo === 'CONTRATO' && !document.getElementById('view-contratos').classList.contains('d-none')) {
+                  loadGlobalContracts();
+              }
+            } else {
+              i.revert(); // Volver atrás si falla
+              notificarError(res.error);
+            }
+          })
+          .withFailureHandler(err => {
+            i.revert();
+            notificarError("Error de conexión");
+          })
+          .updateEventDate(i.event.id, p.tipo, i.event.startStr);
+      }
+    });
+
+    plannerCalendar.render();
+    loadPlannerEvents();
+  }
+
+  function loadPlannerEvents() {
+    // Feedback sutil en el título
+    const title = document.querySelector('#view-planner .page-title');
+    const og = title.innerText;
+    title.innerHTML = og + ' <span class="spinner-border spinner-border-sm text-secondary"></span>';
+
+    google.script.run.withSuccessHandler(e => {
+      title.innerText = "Planificador de Trabajo";
+      allPlannerEvents = e;
+      filterPlanner();
+    }).getPlannerEvents();
+  }
+
+  function filterPlanner() {
+    if (!plannerCalendar) return;
+    
+    // Lectura segura de los checkboxes (si no existen, asumen true para no romper nada)
+    const elMant = document.getElementById('chkShowMant');
+    const m = elMant ? elMant.checked : true;
+    
+    const elObras = document.getElementById('chkShowObras');
+    const o = elObras ? elObras.checked : true;
+    
+    const elInc = document.getElementById('chkShowInc');
+    const i = elInc ? elInc.checked : true;
+    
+    const elCont = document.getElementById('chkShowCont');
+    const c = elCont ? elCont.checked : true; // Si no encuentra el botón, muestra contratos por defecto
+
+    const f = allPlannerEvents.filter(e => {
+      const tipo = e.extendedProps.tipo;
+      if (tipo === 'MANTENIMIENTO' && !m) return false;
+      if (tipo === 'OBRA' && !o) return false;
+      if (tipo === 'INCIDENCIA' && !i) return false;
+      if (tipo === 'CONTRATO' && !c) return false;
+      return true;
+    });
+
+    plannerCalendar.removeAllEvents();
+    plannerCalendar.addEventSource(f);
+  }
 
   // AUDIT
   function loadAuditYears() { const s=document.getElementById('auditYear'); s.innerHTML='Loading...'; google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(y=>h+=`<option value="${y}">${y}</option>`); s.innerHTML=h; }).getAniosAuditoria(); }
