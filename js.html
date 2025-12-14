@@ -992,7 +992,101 @@
   function loadActivosReport(idE) { const s=document.getElementById('repActivo'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Activo -</option>'; l.forEach(a=>h+=`<option value="${a.id}">${a.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getActivosPorEdificio(idE); }
   function previewReportImage() { const f=document.getElementById('repFoto').files[0]; if(f){ const r=new FileReader(); r.onload=e=>{ document.getElementById('imgPreview').src=e.target.result; document.getElementById('repFotoPreview').classList.remove('d-none'); }; r.readAsDataURL(f); } }
   function clearReportImage() { document.getElementById('repFoto').value=''; document.getElementById('repFotoPreview').classList.add('d-none'); }
-  function submitReport() { const id=document.getElementById('repId').value, d=document.getElementById('repDesc').value, c=document.getElementById('repCampus').value; if(!c) return notificarError("Ubicación necesaria"); setBtnLoading('btnReportSubmit',true); const cb=(r)=>{ setBtnLoading('btnReportSubmit',false); if(r.success){ reportModal.hide(); notificarExito("Enviado"); loadIncidencias(); } else notificarError(r.error); }; const p={id:id, descripcion:d, prioridad:document.getElementById('repPrio').value, tipoOrigen:'EDIFICIO', idOrigen:document.getElementById('repEdificio').value||c}; if(id) google.script.run.withSuccessHandler(cb).updateIncidenciaData(p); else google.script.run.withSuccessHandler(cb).crearIncidencia(p); }
+  function submitReport() { 
+      const id = document.getElementById('repId').value;
+      const desc = document.getElementById('repDesc').value;
+      const prio = document.getElementById('repPrio').value;
+      
+      // Obtenemos valores de los 3 niveles
+      const valCampus = document.getElementById('repCampus').value;
+      const valEdificio = document.getElementById('repEdificio').value;
+      const valActivo = document.getElementById('repActivo').value;
+
+      // LÓGICA DE ORIGEN (Cascada inversa)
+      let idOrigen = null;
+      let tipoOrigen = null;
+      let nombreOrigen = ""; 
+
+      if (valActivo && valActivo !== "") {
+          idOrigen = valActivo;
+          tipoOrigen = 'ACTIVO';
+          const sel = document.getElementById('repActivo');
+          // Protección extra: si el select está disabled o es "dummy", intentamos coger el texto
+          if (sel.selectedIndex >= 0) {
+             nombreOrigen = sel.options[sel.selectedIndex].text;
+          } else {
+             // Fallback si venimos del móvil y hemos inyectado el HTML a mano
+             nombreOrigen = sel.innerText || "Activo QR";
+          }
+      } 
+      else if (valEdificio && valEdificio !== "") {
+          idOrigen = valEdificio;
+          tipoOrigen = 'EDIFICIO';
+      } 
+      else if (valCampus && valCampus !== "" && valCampus !== "Detectado por QR") { 
+          idOrigen = valCampus;
+          tipoOrigen = 'CAMPUS';
+      }
+
+      if (!idOrigen) return notificarError("Debes indicar la ubicación o activo.");
+
+      // Enviar
+      setBtnLoading('btnReportSubmit', true);
+      
+      const payload = {
+          id: id, 
+          descripcion: desc, 
+          prioridad: prio, 
+          tipoOrigen: tipoOrigen, 
+          idOrigen: idOrigen,
+          nombreOrigen: nombreOrigen,
+          fotoBase64: null,
+          nombreArchivo: null,
+          mimeType: null
+      };
+
+      const fileInput = document.getElementById('repFoto');
+      const file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
+
+      // --- AQUÍ ESTABA EL ERROR (corregido 'r' por 'res') ---
+      const finish = (res) => { 
+          setBtnLoading('btnReportSubmit', false); 
+          if (res.success) { // <--- CORREGIDO AQUÍ
+              if(reportModal) reportModal.hide(); // Cerramos el modal
+              notificarExito("Reporte enviado correctamente"); 
+              
+              // Limpiar formulario para la próxima
+              document.getElementById('repDesc').value = "";
+              document.getElementById('repFoto').value = "";
+              clearReportImage();
+
+              // Si estamos en vista de incidencias, recargar
+              if(!document.getElementById('view-incidencias').classList.contains('d-none')) {
+                  loadIncidencias(); 
+              }
+          } else { 
+              notificarError(res.error); 
+          } 
+      };
+
+      const sendToBackend = (data) => {
+          if (id) google.script.run.withSuccessHandler(r => finish(r)).updateIncidenciaData(data);
+          else google.script.run.withSuccessHandler(r => finish(r)).crearIncidencia(data);
+      };
+
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+              payload.fotoBase64 = e.target.result.split(',')[1];
+              payload.nombreArchivo = file.name;
+              payload.mimeType = file.type;
+              sendToBackend(payload);
+          };
+          reader.readAsDataURL(file);
+      } else {
+          sendToBackend(payload);
+      }
+  }
   
   function openFeedbackModal() { if(!feedbackModal) feedbackModal=new bootstrap.Modal(document.getElementById('feedbackModal')); feedbackModal.show(); }
   function submitFeedback() { const t=document.getElementById('feedTipo').value, m=document.getElementById('feedMsg').value; if(!m) return; setBtnLoading('btnFeedSubmit',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnFeedSubmit',false); if(r.success){ feedbackModal.hide(); notificarExito("Enviado"); } }).enviarFeedback({tipo:t, mensaje:m}); }
@@ -1568,28 +1662,36 @@
   function openReportFromMobile(btn) {
     setMobBtnLoading(btn, true);
 
-    // Usamos un pequeño timeout para que el navegador renderice el spinner antes de bloquearse abriendo el modal
     setTimeout(() => {
         if (!reportModal) reportModal = new bootstrap.Modal(document.getElementById('reportModal'));
         
         document.getElementById('repId').value = '';
         document.getElementById('repDesc').value = '';
         
-        // Bloqueamos selects
-        document.getElementById('repCampus').disabled = true; 
-        document.getElementById('repEdificio').disabled = true;
+        // --- TRUCO VISUAL ---
+        // 1. Deshabilitamos los selects de ubicación
+        const sCampus = document.getElementById('repCampus');
+        const sEdificio = document.getElementById('repEdificio');
+        const sActivo = document.getElementById('repActivo');
+
+        sCampus.disabled = true; 
+        sEdificio.disabled = true;
         
-        // Configurar título/contexto
+        // 2. Les ponemos una opción "dummy" para que parezca que están rellenos
+        // (Esto es solo estético, para que el usuario no vea "Selecciona...")
+        sCampus.innerHTML = '<option selected>Detectado por QR</option>';
+        sEdificio.innerHTML = '<option selected>Ubicación del Activo</option>';
+        
+        // 3. Configurar el Activo (LO IMPORTANTE)
         const nombre = document.getElementById('mob-asset-name').innerText;
         
-        // Pre-selección forzada visual
-        const sActivo = document.getElementById('repActivo');
+        // Forzamos el ID y el Nombre en el select de activo
         sActivo.innerHTML = `<option value="${currentMobileId}" selected>${nombre}</option>`;
-        sActivo.disabled = false; 
+        sActivo.disabled = false; // Importante: Debe estar habilitado para que submitReport lea el valor
 
+        // Abrir modal
         reportModal.show();
         
-        // Restauramos el botón después de que el modal haya aparecido
         setTimeout(() => setMobBtnLoading(btn, false), 500);
     }, 50);
   }
