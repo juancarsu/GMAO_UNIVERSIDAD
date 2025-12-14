@@ -134,24 +134,41 @@ function invalidateCache(sheetName) {
 /**
  * Crear índices optimizados para búsquedas rápidas
  */
+
 function buildActivosIndex() {
   const cacheKey = 'INDEX_ACTIVOS';
   
+  // 1. INTENTAR LEER DESDE CACHÉ
   try {
     const cached = CACHE.get(cacheKey);
     if (cached) {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      Logger.log('✅ Índice cargado desde caché');
+      return parsed;
     }
   } catch(e) {
-    Logger.log('Error leyendo caché de índice: ' + e);
+    Logger.log('⚠️ Error leyendo caché de índice: ' + e);
   }
   
+  // 2. CONSTRUIR ÍNDICE DESDE CERO
   try {
+    Logger.log('🔨 Construyendo índice desde hojas...');
+    
     const activos = getCachedSheetData('ACTIVOS');
     const edificios = getCachedSheetData('EDIFICIOS');
     const campus = getCachedSheetData('CAMPUS');
     
-    // Crear mapas rápidos
+    if (!activos || !Array.isArray(activos) || activos.length < 2) {
+      Logger.log('⚠️ ADVERTENCIA: Hoja ACTIVOS vacía');
+      return {
+        byId: {},
+        byEdificio: {},
+        byCampus: {},
+        searchable: []
+      };
+    }
+    
+    // Crear mapas de Campus
     const mapCampus = {};
     if (campus && campus.length > 1) {
       campus.slice(1).forEach(r => {
@@ -160,7 +177,9 @@ function buildActivosIndex() {
         }
       });
     }
+    Logger.log(`📍 ${Object.keys(mapCampus).length} campus mapeados`);
     
+    // Crear mapas de Edificios
     const mapEdificios = {};
     if (edificios && edificios.length > 1) {
       edificios.slice(1).forEach(r => {
@@ -173,8 +192,9 @@ function buildActivosIndex() {
         }
       });
     }
+    Logger.log(`🏢 ${Object.keys(mapEdificios).length} edificios mapeados`);
     
-    // Índice principal de activos
+    // Índice principal
     const index = {
       byId: {},
       byEdificio: {},
@@ -182,13 +202,27 @@ function buildActivosIndex() {
       searchable: []
     };
     
-    if (activos && activos.length > 1) {
-      activos.slice(1).forEach(r => {
-        if (!r || !r[0]) return; // Skip filas vacías
+    let procesados = 0;
+    let errores = 0;
+    
+    // Procesar cada activo
+    activos.slice(1).forEach((r, idx) => {
+      try {
+        if (!r || !r[0]) return;
         
         const id = String(r[0]);
         const idEdif = String(r[1] || '');
         const edifInfo = mapEdificios[idEdif] || {};
+        
+        // ✅ CONVERTIR FECHA A STRING (CRÍTICO)
+        let fechaAltaStr = null;
+        if (r[5]) {
+          if (r[5] instanceof Date) {
+            fechaAltaStr = Utilities.formatDate(r[5], Session.getScriptTimeZone(), "dd/MM/yyyy");
+          } else {
+            fechaAltaStr = String(r[5]);
+          }
+        }
         
         const activo = {
           id: id,
@@ -196,7 +230,7 @@ function buildActivosIndex() {
           tipo: r[2] || '-',
           nombre: r[3] || 'Sin nombre',
           marca: r[4] || '',
-          fechaAlta: r[5] || null,
+          fechaAlta: fechaAltaStr, // ✅ STRING, no Date
           edificio: edifInfo.nombre || '-',
           campus: edifInfo.campusNombre || '-',
           idCampus: edifInfo.idCampus || null
@@ -207,42 +241,62 @@ function buildActivosIndex() {
         
         // Por Edificio
         if (idEdif) {
-          if (!index.byEdificio[idEdif]) index.byEdificio[idEdif] = [];
+          if (!index.byEdificio[idEdif]) {
+            index.byEdificio[idEdif] = [];
+          }
           index.byEdificio[idEdif].push(activo);
         }
         
         // Por Campus
         if (edifInfo.idCampus) {
-          if (!index.byCampus[edifInfo.idCampus]) index.byCampus[edifInfo.idCampus] = [];
+          if (!index.byCampus[edifInfo.idCampus]) {
+            index.byCampus[edifInfo.idCampus] = [];
+          }
           index.byCampus[edifInfo.idCampus].push(activo);
         }
         
-        // Para búsquedas de texto
+        // Para búsquedas
         const searchText = (activo.nombre + ' ' + activo.tipo + ' ' + activo.marca).toLowerCase();
         index.searchable.push({
           id: id,
           text: searchText
         });
-      });
+        
+        procesados++;
+        
+      } catch(e) {
+        Logger.log(`❌ Error procesando activo en fila ${idx + 2}: ${e.toString()}`);
+        errores++;
+      }
+    });
+    
+    Logger.log(`✅ Índice construido: ${procesados} activos procesados, ${errores} errores`);
+    Logger.log(`📊 Edificios con activos: ${Object.keys(index.byEdificio).length}`);
+    
+    const ejemploEdif = Object.keys(index.byEdificio)[0];
+    if (ejemploEdif) {
+      Logger.log(`🔍 Ejemplo - Edificio ${ejemploEdif} tiene ${index.byEdificio[ejemploEdif].length} activos`);
     }
     
-    // Guardar índice en caché
+    // Guardar en caché
     try {
       const serialized = JSON.stringify(index);
       if (serialized.length < 90000) {
         CACHE.put(cacheKey, serialized, CACHE_TIME);
+        Logger.log('💾 Índice guardado en caché');
       } else {
-        Logger.log('Índice demasiado grande para caché: ' + serialized.length);
+        Logger.log('⚠️ Índice demasiado grande para caché: ' + serialized.length + ' bytes');
       }
     } catch(e) {
-      Logger.log('Error guardando índice en caché: ' + e);
+      Logger.log('⚠️ Error guardando índice en caché: ' + e);
     }
     
     return index;
     
   } catch(e) {
-    Logger.log('Error construyendo índice: ' + e.toString());
-    // Devolver índice vacío en caso de error
+    Logger.log('💥 ERROR CRÍTICO construyendo índice: ' + e.toString());
+    Logger.log('Stack trace: ' + e.stack);
+    
     return {
       byId: {},
       byEdificio: {},
@@ -251,7 +305,6 @@ function buildActivosIndex() {
     };
   }
 }
-
 // ==========================================
 // 2. SEGURIDAD Y ROLES
 // ==========================================
@@ -334,42 +387,86 @@ function getEdificiosPorCampus(idCampus) { const data = getSheetData('EDIFICIOS'
 
 function getActivosPorEdificio(idEdificio) {
   try {
-    // Validación del parámetro
-    if (!idEdificio) {
-      Logger.log('ERROR: idEdificio está vacío');
+    Logger.log('═══════════════════════════════════════');
+    Logger.log('🚀 INICIO: getActivosPorEdificio');
+    Logger.log('═══════════════════════════════════════');
+    
+    // 1. VALIDACIÓN DEL PARÁMETRO
+    if (!idEdificio || String(idEdificio).trim() === '') {
+      Logger.log('❌ ERROR: idEdificio está vacío o inválido');
+      Logger.log('Valor recibido: ' + JSON.stringify(idEdificio));
       return [];
     }
     
-    Logger.log('Buscando activos para edificio ID: ' + idEdificio);
+    const idEdificioStr = String(idEdificio).trim();
+    Logger.log('✅ ID Edificio válido: ' + idEdificioStr);
     
+    // 2. CONSTRUIR ÍNDICE
+    Logger.log('📊 Llamando a buildActivosIndex()...');
     const index = buildActivosIndex();
     
-    // Validación del índice
-    if (!index || !index.byEdificio) {
-      Logger.log('ERROR: Índice de activos no válido');
+    // 3. VALIDAR EL ÍNDICE
+    if (!index) {
+      Logger.log('💥 ERROR CRÍTICO: buildActivosIndex() devolvió null/undefined');
+      return [];
+    }
+    Logger.log('✅ Índice recibido correctamente');
+    Logger.log('📋 Estructura del índice: ' + JSON.stringify(Object.keys(index)));
+    
+    if (!index.byEdificio) {
+      Logger.log('❌ ERROR: index.byEdificio no existe');
+      Logger.log('Propiedades disponibles: ' + Object.keys(index).join(', '));
+      return [];
+    }
+    Logger.log('✅ index.byEdificio existe');
+    
+    // 4. MOSTRAR IDS DE EDIFICIOS DISPONIBLES
+    const edificiosDisponibles = Object.keys(index.byEdificio);
+    Logger.log(`🏢 Total de edificios con activos: ${edificiosDisponibles.length}`);
+    Logger.log('🔑 IDs disponibles: ' + edificiosDisponibles.join(', '));
+    
+    // 5. BUSCAR ACTIVOS
+    const activos = index.byEdificio[idEdificioStr];
+    
+    if (!activos) {
+      Logger.log('⚠️ No se encontró el edificio en el índice');
+      Logger.log('🔍 Buscando coincidencias parciales...');
+      
+      // Intentar encontrar coincidencias
+      const coincidencias = edificiosDisponibles.filter(id => 
+        id.includes(idEdificioStr) || idEdificioStr.includes(id)
+      );
+      
+      if (coincidencias.length > 0) {
+        Logger.log('💡 Posibles coincidencias: ' + coincidencias.join(', '));
+      } else {
+        Logger.log('🚫 Sin coincidencias encontradas');
+      }
+      
       return [];
     }
     
-    // Convertir a String para comparación segura
-    const idEdificioStr = String(idEdificio).trim();
-    const activos = index.byEdificio[idEdificioStr] || [];
-    
-    Logger.log('Activos encontrados: ' + activos.length);
-    
-    // Log detallado para depuración
     if (activos.length === 0) {
-      Logger.log('Edificios disponibles en índice: ' + Object.keys(index.byEdificio).join(', '));
+      Logger.log('📭 El edificio existe pero no tiene activos');
+      return [];
     }
+    
+    // 6. ÉXITO
+    Logger.log('✅ ÉXITO: ' + activos.length + ' activos encontrados');
+    Logger.log('📦 Primer activo: ' + JSON.stringify(activos[0]));
+    Logger.log('═══════════════════════════════════════');
     
     return activos;
     
   } catch(e) {
-    Logger.log('ERROR CRÍTICO en getActivosPorEdificio: ' + e.toString());
+    Logger.log('═══════════════════════════════════════');
+    Logger.log('💥 EXCEPCIÓN CAPTURADA');
+    Logger.log('Error: ' + e.toString());
     Logger.log('Stack: ' + e.stack);
-    return []; // Devolver array vacío en caso de error
+    Logger.log('═══════════════════════════════════════');
+    return [];
   }
 }
-
 
 function getAllAssetsList() {
   const index = buildActivosIndex();
