@@ -274,41 +274,6 @@
         </div>
       </div>
     </div>
-    <div id="view-planner" class="view-section d-none">
-      <div class="page-header mb-2">
-        <h1 class="page-title">Planificador de Trabajo</h1>
-        <div>
-          <button class="btn btn-outline-secondary btn-sm" onclick="loadPlannerEvents()">
-            <i class="bi bi-arrow-clockwise"></i> Recargar
-          </button>
-        </div>
-      </div>
-
-      <div class="d-flex gap-3 mb-3 p-2 bg-white rounded shadow-sm align-items-center">
-        <span class="small fw-bold text-muted text-uppercase">Mostrar:</span>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="chkShowMant" checked onchange="filterPlanner()">
-          <label class="form-check-label small" for="chkShowMant"><span
-              class="dot bg-success"></span>Mantenimiento</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="chkShowObras" checked onchange="filterPlanner()">
-          <label class="form-check-label small" for="chkShowObras"><span class="dot"
-              style="background:#0d6efd"></span>Obras</label>
-        </div>
-        <div class="form-check form-check-inline">
-          <input class="form-check-input" type="checkbox" id="chkShowInc" checked onchange="filterPlanner()">
-          <label class="form-check-label small" for="chkShowInc"><span class="dot"
-              style="background:#fd7e14"></span>Incidencias</label>
-        </div>
-      </div>
-
-      <div class="card border-0 shadow-sm">
-        <div class="card-body p-3">
-          <div id="plannerCalendar" style="min-height: 600px;"></div>
-        </div>
-      </div>
-    </div>
 
     <div id="view-campus" class="view-section d-none">
       <div class="page-header">
@@ -525,7 +490,6 @@
         <div class="card-body py-3">
           <div class="row align-items-center g-3">
 
-            <!-- Filtros de Ubicación (Izquierda) -->
             <div class="col-md-3 d-flex gap-2">
               <select id="maintFilterCampus" class="form-select form-select-sm"
                 onchange="loadEdificiosMaintFilter(this.value)">
@@ -537,10 +501,8 @@
               </select>
             </div>
 
-            <!-- Filtros de Estado y Tipo (Derecha) -->
             <div class="col-md-9 d-flex justify-content-end align-items-center gap-3">
 
-              <!-- Filtro Estado -->
               <div class="d-flex align-items-center">
                 <span class="text-muted small fw-bold me-2 text-uppercase"
                   style="font-size: 0.75rem; letter-spacing: 1px;">Estado</span>
@@ -557,7 +519,6 @@
                 </div>
               </div>
 
-              <!-- Filtro Tipo -->
               <div class="d-flex align-items-center">
                 <span class="text-muted small fw-bold me-2 text-uppercase"
                   style="font-size: 0.75rem; letter-spacing: 1px;">Tipo</span>
@@ -938,8 +899,14 @@
           <i class="bi bi-arrow-clockwise"></i> Refrescar
         </button>
       </div>
+      <div class="row" id="feedbackContainer">
+        <div class="col-12 text-center py-5">
+          <div class="spinner-border text-primary"></div>
+        </div>
+      </div>
+    </div>
 
-      <div id="view-planner" class="view-section d-none">
+    <div id="view-planner" class="view-section d-none">
         <div class="page-header mb-2">
           <h1 class="page-title">Planificador de Trabajo</h1>
           <div>
@@ -949,22 +916,27 @@
           </div>
         </div>
 
-        <div class="d-flex gap-3 mb-3 p-2 bg-white rounded shadow-sm align-items-center">
+        <div class="d-flex gap-3 mb-3 p-2 bg-white rounded shadow-sm align-items-center flex-wrap">
           <span class="small fw-bold text-muted text-uppercase">Mostrar:</span>
+          
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowMant" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowMant"><span
-                class="dot bg-success"></span>Mantenimiento</label>
+            <label class="form-check-label small" for="chkShowMant"><span class="dot bg-success"></span>Mantenimiento</label>
           </div>
+          
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowObras" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowObras"><span class="dot"
-                style="background:#0d6efd"></span>Obras</label>
+            <label class="form-check-label small" for="chkShowObras"><span class="dot" style="background:#0d6efd"></span>Obras</label>
           </div>
+          
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="checkbox" id="chkShowInc" checked onchange="filterPlanner()">
-            <label class="form-check-label small" for="chkShowInc"><span class="dot"
-                style="background:#fd7e14"></span>Incidencias</label>
+            <label class="form-check-label small" for="chkShowInc"><span class="dot" style="background:#fd7e14"></span>Incidencias</label>
+          </div>
+
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="checkbox" id="chkShowCont" checked onchange="filterPlanner()">
+            <label class="form-check-label small" for="chkShowCont"><span class="dot" style="background:#42c192"></span>Contratos</label>
           </div>
         </div>
 
@@ -973,13 +945,6 @@
             <div id="plannerCalendar"></div>
           </div>
         </div>
-      </div>
-
-      <div class="row" id="feedbackContainer">
-        <div class="col-12 text-center py-5">
-          <div class="spinner-border text-primary"></div>
-        </div>
-      </div>
     </div>
 
     <div class="modal fade" id="relacionModal" tabindex="-1">
@@ -991,7 +956,6 @@
           </div>
           <div class="modal-body">
 
-            <!-- Paso 1: Buscar Activo -->
             <div class="mb-3">
               <label class="form-label fw-bold">1. Buscar Activo Relacionado</label>
               <input type="text" class="form-control" id="relSearchInput" placeholder="Escribe nombre o tipo..."
@@ -999,10 +963,8 @@
               <div id="relResultados" class="mt-2"></div>
             </div>
 
-            <!-- Activo seleccionado -->
             <div id="relActivoSeleccionado" class="mb-3"></div>
 
-            <!-- Tipo de Relación -->
             <div class="mb-3">
               <label class="form-label fw-bold">2. Tipo de Relación</label>
               <select class="form-select" id="relTipoRelacion">
@@ -1013,14 +975,12 @@
               </select>
             </div>
 
-            <!-- Descripción opcional -->
             <div class="mb-3">
               <label class="form-label">Descripción (opcional)</label>
               <textarea class="form-control" id="relDescripcion" rows="2"
                 placeholder="Ej. Alimenta al circuito norte..."></textarea>
             </div>
 
-            <!-- Bidireccional -->
             <div class="form-check mb-3 bg-light p-2 rounded">
               <input class="form-check-input" type="checkbox" id="relBidireccional" checked>
               <label class="form-check-label" for="relBidireccional">
@@ -1035,6 +995,9 @@
               Guardar Relación
             </button>
           </div>
+        </div>
+      </div>
+    </div>
 
 
   </main>
