@@ -1065,7 +1065,54 @@
   function renderMarkers(d) { const data=d||allEdificiosData; if(!mapInstance||!data) return; if(markersLayer) mapInstance.removeLayer(markersLayer); const g=L.featureGroup(); data.forEach(e=>{ const lat=parseFloat(String(e.lat).replace(',','.')), lng=parseFloat(String(e.lng).replace(',','.')); if(!isNaN(lat)&&!isNaN(lng)){ L.marker([lat,lng]).bindPopup(`<b>${e.nombre}</b><br><button onclick="openBuildingDetail('${e.id}')">Ver</button>`).addTo(g); } }); g.addTo(mapInstance); markersLayer=g; try{ mapInstance.fitBounds(g.getBounds().pad(0.2)); }catch(e){} }
 
   // CHANGELOG
-  function openChangelogModal() { if(!changelogModal) changelogModal=new bootstrap.Modal(document.getElementById('changelogModal')); document.getElementById('changelogContainer').innerHTML='...'; changelogModal.show(); google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(i=>h+=`<div class="timeline-item"><div class="timeline-title">${i.titulo} <small>${i.version}</small></div><p>${i.descripcion}</p></div>`); document.getElementById('changelogContainer').innerHTML=h; }).getNovedadesApp(); }
+  function openChangelogModal(e) { 
+      // 1. Evitar recarga de página
+      if(e) e.preventDefault(); 
+
+      if(!changelogModal) changelogModal = new bootstrap.Modal(document.getElementById('changelogModal')); 
+      
+      // 2. Lógica para mostrar el botón "Nueva" solo si es ADMIN
+      const btnNew = document.getElementById('btnNewVersion');
+      if (currentUser && currentUser.rol === 'ADMIN') {
+          btnNew.classList.remove('d-none');
+      } else {
+          btnNew.classList.add('d-none');
+      }
+
+      // 3. Mostrar carga y abrir
+      document.getElementById('changelogContainer').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>'; 
+      changelogModal.show(); 
+      
+      // 4. Cargar datos
+      google.script.run.withSuccessHandler(l => { 
+          let h = ''; 
+          if (!l || l.length === 0) {
+              h = '<div class="text-center text-muted">No hay novedades registradas.</div>';
+          } else {
+              l.forEach(i => {
+                  let badgeClass = 'badge-secondary';
+                  let icon = 'bi-info-circle';
+                  
+                  if(i.tipo === 'NUEVO') { badgeClass = 'badge-new'; icon = 'bi-stars'; }
+                  if(i.tipo === 'MEJORA') { badgeClass = 'badge-improvement'; icon = 'bi-graph-up-arrow'; }
+                  if(i.tipo === 'CORRECCION') { badgeClass = 'badge-fix'; icon = 'bi-bug'; }
+
+                  h += `<div class="timeline-item">
+                          <span class="timeline-dot"></span>
+                          <div class="timeline-date">${i.fecha}</div>
+                          <div class="timeline-title d-flex align-items-center gap-2">
+                             ${i.titulo} 
+                             <span class="badge ${badgeClass} border rounded-pill fw-normal" style="font-size:0.7rem">
+                                <i class="bi ${icon} me-1"></i>${i.version}
+                             </span>
+                          </div>
+                          <p class="timeline-desc">${i.descripcion}</p>
+                        </div>`;
+              });
+          }
+          document.getElementById('changelogContainer').innerHTML = h; 
+      }).getNovedadesApp(); 
+  }
   function openNewVersionModal() { if(changelogModal) changelogModal.hide(); if(!newVersionModal) newVersionModal=new bootstrap.Modal(document.getElementById('newVersionModal')); newVersionModal.show(); }
   function submitNewVersion() { const v=document.getElementById('nvVersion').value, t=document.getElementById('nvTitulo').value; if(!v) return; setBtnLoading('btnNvSubmit',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnNvSubmit',false); if(r.success){ newVersionModal.hide(); notificarExito("Publicado"); } }).crearNovedad({version:v, titulo:t, descripcion:document.getElementById('nvDesc').value, tipo:document.getElementById('nvTipo').value}); }
 
