@@ -3086,3 +3086,83 @@ function generarPaqueteAuditoria(anio, tipoFiltro) {
     return { success: false, error: e.toString() };
   }
 }
+
+function procesarArchivoRapido(data) {
+  // data incluye ahora: fechaOCA, crearSiguientes, freqDias
+  try {
+    const ss = getDB();
+    let idEntidadDestino = data.idActivo;
+    let tipoEntidadDestino = 'ACTIVO';
+    let nombreFinal = data.nombreArchivo;
+
+    if (data.categoria === 'OCA') {
+      const sheetMant = ss.getSheetByName('PLAN_MANTENIMIENTO');
+      const idRevision = Utilities.getUuid();
+      
+      // 1. Usar la fecha indicada por el usuario (o hoy por defecto)
+      // El input date envía YYYY-MM-DD, nuestro helper textoAFecha lo entiende bien.
+      const fechaReal = data.fechaOCA ? textoAFecha(data.fechaOCA) : new Date();
+      
+      // 2. Crear la revisión "madre" (la que lleva el documento y está REALIZADA)
+      sheetMant.appendRow([
+        idRevision,
+        data.idActivo,
+        'Legal',
+        'OCA - Documento Histórico/Carga',
+        fechaReal,
+        data.freqDias || 365,
+        'REALIZADA', // Importante: Nace ya cerrada
+        null
+      ]);
+
+      // 3. LOGICA DE REPETICIÓN (Generar las futuras)
+      if (data.crearSiguientes && data.freqDias > 0) {
+        const frecuencia = parseInt(data.freqDias);
+        const hoy = new Date();
+        const limiteAnios = 5; // Generar plan a 5 años vista
+        const fechaLimite = new Date(hoy.getFullYear() + limiteAnios, hoy.getMonth(), hoy.getDate());
+        
+        let fechaSiguiente = new Date(fechaReal);
+        let contador = 0;
+
+        // Bucle para crear revisiones futuras
+        while (contador < 20) { // Tope de seguridad 20 iteraciones
+          // Sumar frecuencia
+          fechaSiguiente.setDate(fechaSiguiente.getDate() + frecuencia);
+          
+          // Si la siguiente fecha ya supera el límite, paramos
+          if (fechaSiguiente > fechaLimite) break;
+
+          // Crear revisión pendiente (ACTIVO)
+          // Nota: No lleva documento ni evento de calendario (se crea muda)
+          sheetMant.appendRow([
+            Utilities.getUuid(),
+            data.idActivo,
+            'Legal',
+            'Próxima Inspección Reglamentaria',
+            new Date(fechaSiguiente), // Importante clonar fecha
+            frecuencia,
+            'ACTIVO', // Estado pendiente
+            null
+          ]);
+          contador++;
+        }
+        registrarLog("SUBIDA RÁPIDA", `Generada OCA y ${contador} revisiones futuras.`);
+      } else {
+        registrarLog("SUBIDA RÁPIDA", "Generada OCA suelta (sin repetición).");
+      }
+      
+      idEntidadDestino = idRevision;
+      tipoEntidadDestino = 'REVISION';
+      nombreFinal = "OCA_" + nombreFinal;
+
+    } else if (data.categoria === 'CONTRATO') {
+      nombreFinal = "CONTRATO_" + nombreFinal;
+    }
+
+    return subirArchivo(data.base64, nombreFinal, data.mimeType, idEntidadDestino, tipoEntidadDestino);
+    
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
