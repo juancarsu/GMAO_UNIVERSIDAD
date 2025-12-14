@@ -12,6 +12,30 @@
 // ==========================================
 const PROPS = PropertiesService.getScriptProperties();
 
+// OPTIMIZACIÓN: SINGLETON PARA SPREADSHEET
+let _SS_INSTANCE = null;
+
+function getDB() {
+  if (!_SS_INSTANCE) {
+    // Abrimos el archivo UNA sola vez por ejecución
+    _SS_INSTANCE = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+  }
+  return _SS_INSTANCE;
+}
+
+function getSheetData(sheetName) {
+  const ss = getDB(); // Usamos la instancia cacheada en memoria
+  let sheet = ss.getSheetByName(sheetName);
+  
+  if (!sheet && sheetName === 'USUARIOS') {
+     sheet = ss.insertSheet('USUARIOS');
+     sheet.appendRow(['ID', 'NOMBRE', 'EMAIL', 'ROL', 'RECIBIR_AVISOS']);
+  }
+  
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getDataRange().getValues();
+}
+
 function doGet(e) {
   var template = HtmlService.createTemplateFromFile('Index');
   template.urlParams = e ? e.parameter : {};
@@ -20,6 +44,38 @@ function doGet(e) {
 }
 
 function include(filename) { return HtmlService.createHtmlOutputFromFile(filename).getContent(); }
+
+/**
+ * OBTENER TODO DE UNA VEZ PARA EL FRONTEND
+ * Devuelve: Usuario, Dashboard, Filtros Campus, Catálogo
+ */
+function getAppInitData() {
+  const t1 = new Date();
+  
+  // 1. Obtener Usuario
+  const usuario = getMyRole();
+  
+  // 2. Obtener Dashboard (reutiliza la lógica existente)
+  // Nota: getDatosDashboard ya usa cachés, así que es rápido
+  const dashboard = getDatosDashboard(null); 
+  
+  // 3. Obtener Listas para Filtros (Campus y Catálogo)
+  const campusRaw = getCachedSheetData('CAMPUS');
+  const listaCampus = campusRaw.slice(1).map(r => ({ id: r[0], nombre: r[1] }));
+  
+  const catalogoRaw = getCachedSheetData('CAT_INSTALACIONES');
+  const catalogo = catalogoRaw.slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]}));
+
+  // Log de tiempo para depuración
+  Logger.log("Tiempo InitData: " + (new Date() - t1) + "ms");
+
+  return {
+    usuario: usuario,
+    dashboard: dashboard,
+    listaCampus: listaCampus,
+    catalogo: catalogo
+  };
+}
 
 // ==========================================
 // SISTEMA DE CACHÉ OPTIMIZADO
@@ -238,9 +294,20 @@ function getSheetData(sheetName) {
 }
 
 function getRootFolderId() {
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const data = ss.getSheetByName('CONFIG').getDataRange().getValues();
-  for(let row of data) { if(row[0] === 'ROOT_FOLDER_ID') return row[1]; }
+  // 1. Intentar leer de propiedades (Memoria ultra rápida)
+  let id = PROPS.getProperty('ROOT_FOLDER_CACHE');
+  if (id) return id;
+
+  // 2. Si no está, leer de la hoja (Lento, solo la primera vez)
+  const data = getSheetData('CONFIG');
+  for(let row of data) { 
+    if(row[0] === 'ROOT_FOLDER_ID') {
+      id = row[1];
+      // Guardamos en caché persistente
+      PROPS.setProperty('ROOT_FOLDER_CACHE', id);
+      return id;
+    } 
+  }
   return null;
 }
 function crearCarpeta(nombre, idPadre) { return DriveApp.getFolderById(idPadre).createFolder(nombre).getId(); }
