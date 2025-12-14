@@ -81,28 +81,55 @@
   // ==========================================
   // 3. INICIALIZACIÓN
   // ==========================================
-  window.onload = function () {
-    // Cargar seguridad y Dashboard
-    google.script.run.withSuccessHandler(u => {
-      currentUser = u;
-      applySecurityUI();
-      loadDashboard();
-      loadDashboardFilters();
+  window.onload = function() {
+    console.time("CargaInicial");
 
-      // Mover aquí la lógica que depende del usuario
-      if (u.rol === 'ADMIN') {
-        // Cargar en segundo plano para ver si hay notificaciones
-        google.script.run.withSuccessHandler(list => {
-          const nuevos = list.filter(i => i.estado === 'NUEVO').length;
-          updateBadgeFeedback(nuevos);
-        }).getFeedbackList();
-      }
+    // 1. Inicializar Modales y Listeners (UI) mientras esperamos datos
+    initModalsAndListeners();
 
-    }).getMyRole();
+    // 2. LLAMADA ÚNICA AL BACKEND (Trae Usuario, Dashboard, Campus y Catálogo)
+    google.script.run
+      .withSuccessHandler(initData => {
+        console.timeEnd("CargaInicial");
 
-    initFilters();
+        // A. Seguridad y Usuario
+        currentUser = initData.usuario;
+        applySecurityUI();
 
-    // Inicializar Bootstrap Modals
+        // B. Renderizar Dashboard (Gráficos y Calendario)
+        renderDashboardData(initData.dashboard);
+
+        // C. Rellenar Selectores Globales (Campus y Catálogo)
+        populateSelectsIniciales(initData.listaCampus, initData.catalogo);
+
+        // D. Carga diferida de datos Admin (Buzón) - Solo si es Admin
+        if (currentUser.rol === 'ADMIN') {
+          google.script.run.withSuccessHandler(list => {
+            const nuevos = list.filter(i => i.estado === 'NUEVO').length;
+            updateBadgeFeedback(nuevos);
+          }).getFeedbackList();
+        }
+
+        // E. Finalizar carga
+        ocultarLoader();
+      })
+      .withFailureHandler(err => {
+        console.error(err);
+        notificarError("Error crítico al iniciar: " + err.message);
+        ocultarLoader(); // Ocultamos igual para que no se quede bloqueado
+      })
+      .getAppInitData();
+  };
+
+  // ==========================================
+  // FUNCIONES AUXILIARES DE INICIALIZACIÓN
+  // ==========================================
+
+  /**
+   * Inicializa Modales de Bootstrap y Event Listeners del DOM
+   */
+  function initModalsAndListeners() {
+    // 1. Instanciar Modales
     if (document.getElementById('maintModal')) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
     if (document.getElementById('contractModal')) contractModal = new bootstrap.Modal(document.getElementById('contractModal'));
     if (document.getElementById('createModal')) myModal = new bootstrap.Modal(document.getElementById('createModal'));
@@ -113,56 +140,185 @@
     if (document.getElementById('feedbackModal')) feedbackModal = new bootstrap.Modal(document.getElementById('feedbackModal'));
     if (document.getElementById('edificioModal')) edificioModal = new bootstrap.Modal(document.getElementById('edificioModal'));
     if (document.getElementById('campusModal')) campusModal = new bootstrap.Modal(document.getElementById('campusModal'));
+    
+    // Importación y Changelog
+    if (document.getElementById('importModal')) importModal = new bootstrap.Modal(document.getElementById('importModal'));
+    if (document.getElementById('changelogModal')) changelogModal = new bootstrap.Modal(document.getElementById('changelogModal'));
+    if (document.getElementById('newVersionModal')) newVersionModal = new bootstrap.Modal(document.getElementById('newVersionModal'));
+    
+    // Modal de Relaciones (Nuevo)
+    const relModalEl = document.getElementById('relacionModal');
+    if (relModalEl) new bootstrap.Modal(relModalEl); // Se instancia bajo demanda en openRelacionModal, pero ok aquí.
 
-    // Cargar catálogo para selects
-    google.script.run.withSuccessHandler(list => {
-      const sel = document.getElementById('revNorma');
-      if (sel) {
-        let html = '<option value="">Seleccione norma...</option>';
-        list.forEach(n => html += `<option value="${n.id}" data-dias="${n.dias}">${n.nombre}</option>`);
-        sel.innerHTML = html;
-      }
-    }).getCatalogoInstalaciones();
+    // 2. Listeners de Formularios
+    const revTipo = document.getElementById('revTipo');
+    if (revTipo) revTipo.addEventListener('change', updateMaintFormVisibility);
 
-    // Listeners
-    const revTipo = document.getElementById('revTipo'); if (revTipo) revTipo.addEventListener('change', updateMaintFormVisibility);
-    const revNorma = document.getElementById('revNorma'); 
+    // Listener para cambio de normativa (Auto-rellenar frecuencia)
+    const revNorma = document.getElementById('revNorma');
     if (revNorma) {
-        revNorma.addEventListener('change', function() {
-            const option = this.options[this.selectedIndex];
-            if (option && option.dataset.dias) {
-                // Llenar frecuencia
-                document.getElementById('revFreq').value = option.dataset.dias;
-                
-                // Auto-activar repetición
-                document.getElementById('revRecur').checked = true;
-                document.getElementById('secRecurOptions').classList.remove('d-none');
-                
-                // Fecha límite 5 años (para legales)
-                const hoy = new Date();
-                const cincoAnos = new Date(hoy);
-                cincoAnos.setFullYear(cincoAnos.getFullYear() + 5);
-                document.getElementById('revEnd').value = cincoAnos.toISOString().split('T')[0];
-            }
-        });
+      revNorma.addEventListener('change', function() {
+        const option = this.options[this.selectedIndex];
+        if (option && option.dataset.dias) {
+          // Llenar frecuencia
+          document.getElementById('revFreq').value = option.dataset.dias;
+          // Auto-activar repetición
+          const chkRecur = document.getElementById('revRecur');
+          chkRecur.checked = true;
+          document.getElementById('secRecurOptions').classList.remove('d-none');
+          
+          // Fecha límite 5 años (por defecto para legales)
+          const hoy = new Date();
+          const cincoAnos = new Date(hoy);
+          cincoAnos.setFullYear(cincoAnos.getFullYear() + 5);
+          document.getElementById('revEnd').value = cincoAnos.toISOString().split('T')[0];
+        }
+      });
     }
-    const revRecur = document.getElementById('revRecur'); 
+
+    // Listener para checkbox de repetición
+    const revRecur = document.getElementById('revRecur');
     if (revRecur) {
-      revRecur.addEventListener('change', function () { 
-          const opciones = document.getElementById('secRecurOptions');
-          if (this.checked) {
-              opciones.classList.remove('d-none');
-              // Auto-rellenar fecha límite (1 año adelante)
-              const hoy = new Date();
-              const unAnoDespues = new Date(hoy);
-              unAnoDespues.setFullYear(unAnoDespues.getFullYear() + 1);
-              document.getElementById('revEnd').value = unAnoDespues.toISOString().split('T')[0];
-          } else {
-              opciones.classList.add('d-none');
+      revRecur.addEventListener('change', function() {
+        const opciones = document.getElementById('secRecurOptions');
+        if (this.checked) {
+          opciones.classList.remove('d-none');
+          // Auto-rellenar fecha límite (1 año adelante por defecto)
+          if (!document.getElementById('revEnd').value) {
+             const hoy = new Date();
+             const unAnoDespues = new Date(hoy);
+             unAnoDespues.setFullYear(unAnoDespues.getFullYear() + 1);
+             document.getElementById('revEnd').value = unAnoDespues.toISOString().split('T')[0];
           }
-      }); 
+        } else {
+          opciones.classList.add('d-none');
+        }
+      });
     }
-  };
+  }
+
+  /**
+   * Renderiza todos los datos del Dashboard recibidos del backend
+   */
+  function renderDashboardData(d) {
+    // 1. Contadores
+    document.getElementById('d-activos').innerText = d.activos;
+    document.getElementById('d-vencidas').innerText = d.vencidas;
+    document.getElementById('d-pendientes').innerText = d.pendientes;
+    document.getElementById('d-incidencias').innerText = d.incidencias;
+    document.getElementById('d-contratos').innerText = d.contratos;
+    document.getElementById('d-edificios').innerText = d.edificios;
+    document.getElementById('d-campus').innerText = d.campus;
+
+    // 2. Gráfico de Líneas (Evolución)
+    const ctx = document.getElementById('mainChart').getContext('2d');
+    if (myChart) myChart.destroy();
+    myChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: d.chartLabels,
+        datasets: [{
+          label: 'Revisiones',
+          data: d.chartData,
+          borderColor: '#CC0605',
+          backgroundColor: 'rgba(204, 6, 5, 0.1)',
+          tension: 0.3,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+      }
+    });
+
+    // 3. Gráfico de Donut (Estado)
+    const ctxPie = document.getElementById('pieChart').getContext('2d');
+    if (myPieChart) myPieChart.destroy();
+    myPieChart = new Chart(ctxPie, {
+      type: 'doughnut',
+      data: {
+        labels: ['Pendientes', 'Vencidas', 'Al Día'],
+        datasets: [{
+          data: [d.pendientes, d.vencidas, d.ok],
+          backgroundColor: ['#f59e0b', '#ef4444', '#10b981']
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+
+    // 4. Inicializar Calendario
+    const calendarEl = document.getElementById('calendar');
+    calendarEl.innerHTML = '';
+    calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'es',
+      height: 550,
+      headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listMonth' },
+      events: d.calendarEvents,
+      selectable: true,
+      dateClick: function(info) { mostrarModalRevision(info.dateStr); },
+      eventClick: function(info) {
+        const p = info.event.extendedProps;
+        editRevision(p.id, p.tipo, p.fechaISO, p.idActivo, p.hasCalendar);
+      }
+    });
+    calendar.render();
+  }
+
+  /**
+   * Rellena los selectores de filtros y catálogos con los datos iniciales
+   */
+  function populateSelectsIniciales(listaCampus, listaCatalogo) {
+    // 1. Select de Filtro Dashboard
+    const selDash = document.getElementById('dashboardCampusFilter');
+    let htmlC = '<option value="">- Todos los Campus -</option>';
+    let htmlC_WithSelect = '<option value="">- Seleccione -</option>'; // Para modales de creación
+    
+    listaCampus.forEach(c => {
+       htmlC += `<option value="${c.id}">${c.nombre}</option>`;
+       htmlC_WithSelect += `<option value="${c.id}">${c.nombre}</option>`;
+    });
+
+    if (selDash) selDash.innerHTML = htmlC;
+
+    // 2. Selects de Filtros en Activos, Edificios, Mantenimiento, Contratos
+    const selFilterCampus = document.getElementById('filterCampus'); // Vista Activos
+    if (selFilterCampus) selFilterCampus.innerHTML = htmlC_WithSelect;
+
+    const selFilterEdif = document.getElementById('filterCampusEdificios'); // Vista Edificios
+    if (selFilterEdif) {
+        // En edificios el filtro es por nombre, no ID (según tu código original)
+        let htmlNombres = '<option value="">- Todos los Campus -</option>';
+        listaCampus.forEach(c => htmlNombres += `<option value="${c.nombre}">${c.nombre}</option>`);
+        selFilterEdif.innerHTML = htmlNombres;
+    }
+
+    const selMaint = document.getElementById('maintFilterCampus'); // Vista Mantenimiento
+    if (selMaint) selMaint.innerHTML = htmlC;
+
+    const selCont = document.getElementById('contractFilterCampus'); // Vista Contratos
+    if (selCont) selCont.innerHTML = htmlC;
+
+    // 3. Select de Catálogo (Modal Revisión y Modal Activo)
+    const selNorma = document.getElementById('revNorma');
+    if (selNorma) {
+      let htmlN = '<option value="">Seleccione norma...</option>';
+      listaCatalogo.forEach(n => {
+         htmlN += `<option value="${n.id}" data-dias="${n.dias}">${n.nombre}</option>`;
+      });
+      selNorma.innerHTML = htmlN;
+    }
+    
+    // Bandera global para que no intente cargar de nuevo
+    campusLoaded = true;
+  }
 
   // ==========================================
   // 4. SEGURIDAD Y NAVEGACIÓN
