@@ -430,4 +430,82 @@
     .btn-fab { bottom: 80px; right: 20px; }
     .btn-fab-secondary { bottom: 150px; right: 25px; }
   }
+
+  /* TIMELINE DE NOVEDADES */
+.timeline {
+  position: relative;
+  padding-left: 20px;
+  border-left: 2px solid #e5e7eb;
+}
+.timeline-item {
+  position: relative;
+  margin-bottom: 30px;
+}
+.timeline-dot {
+  position: absolute;
+  left: -26px;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid var(--primary-color);
+}
+.timeline-date {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.timeline-title {
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 5px;
+  color: var(--text-main);
+}
+.timeline-desc {
+  font-size: 0.9rem;
+  color: #4b5563;
+  line-height: 1.5;
+}
+/* Etiquetas de tipo */
+.badge-new { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+.badge-fix { background-color: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+.badge-improvement { background-color: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+/* BOTONES MÓVILES GRANDES */
+.mobile-action-btn {
+  border-radius: 16px;
+  font-weight: 600;
+  transition: transform 0.1s;
+}
+.mobile-action-btn:active {
+  transform: scale(0.96);
+}
+.btn-white {
+  background-color: #fff;
+}
+
+/* --- CORRECCIÓN DE CAPAS (Z-INDEX) PARA VISTA MÓVIL --- */
+
+/* Fondo oscurecido del modal (backdrop) */
+.modal-backdrop {
+  z-index: 2040 !important;
+}
+
+/* El modal en sí */
+.modal {
+  z-index: 2050 !important;
+}
+
+/* Alertas de SweetAlert2 (Docs, confirmaciones...) */
+div:where(.swal2-container) {
+  z-index: 2060 !important;
+}
+
+/* Tooltips y Popovers de Bootstrap */
+.tooltip, .popover {
+  z-index: 2070 !important;
+}
+
 </style>
