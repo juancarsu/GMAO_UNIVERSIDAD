@@ -2867,20 +2867,20 @@ function getPlannerEvents() {
   hoy.setHours(0,0,0,0);
 
   // 1. REVISIONES DE MANTENIMIENTO
-  const mant = getGlobalMaintenance(); // Reutilizamos tu función existente
+  const mant = getGlobalMaintenance(); 
   mant.forEach(r => {
     eventos.push({
       id: r.id,
-      resourceId: 'MANTENIMIENTO', // Para filtrado
+      resourceId: 'MANTENIMIENTO',
       title: `🔧 ${r.tipo} - ${r.activo}`,
-      start: r.fechaISO, // YYYY-MM-DD
+      start: r.fechaISO,
       color: r.color === 'rojo' ? '#dc3545' : (r.color === 'amarillo' ? '#ffc107' : '#198754'),
       textColor: r.color === 'amarillo' ? '#000' : '#fff',
       extendedProps: {
         tipo: 'MANTENIMIENTO',
         descripcion: `${r.edificio} | ${r.campusNombre}`,
         status: r.color,
-        editable: true // Permitir drag & drop
+        editable: true
       }
     });
   });
@@ -2905,8 +2905,6 @@ function getPlannerEvents() {
   }
 
   // 3. INCIDENCIAS PENDIENTES
-  // Nota: Las incidencias suelen tener fecha de creación, no de "ejecución".
-  // Las mostramos en el día que se reportaron para referencia.
   const dataInc = getSheetData('INCIDENCIAS');
   for(let i=1; i<dataInc.length; i++) {
     if(dataInc[i][6] !== 'RESUELTA' && dataInc[i][7] instanceof Date) {
@@ -2919,9 +2917,32 @@ function getPlannerEvents() {
         extendedProps: {
           tipo: 'INCIDENCIA',
           descripcion: dataInc[i][4],
-          editable: false // No solemos reprogramar la "creación" de una incidencia
+          editable: false // Las incidencias son fecha de reporte, no se mueven
         }
       });
+    }
+  }
+
+  // 4. VENCIMIENTOS DE CONTRATOS (NUEVO)
+  const dataCont = getSheetData('CONTRATOS');
+  for(let i=1; i<dataCont.length; i++) {
+    const estado = dataCont[i][7]; // Col H
+    const fFin = dataCont[i][6];   // Col G
+    
+    // Solo contratos ACTIVOS que tengan fecha de fin
+    if(estado === 'ACTIVO' && fFin instanceof Date) {
+       eventos.push({
+         id: dataCont[i][0],
+         resourceId: 'CONTRATO',
+         title: `📄 Fin: ${dataCont[i][3]}`, // Proveedor
+         start: Utilities.formatDate(fFin, Session.getScriptTimeZone(), "yyyy-MM-dd"),
+         color: '#6f42c1', // Morado
+         extendedProps: {
+           tipo: 'CONTRATO',
+           descripcion: `Ref: ${dataCont[i][4]}`,
+           editable: true // Permitimos mover la fecha de fin arrastrando
+         }
+       });
     }
   }
 
@@ -2933,15 +2954,15 @@ function getPlannerEvents() {
  */
 function updateEventDate(id, tipo, nuevaFechaISO) {
   verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const nuevaFecha = textoAFecha(nuevaFechaISO); // Tu helper espera YYYY-MM-DD
+  const ss = getDB();
+  const nuevaFecha = textoAFecha(nuevaFechaISO); 
 
   if (tipo === 'MANTENIMIENTO') {
     const sheet = ss.getSheetByName('PLAN_MANTENIMIENTO');
     const data = sheet.getDataRange().getValues();
     for(let i=1; i<data.length; i++){
       if(String(data[i][0]) === String(id)) {
-        sheet.getRange(i+1, 5).setValue(nuevaFecha); // Columna fecha
+        sheet.getRange(i+1, 5).setValue(nuevaFecha);
         registrarLog("REPROGRAMAR", `Revisión ${id} movida a ${nuevaFechaISO}`);
         return { success: true };
       }
@@ -2952,8 +2973,20 @@ function updateEventDate(id, tipo, nuevaFechaISO) {
     const data = sheet.getDataRange().getValues();
     for(let i=1; i<data.length; i++){
       if(String(data[i][0]) === String(id)) {
-        sheet.getRange(i+1, 5).setValue(nuevaFecha); // Columna fecha inicio
+        sheet.getRange(i+1, 5).setValue(nuevaFecha);
         registrarLog("REPROGRAMAR", `Obra ${id} movida a ${nuevaFechaISO}`);
+        return { success: true };
+      }
+    }
+  }
+  else if (tipo === 'CONTRATO') { // NUEVO: Actualizar fecha fin contrato
+    const sheet = ss.getSheetByName('CONTRATOS');
+    const data = sheet.getDataRange().getValues();
+    for(let i=1; i<data.length; i++){
+      if(String(data[i][0]) === String(id)) {
+        sheet.getRange(i+1, 7).setValue(nuevaFecha); // Columna 7 es Fecha Fin
+        registrarLog("REPROGRAMAR", `Contrato ${id} extendido/movido a ${nuevaFechaISO}`);
+        invalidateCache('CONTRATOS'); // Limpiar caché para refrescar listas
         return { success: true };
       }
     }
