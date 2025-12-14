@@ -554,7 +554,7 @@
                     }
                     
                     // Notificación final
-                    notificarExito("Revisión completada");
+                    toastModerno("✓ Revisión completada", 'success');
                     
                     // Actualizar SOLO los números del dashboard (sin recargar la tabla)
                     loadDashboard(); 
@@ -704,7 +704,34 @@
   }
 
   // EDIFICIOS
-  function loadEdificiosList() { const t=document.getElementById('tableEdificiosBody'); t.innerHTML='...'; google.script.run.withSuccessHandler(d=>{ allEdificiosData=d; renderEdificiosTable(d); }).getTableData('EDIFICIOS'); }
+  function loadEdificiosList() {
+  const t = document.getElementById('tableEdificiosBody');
+  
+  // ✨ Mostrar skeleton mientras carga
+  showSkeletonTable(t, 8, 4);
+  
+  google.script.run.withSuccessHandler(d => {
+    allEdificiosData = d;
+    
+    // ✨ Renderizado animado
+    renderTableAnimated(t, d, (r) => {
+      return `<tr>
+        <td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${r.id}');return false;">${r.nombre}</a></td>
+        <td>${r.campus}</td>
+        <td>${r.contacto}</td>
+        <td class="text-end pe-4">
+          <div class="btn-group">
+            <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')"><i class="bi bi-eye"></i></button>
+            <button class="btn btn-sm btn-light border" onclick="openEdificioModal('${r.id}','${r.nombre}','${r.campus}','${r.contacto}','${r.lat||''}','${r.lng||''}')"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')"><i class="bi bi-trash"></i></button>
+          </div>
+        </td>
+      </tr>`;
+    }, { animationDelay: 15 });
+    
+    if (mapInstance) renderMarkers(d);
+  }).getTableData('EDIFICIOS');
+}
   function filterEdificiosList() { const c=document.getElementById('filterCampusEdificios').value; const s=document.getElementById('searchEdificios').value.toLowerCase(); const f=allEdificiosData.filter(r=>{ return ((c==="")||(r.campus===c)) && (r.nombre.toLowerCase().includes(s)||String(r.contacto).toLowerCase().includes(s)); }); renderEdificiosTable(f); if(mapInstance) renderMarkers(f); }
   function renderEdificiosTable(d) {
     const t=document.getElementById('tableEdificiosBody'); if(!d.length) { t.innerHTML='Sin datos'; return; }
@@ -721,7 +748,33 @@
     const p={id:id, nombre:n, idCampus:c, contacto:document.getElementById('edifContacto').value, lat:lat, lng:lng};
     if(id) google.script.run.withSuccessHandler(cb).updateEdificio(p); else google.script.run.withSuccessHandler(cb).crearEdificio(p);
   }
-  function deleteEdificio(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>{ notificarExito("Borrado"); loadEdificiosList(); }).eliminarEdificio(id)); }
+  function deleteEdificio(id) {
+  confirmarAccion("¿Eliminar edificio?", "Esta acción no se puede deshacer", () => {
+    // 1. Buscar la fila en el DOM
+    const tbody = document.getElementById('tableEdificiosBody');
+    const row = Array.from(tbody.querySelectorAll('tr')).find(tr => {
+      const btn = tr.querySelector(`button[onclick*="deleteEdificio('${id}')"]`);
+      return btn !== null;
+    });
+    
+    if (row) {
+      // 2. Animación de salida ANTES de eliminar en servidor
+      animateRowOut(row, () => {
+        // 3. Llamada al servidor (cuando la animación termina)
+        google.script.run
+          .withSuccessHandler(() => {
+            toastModerno("Edificio eliminado", 'success');
+          })
+          .withFailureHandler(err => {
+            // Si falla, restaurar la fila (opcional)
+            notificarError("Error: " + err.message);
+            loadEdificiosList(); // Recargar para recuperar estado
+          })
+          .eliminarEdificio(id);
+      });
+    }
+  });
+}
 
   // CAMPUS
   function loadCampusList() { 
@@ -754,102 +807,483 @@
   }
   function loadEdificiosModal(idC, pre) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>{ const sel=(pre&&String(i.id)===String(pre))?'selected':''; h+=`<option value="${i.id}" ${sel}>${i.nombre}</option>`; }); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
   function submitCreate() {
-    const t=document.getElementById('modalType').value, n=document.getElementById('fNombre').value, btn='btnCreateSubmit';
-    if(!n) return; setBtnLoading(btn,true);
-    const cb=(r)=>{ setBtnLoading(btn,false); if(r.success){ myModal.hide(); notificarExito("Creado"); if(t==='ACTIVO') loadAllAssets(true); } else notificarError(r.error); };
-    if(t==='ACTIVO') google.script.run.withSuccessHandler(cb).crearActivo({nombre:n, idEdificio:document.getElementById('fEdificioModal').value, tipo:document.getElementById('fTipo').value, marca:document.getElementById('fMarca').value});
+    const t = document.getElementById('modalType').value;
+    const n = document.getElementById('fNombre').value;
+    const btn = 'btnCreateSubmit';
+    
+    if (!n) return;
+    
+    setBtnLoading(btn, true);
+    
+    const cb = (r) => {
+      setBtnLoading(btn, false);
+      
+      if (r.success) {
+        myModal.hide();
+        
+        // ✨ ANIMACIÓN: Toast moderno + recarga suave
+        toastModerno("Activo creado con éxito", 'success');
+        
+        if (t === 'ACTIVO') {
+          // En lugar de recargar brutalmente, añadimos la nueva fila animada
+          google.script.run
+            .withSuccessHandler(activo => {
+              const tbody = document.getElementById('tableActivos');
+              const tr = document.createElement('tr');
+              
+              tr.innerHTML = `
+                <td class="fw-bold ps-4">
+                  <i class="bi bi-box-seam text-primary me-2"></i>${activo.nombre}
+                  <div class="small text-muted fw-normal ms-4">${activo.edificioNombre}</div>
+                </td>
+                <td><span class="badge bg-light text-dark border">${activo.tipo}</span></td>
+                <td>${activo.marca}</td>
+                <td class="text-end pe-4">
+                  <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${activo.id}')">Ver Ficha</button>
+                </td>
+              `;
+              
+              tbody.insertBefore(tr, tbody.firstChild);
+              
+              // ✨ Animación de entrada + destaque temporal
+              animateRowIn(tr);
+              setTimeout(() => tr.classList.add('pulse-once'), 100);
+            })
+            .getAssetInfo(r.newId);
+        }
+      } else {
+        notificarError(r.error);
+      }
+    };
+    
+    if (t === 'ACTIVO') {
+      google.script.run.withSuccessHandler(cb).crearActivo({
+        nombre: n,
+        idEdificio: document.getElementById('fEdificioModal').value,
+        tipo: document.getElementById('fTipo').value,
+        marca: document.getElementById('fMarca').value
+      });
+    }
   }
 
   // DETALLES Y FICHAS
   function openAssetDetail(id) { currentAssetId=id; currentActiveAssetId=id; document.querySelectorAll('.view-section').forEach(e=>e.classList.add('d-none')); document.getElementById('view-asset-detail').classList.remove('d-none'); toggleEditInfo(false); google.script.run.withSuccessHandler(i=>{ document.getElementById('detail-name').innerText=i.nombre; document.getElementById('detail-type').innerText=i.tipo; document.getElementById('d-nombre-val').innerText=i.nombre; document.getElementById('d-tipo-val').innerText=i.tipo; document.getElementById('d-marca-val').innerText=i.marca; document.getElementById('d-fecha-val').innerText=i.fechaAlta; document.getElementById('edit-nombre').value=i.nombre; document.getElementById('edit-marca').value=i.marca; loadDocs(); loadMaint(); loadContracts(); loadRelacionesActivo(); }).getAssetInfo(id); }
   function closeAssetDetail() { currentAssetId=null; document.getElementById('view-asset-detail').classList.add('d-none'); if(currentBuildingId) document.getElementById('view-building-detail').classList.remove('d-none'); else document.getElementById('view-activos').classList.remove('d-none'); }
-  function openBuildingDetail(id) { currentBuildingId=id; document.querySelectorAll('.view-section').forEach(e=>e.classList.add('d-none')); document.getElementById('view-building-detail').classList.remove('d-none'); google.script.run.withSuccessHandler(i=>{ document.getElementById('b-detail-name').innerText=i.nombre; document.getElementById('b-detail-campus').innerText=i.campus; document.getElementById('bd-nombre').innerText=i.nombre; document.getElementById('bd-campus').innerText=i.campus; document.getElementById('bd-contacto').innerText=i.contacto; loadBuildingDocs(); }).getBuildingInfo(id); }
+
+  function openBuildingDetail(id) {
+    console.log('🏢 Abriendo edificio con ID:', id);
+    
+    if (!id) {
+      console.error('❌ ERROR: ID de edificio inválido');
+      notificarError('Error: ID de edificio no válido');
+      return;
+    }
+    
+    currentBuildingId = id;
+    
+    // 1. Ocultar todas las vistas
+    document.querySelectorAll('.view-section').forEach(e => e.classList.add('d-none'));
+    
+    // 2. Mostrar vista de detalle
+    const view = document.getElementById('view-building-detail');
+    if (!view) {
+      console.error('❌ ERROR: Vista view-building-detail no encontrada');
+      return;
+    }
+    view.classList.remove('d-none');
+    
+    // 3. Resetear tabs ANTES de cargar datos
+    const allTabs = view.querySelectorAll('.nav-link');
+    const allPanes = view.querySelectorAll('.tab-pane');
+    
+    allTabs.forEach(t => t.classList.remove('active'));
+    allPanes.forEach(p => p.classList.remove('show', 'active'));
+    
+    // Activar primera pestaña (Información)
+    const firstTab = allTabs[0];
+    const firstPane = allPanes[0];
+    
+    if (firstTab) firstTab.classList.add('active');
+    if (firstPane) {
+      firstPane.classList.add('show', 'active');
+    }
+    
+    // 4. Cargar datos del edificio
+    google.script.run
+      .withSuccessHandler(info => {
+        console.log('✅ Info del edificio recibida:', info);
+        
+        // Actualizar textos SOLO SI LOS ELEMENTOS EXISTEN
+        const elName = document.getElementById('b-detail-name');
+        const elCampus = document.getElementById('b-detail-campus');
+        const elNombre = document.getElementById('bd-nombre');
+        const elCampusInfo = document.getElementById('bd-campus');
+        const elContacto = document.getElementById('bd-contacto');
+        
+        if (elName) elName.innerText = info.nombre;
+        if (elCampus) elCampus.innerText = info.campus;
+        if (elNombre) elNombre.innerText = info.nombre;
+        if (elCampusInfo) elCampusInfo.innerText = info.campus;
+        if (elContacto) elContacto.innerText = info.contacto;
+        
+        // NO cargar pestañas automáticamente - solo bajo demanda
+        console.log('✅ Vista de edificio lista');
+      })
+      .withFailureHandler(err => {
+        console.error('❌ Error cargando info del edificio:', err);
+        notificarError('Error al cargar datos del edificio: ' + err.message);
+      })
+      .getBuildingInfo(id);
+  }
+
   function closeBuildingDetail() { currentBuildingId=null; document.getElementById('view-building-detail').classList.add('d-none'); document.getElementById('view-edificios').classList.remove('d-none'); }
   
   function toggleEditInfo(e) { 
       if(e) { document.getElementById('info-view-mode').classList.add('d-none'); document.getElementById('info-edit-mode').classList.remove('d-none'); document.getElementById('btn-edit-info').classList.add('d-none'); document.getElementById('btn-save-info').classList.remove('d-none'); const sel=document.getElementById('edit-tipo'); if(sel.options.length<=1) google.script.run.withSuccessHandler(l=>{ let h=''; const cur=document.getElementById('d-tipo-val').innerText; l.forEach(t=>{ const s=t.nombre===cur?'selected':''; h+=`<option value="${t.nombre}" ${s}>${t.nombre}</option>`; }); sel.innerHTML=h; }).getCatalogoInstalaciones(); }
       else { document.getElementById('info-view-mode').classList.remove('d-none'); document.getElementById('info-edit-mode').classList.add('d-none'); document.getElementById('btn-edit-info').classList.remove('d-none'); document.getElementById('btn-save-info').classList.add('d-none'); }
   }
-  function saveAssetInfo() { setBtnLoading('btn-save-info button',true); google.script.run.withSuccessHandler(r=>{ if(r.success){ notificarExito("Guardado"); openAssetDetail(currentAssetId); loadAllAssets(true); } else notificarError(r.error); }).updateAsset({id:currentAssetId, nombre:document.getElementById('edit-nombre').value, marca:document.getElementById('edit-marca').value, tipo:document.getElementById('edit-tipo').value}); }
+  function saveAssetInfo() {
+  setBtnLoading('btn-save-info button', true);
+  
+  google.script.run.withSuccessHandler(r => {
+    if (r.success) {
+      // ✨ Flash verde en el card
+      const infoCard = document.querySelector('#tab-info .card');
+      flashSuccess(infoCard);
+      
+      toastModerno("Datos actualizados", 'success');
+      
+      openAssetDetail(currentAssetId);
+      loadAllAssets(true);
+    } else {
+      notificarError(r.error);
+    }
+  }).updateAsset({
+    id: currentAssetId,
+    nombre: document.getElementById('edit-nombre').value,
+    marca: document.getElementById('edit-marca').value,
+    tipo: document.getElementById('edit-tipo').value
+  });
+}
 
   // DOCUMENTOS & OBRAS
 
-  function loadDocs() { 
-    if (!currentAssetId) return; 
+  function loadDocs() {
+    if (!currentAssetId) return;
     
-    const tbody = document.getElementById('docsTableBody'); 
-    // Recuperado el spinner de carga
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div> Cargando documentación...</td></tr>'; 
+    const tbody = document.getElementById('docsTableBody');
     
-    google.script.run.withSuccessHandler(docs => { 
-      let html = ''; 
+    // ✨ SPINNER DE CARGA (restaurado)
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary"></div>
+          <div class="small text-muted mt-2">Cargando documentación...</div>
+        </td>
+      </tr>
+    `;
+    
+    google.script.run.withSuccessHandler(docs => {
       if (docs.length === 0) {
-        html = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
-      } else {
-        docs.forEach(d => { 
-          // Recuperada la estructura con Badge de versión y Fecha
-          html += `<tr>
-            <td class="ps-3 align-middle text-truncate" style="max-width: 250px;">
-              <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-              <a href="${d.url}" target="_blank" class="text-decoration-none text-dark fw-bold">${d.nombre}</a>
-            </td>
-            <td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td>
-            <td class="align-middle small text-muted">${d.fecha}</td>
-            <td class="text-end pe-3">
-              <div class="btn-group">
-                <a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
-              </div>
-            </td>
-          </tr>`; 
-        }); 
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
+        return;
       }
-      tbody.innerHTML = html; 
-      refreshSecurityIcons(); 
-    }).obtenerDocs(currentAssetId); 
+      
+      let html = '';
+      docs.forEach(d => {
+        html += `<tr class="fade-in">
+          <td class="ps-3 align-middle text-truncate" style="max-width: 250px;">
+            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+            <a href="${d.url}" target="_blank" class="text-decoration-none text-dark fw-bold">${d.nombre}</a>
+          </td>
+          <td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td>
+          <td class="align-middle small text-muted">${d.fecha}</td>
+          <td class="text-end pe-3">
+            <div class="btn-group">
+              <a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
+            </div>
+          </td>
+        </tr>`;
+      });
+      
+      tbody.innerHTML = html;
+      refreshSecurityIcons();
+    }).obtenerDocs(currentAssetId);
   }
-  function uploadFile() { const f=document.getElementById('fileInput').files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>google.script.run.withSuccessHandler(()=>{ notificarExito("Subido"); loadDocs(); }).subirArchivo(e.target.result.split(',')[1], f.name, f.type, currentAssetId, 'ACTIVO'); r.readAsDataURL(f); }
+
+
+  function uploadFile() {
+  const f = document.getElementById('fileInput').files[0];
+  if (!f) return;
+  
+  // ✨ Cambiar visualmente el botón mientras sube
+  const btnUpload = event.target; // Si llamas desde el botón
+  const originalHTML = btnUpload ? btnUpload.innerHTML : '';
+  
+  if (btnUpload) {
+    btnUpload.disabled = true;
+    btnUpload.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Subiendo...';
+  }
+  
+  const r = new FileReader();
+  r.onload = e => {
+    google.script.run
+      .withSuccessHandler(() => {
+        toastModerno(`"${f.name}" subido correctamente`, 'success');
+        
+        if (btnUpload) {
+          btnUpload.disabled = false;
+          btnUpload.innerHTML = originalHTML;
+        }
+        
+        loadDocs();
+      })
+      .withFailureHandler(err => {
+        toastModerno("Error al subir: " + err.message, 'error');
+        
+        if (btnUpload) {
+          btnUpload.disabled = false;
+          btnUpload.innerHTML = originalHTML;
+        }
+      })
+      .subirArchivo(e.target.result.split(',')[1], f.name, f.type, currentAssetId, 'ACTIVO');
+  };
+  
+  r.readAsDataURL(f);
+}
   function deleteDoc(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadDocs()).eliminarDocumento(id)); }
-  function loadBuildingDocs() { if(!currentBuildingId) return; document.getElementById('buildingDocsBody').innerHTML='...'; google.script.run.withSuccessHandler(d=>{ let h=''; d.forEach(x=>h+=`<tr><td><a href="${x.url}" target="_blank">${x.nombre}</a></td><td>${x.fecha}</td><td class="text-end"><button class="btn btn-sm btn-outline-danger" onclick="deleteDocBuilding('${x.id}')"><i class="bi bi-trash"></i></button></td></tr>`); document.getElementById('buildingDocsBody').innerHTML=h||'Vacío'; }).obtenerDocs(currentBuildingId,'EDIFICIO'); }
+
+  function loadBuildingDocs() {
+    if (!currentBuildingId) return;
+    
+    const tbody = document.getElementById('buildingDocsBody');
+    
+    // ✨ SPINNER DE CARGA (restaurado)
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary"></div>
+          <div class="small text-muted mt-2">Cargando documentación...</div>
+        </td>
+      </tr>
+    `;
+    
+    google.script.run.withSuccessHandler(docs => {
+      if (docs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
+        return;
+      }
+      
+      let html = '';
+      docs.forEach(d => {
+        html += `<tr class="fade-in">
+          <td class="ps-3">${d.nombre}</td>
+          <td>${d.fecha}</td>
+          <td class="text-end pe-3">
+            <div class="btn-group">
+              <a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver">
+                <i class="bi bi-eye"></i>
+              </a>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteDocBuilding('${d.id}')" title="Eliminar">
+                <i class="bi bi-trash"></i>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+      });
+      
+      tbody.innerHTML = html;
+      refreshSecurityIcons();
+    }).obtenerDocs(currentBuildingId, 'EDIFICIO');
+  }
+
   function uploadBuildingFile() { const f=document.getElementById('fileInputBuilding').files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>google.script.run.withSuccessHandler(()=>{ notificarExito("Subido"); loadBuildingDocs(); }).subirArchivo(e.target.result.split(',')[1], f.name, f.type, currentBuildingId, 'EDIFICIO'); r.readAsDataURL(f); }
   function deleteDocBuilding(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadBuildingDocs()).eliminarDocumento(id)); }
   
   function showModalObra() { if(!obraModal) obraModal=new bootstrap.Modal(document.getElementById('obraModal')); document.getElementById('obraNombre').value=''; document.getElementById('obraDesc').value=''; document.getElementById('obraFecha').value=''; obraModal.show(); }
   function submitObra() { const n=document.getElementById('obraNombre').value; if(!n) return; setBtnLoading('btnObraSubmit',true); google.script.run.withSuccessHandler(r=>{ if(r.success) { obraModal.hide(); loadBuildingObras(); notificarExito("Creada"); } setBtnLoading('btnObraSubmit',false); }).crearObra({idEdificio:currentBuildingId, nombre:n, descripcion:document.getElementById('obraDesc').value, fechaInicio:document.getElementById('obraFecha').value}); }
-  function loadBuildingObras() { if(!currentBuildingId) return; const c=document.getElementById('buildingObrasList'); c.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(o=>{ h+=`<div class="col-md-6 mb-3"><div class="card p-3 shadow-sm"><h5>${o.nombre}</h5><p>${o.descripcion}</p><button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')">Borrar</button></div></div>`; }); c.innerHTML=h||'Sin obras'; }).getObrasPorEdificio(currentBuildingId); }
+
+  function loadBuildingObras() {
+    if (!currentBuildingId) return;
+    
+    const container = document.getElementById('buildingObrasList');
+    
+    // ✨ SPINNER DE CARGA
+    container.innerHTML = `
+      <div class="col-12 text-center py-5">
+        <div class="spinner-border text-primary"></div>
+        <div class="small text-muted mt-2">Cargando obras...</div>
+      </div>
+    `;
+    
+    google.script.run.withSuccessHandler(obras => {
+      if (obras.length === 0) {
+        container.innerHTML = '<div class="col-12 text-center text-muted py-4">No hay obras registradas</div>';
+        return;
+      }
+      
+      let html = '';
+      obras.forEach(o => {
+        html += `
+          <div class="col-md-6 mb-3 fade-in">
+            <div class="card p-3 shadow-sm h-100">
+              <h5 class="fw-bold">${o.nombre}</h5>
+              <p class="text-muted small mb-2">${o.descripcion || 'Sin descripción'}</p>
+              <div class="mt-auto">
+                <span class="badge bg-light text-dark border me-2">${o.fecha}</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteObra('${o.id}')">
+                  <i class="bi bi-trash"></i> Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+      
+      container.innerHTML = html;
+      refreshSecurityIcons();
+    }).getObrasPorEdificio(currentBuildingId);
+  }
+
   function deleteObra(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadBuildingObras()).eliminarObra(id)); }
-  function loadBuildingAssets() { if(!currentBuildingId) return; const t=document.getElementById('buildingAssetsBody'); t.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ window.currentBuildingAssetsList=l; filterBuildingAssets(); }).getActivosPorEdificio(currentBuildingId); }
-  function filterBuildingAssets() { const f=document.getElementById('filterAssetTypeBuilding').value; const l=window.currentBuildingAssetsList||[]; renderBuildingAssetsTable(f?l.filter(a=>a.tipo===f):l); }
-  function renderBuildingAssetsTable(l) { const t=document.getElementById('buildingAssetsBody'); let h=''; l.forEach(a=>h+=`<tr><td>${a.nombre}</td><td>${a.tipo}</td><td>${a.marca}</td><td><button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${a.id}','edificio')">Ir</button></td></tr>`); t.innerHTML=h||'Vacío'; }
+  
+  function loadBuildingAssets() {
+    if (!currentBuildingId) {
+      console.error('❌ ERROR: No hay currentBuildingId definido');
+      const tbody = document.getElementById('buildingAssetsBody');
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: ID de edificio no válido</td></tr>';
+      return;
+    }
+    
+    const tbody = document.getElementById('buildingAssetsBody');
+    const filterSelect = document.getElementById('filterAssetTypeBuilding');
+    
+    // Spinner de carga
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary"></div>
+          <div class="small text-muted mt-2">Cargando activos del edificio...</div>
+        </td>
+      </tr>
+    `;
+    
+    console.log('🔍 Solicitando activos para edificio:', currentBuildingId);
+    
+    google.script.run
+      .withSuccessHandler(activos => {
+        console.log('✅ Respuesta recibida:', activos);
+        
+        // VALIDACIÓN ROBUSTA
+        if (!activos) {
+          console.error('❌ Respuesta nula del servidor');
+          window.currentBuildingAssetsList = [];
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Sin respuesta del servidor</td></tr>';
+          return;
+        }
+        
+        if (!Array.isArray(activos)) {
+          console.error('❌ Respuesta no es un array:', typeof activos);
+          window.currentBuildingAssetsList = [];
+          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Formato de datos inválido</td></tr>';
+          return;
+        }
+        
+        // Guardar en variable global
+        window.currentBuildingAssetsList = activos;
+        console.log(`📊 ${activos.length} activos guardados en memoria`);
+        
+        // Resetear y poblar el filtro de tipos
+        if (filterSelect) {
+          // Limpiar opciones previas
+          filterSelect.innerHTML = '<option value="">- Todos los tipos -</option>';
+          
+          // Obtener tipos únicos y ordenarlos
+          const tipos = [...new Set(activos.map(a => a.tipo || 'Sin tipo'))].sort();
+          
+          tipos.forEach(tipo => {
+            const option = document.createElement('option');
+            option.value = tipo;
+            option.textContent = tipo;
+            filterSelect.appendChild(option);
+          });
+        }
+        
+        // Renderizar todos los activos
+        renderBuildingAssetsTable(activos);
+      })
+      .withFailureHandler(error => {
+        console.error('💥 ERROR al cargar activos:', error);
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="4" class="text-center text-danger py-4">
+              <i class="bi bi-exclamation-triangle fs-4 d-block mb-2"></i>
+              <strong>Error al cargar los activos</strong><br>
+              <small class="text-muted">${error.message}</small>
+            </td>
+          </tr>
+        `;
+        window.currentBuildingAssetsList = [];
+      })
+      .getActivosPorEdificio(currentBuildingId);
+  }
+
+  function filterBuildingAssets() {
+    const filterSelect = document.getElementById('filterAssetTypeBuilding');
+    const filterValue = filterSelect ? filterSelect.value : '';
+    
+    // ✅ VALIDACIÓN: Verificar que existe la lista
+    const activos = window.currentBuildingAssetsList;
+    
+    if (!activos || !Array.isArray(activos)) {
+      console.error('No hay activos en memoria para filtrar');
+      renderBuildingAssetsTable([]);
+      return;
+    }
+    
+    const filtered = filterValue 
+      ? activos.filter(a => a.tipo === filterValue) 
+      : activos;
+    
+    renderBuildingAssetsTable(filtered);
+  }
 
   // MANTENIMIENTO ASSET
 
-  function loadMaint() { 
-    if (!currentAssetId) return; 
+  function loadMaint() {
+    if (!currentAssetId) return;
     
-    const tbody = document.getElementById('maintTableBody'); 
-    // Recuperado el spinner de carga
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div> Cargando plan de mantenimiento...</td></tr>'; 
+    const tbody = document.getElementById('maintTableBody');
     
-    google.script.run.withSuccessHandler(list => { 
-      if (list.length === 0) { 
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay mantenimiento programado.</td></tr>'; 
-        return; 
-      } 
+    // ✨ SPINNER DE CARGA
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary"></div>
+          <div class="small text-muted mt-2">Cargando plan de mantenimiento...</div>
+        </td>
+      </tr>
+    `;
+    
+    google.script.run.withSuccessHandler(list => {
+      if (list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay mantenimiento programado.</td></tr>';
+        return;
+      }
       
-      let html = ''; 
-      list.forEach(p => { 
-        // Lógica de Semáforo completa recuperada
-        let dotClass = 'bg-secondary'; 
-        if (p.color === 'rojo') dotClass = 'bg-rojo'; 
-        if (p.color === 'amarillo') dotClass = 'bg-amarillo'; 
-        if (p.color === 'verde') dotClass = 'bg-verde'; 
-        if (p.color === 'azul') dotClass = 'bg-info'; // Histórico
+      let html = '';
+      list.forEach(p => {
+        let dotClass = 'bg-secondary';
+        if (p.color === 'rojo') dotClass = 'bg-rojo';
+        if (p.color === 'amarillo') dotClass = 'bg-amarillo';
+        if (p.color === 'verde') dotClass = 'bg-verde';
+        if (p.color === 'azul') dotClass = 'bg-info';
 
-        let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos"></i>' : ''; 
-        let calIcon = p.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-2" title="Sincronizado"></i>' : ''; 
+        let clipIcon = p.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2" title="Adjuntos"></i>' : '';
+        let calIcon = p.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-2" title="Sincronizado"></i>' : '';
         
-        html += `<tr class="align-middle">
+        html += `<tr class="align-middle fade-in">
           <td class="text-center"><span class="dot ${dotClass}" style="width: 12px; height: 12px;"></span></td>
           <td>${p.tipo} ${clipIcon} ${calIcon}</td>
           <td>${p.fechaProxima}</td>
@@ -859,31 +1293,43 @@
               <button class="btn btn-sm btn-outline-danger" onclick="deleteRevision('${p.id}')" title="Borrar"><i class="bi bi-trash"></i></button>
             </div>
           </td>
-        </tr>`; 
-      }); 
-      tbody.innerHTML = html; 
-      refreshSecurityIcons(); 
-    }).obtenerPlanMantenimiento(currentAssetId); 
+        </tr>`;
+      });
+      
+      tbody.innerHTML = html;
+      refreshSecurityIcons();
+    }).obtenerPlanMantenimiento(currentAssetId);
   }
-  function loadContracts() { 
-    if (!currentAssetId) return; 
-    const tbody = document.getElementById('contractsTableBody'); 
-    // Spinner recuperado
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div> Cargando contratos...</td></tr>'; 
+
+  function loadContracts() {
+    if (!currentAssetId) return;
     
-    google.script.run.withSuccessHandler(list => { 
+    const tbody = document.getElementById('contractsTableBody');
+    
+    // ✨ SPINNER DE CARGA
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-primary"></div>
+          <div class="small text-muted mt-2">Cargando contratos...</div>
+        </td>
+      </tr>
+    `;
+    
+    google.script.run.withSuccessHandler(list => {
       if (list.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted fst-italic py-3">No hay contratos activos.</td></tr>';
         return;
       }
-      let html = ''; 
-      list.forEach(c => { 
-        let badgeClass = 'bg-secondary'; 
-        if (c.color === 'verde') badgeClass = 'bg-success'; 
-        if (c.color === 'rojo') badgeClass = 'bg-danger'; 
-        if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark'; 
+      
+      let html = '';
+      list.forEach(c => {
+        let badgeClass = 'bg-secondary';
+        if (c.color === 'verde') badgeClass = 'bg-success';
+        if (c.color === 'rojo') badgeClass = 'bg-danger';
+        if (c.color === 'amarillo') badgeClass = 'bg-warning text-dark';
         
-        html += `<tr class="align-middle">
+        html += `<tr class="align-middle fade-in">
           <td><span class="badge ${badgeClass}">${c.estado}</span></td>
           <td class="fw-bold text-dark">${c.proveedor}</td>
           <td class="font-monospace small">${c.ref}</td>
@@ -894,11 +1340,79 @@
               <button class="btn btn-sm btn-outline-danger" onclick="deleteContract('${c.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
             </div>
           </td>
-        </tr>`; 
-      }); 
-      tbody.innerHTML = html; 
-      refreshSecurityIcons(); 
-    }).obtenerContratos(currentAssetId); 
+        </tr>`;
+      });
+      
+      tbody.innerHTML = html;
+      refreshSecurityIcons();
+    }).obtenerContratos(currentAssetId);
+  }
+
+  function renderBuildingAssetsTable(activos) {
+    const tbody = document.getElementById('buildingAssetsBody');
+    
+    // VALIDACIÓN 1: tbody existe
+    if (!tbody) {
+      console.error('❌ ERROR: Elemento buildingAssetsBody no encontrado en el DOM');
+      return;
+    }
+    
+    // VALIDACIÓN 2: activos es un array
+    if (!Array.isArray(activos)) {
+      console.error('❌ ERROR: activos no es un array:', activos);
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-4">Error: Datos corruptos</td></tr>';
+      return;
+    }
+    
+    // VALIDACIÓN 3: Array vacío
+    if (activos.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-4">No hay activos en este edificio</td></tr>';
+      return;
+    }
+    
+    console.log(`🎨 Renderizando ${activos.length} activos`);
+    
+    let html = '';
+    activos.forEach((a, index) => {
+      // VALIDACIÓN 4: Cada activo tiene las propiedades mínimas
+      const id = a.id || '';
+      const nombre = a.nombre || 'Sin nombre';
+      const tipo = a.tipo || 'Sin tipo';
+      const marca = a.marca || '-';
+      
+      // Advertencia si falta el ID (no podremos abrir detalle)
+      if (!id) {
+        console.warn('⚠️ Activo sin ID:', a);
+      }
+      
+      html += `
+        <tr class="fade-in" style="animation-delay: ${index * 0.02}s">
+          <td class="ps-3">
+            <i class="bi bi-box-seam text-primary me-2"></i>
+            <strong>${nombre}</strong>
+          </td>
+          <td><span class="badge bg-light text-dark border">${tipo}</span></td>
+          <td>${marca}</td>
+          <td class="text-end pe-3">
+            <button 
+              class="btn btn-sm btn-outline-primary" 
+              onclick="openAssetDetail('${id}')" 
+              ${!id ? 'disabled title="ID no disponible"' : ''}>
+              <i class="bi bi-arrow-right-circle"></i> Ver Ficha
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+    
+    console.log('✅ Renderizado completado');
+    
+    // Aplicar seguridad de permisos
+    if (typeof refreshSecurityIcons === 'function') {
+      refreshSecurityIcons();
+    }
   }
 
   // CONFIG & USERS
@@ -1783,5 +2297,178 @@
         setMobBtnLoading(btn, false);
     }, 300);
   }
+
+  // ==========================================
+// SISTEMA DE ANIMACIONES MODERNAS
+// ==========================================
+
+/**
+ * Anima la entrada de una nueva fila en una tabla
+ * @param {HTMLElement} row - Fila del DOM
+ */
+function animateRowIn(row) {
+  row.classList.add('row-enter');
+  row.addEventListener('animationend', () => {
+    row.classList.remove('row-enter');
+  }, { once: true });
+}
+
+/**
+ * Anima la salida de una fila con colapso
+ * @param {HTMLElement} row - Fila a eliminar
+ * @param {Function} callback - Función a ejecutar tras la animación
+ */
+function animateRowOut(row, callback) {
+  // 1. Fase de fade-out lateral
+  row.classList.add('row-exit');
+  
+  row.addEventListener('animationend', () => {
+    // 2. Fase de colapso vertical
+    row.classList.remove('row-exit');
+    row.classList.add('row-collapse');
+    
+    row.addEventListener('animationend', () => {
+      if (callback) callback();
+      row.remove();
+    }, { once: true });
+  }, { once: true });
+}
+
+/**
+ * Flash de éxito en una fila (ej. al actualizar)
+ */
+function flashSuccess(row) {
+  row.classList.add('success-flash');
+  setTimeout(() => row.classList.remove('success-flash'), 1000);
+}
+
+/**
+ * Skeleton Loader para tablas (mientras cargan datos)
+ */
+function showSkeletonTable(tbody, rows = 5, cols = 4) {
+  let html = '';
+  for (let i = 0; i < rows; i++) {
+    html += '<tr>';
+    for (let j = 0; j < cols; j++) {
+      const width = Math.random() * (80 - 40) + 40; // Anchos variables
+      html += `<td><div class="skeleton" style="height: 20px; width: ${width}%;"></div></td>`;
+    }
+    html += '</tr>';
+  }
+  tbody.innerHTML = html;
+}
+
+/**
+ * Notificación Toast mejorada con icono y color
+ */
+function toastModerno(mensaje, tipo = 'success') {
+  const iconos = {
+    success: '✓',
+    error: '✕',
+    info: 'ℹ',
+    warning: '⚠'
+  };
+  
+  const colores = {
+    success: '#10b981',
+    error: '#ef4444',
+    info: '#3b82f6',
+    warning: '#f59e0b'
+  };
+  
+  Swal.fire({
+    toast: true,
+    position: 'top-end',
+    icon: tipo,
+    title: mensaje,
+    showConfirmButton: false,
+    timer: 3000,
+    timerProgressBar: true,
+    iconColor: colores[tipo],
+    customClass: {
+      popup: 'swal2-toast-modern'
+    },
+    didOpen: (toast) => {
+      toast.addEventListener('mouseenter', Swal.stopTimer);
+      toast.addEventListener('mouseleave', Swal.resumeTimer);
+    }
+  });
+}
+
+/**
+ * Renderizado optimizado de tablas con animación progresiva
+ */
+function renderTableAnimated(tbody, data, renderRow, options = {}) {
+  const {
+    pageSize = 30,
+    animationDelay = 10, // ms entre cada fila (más rápido = menos perceptible)
+    showSkeleton = true
+  } = options;
+  
+  // 1. Mostrar skeleton mientras preparamos datos
+  if (showSkeleton && data.length > 10) {
+    showSkeletonTable(tbody, Math.min(data.length, 10), 5);
+  }
+  
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5 fst-italic">No hay datos para mostrar</td></tr>';
+    return;
+  }
+  
+  let currentIndex = 0;
+  
+  function renderBatch() {
+    const end = Math.min(currentIndex + pageSize, data.length);
+    const fragment = document.createDocumentFragment();
+    
+    for (let i = currentIndex; i < end; i++) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = renderRow(data[i], i);
+      tr.style.opacity = '0';
+      fragment.appendChild(tr);
+    }
+    
+    if (currentIndex === 0) {
+      tbody.innerHTML = '';
+    }
+    
+    tbody.appendChild(fragment);
+    
+    // Animación de entrada escalonada
+    const newRows = tbody.querySelectorAll('tr[style*="opacity: 0"]');
+    newRows.forEach((row, idx) => {
+      setTimeout(() => {
+        row.style.opacity = '1';
+        row.classList.add('fade-in');
+      }, idx * animationDelay);
+    });
+    
+    currentIndex = end;
+    
+    if (currentIndex < data.length) {
+      requestAnimationFrame(renderBatch);
+    } else {
+      refreshSecurityIcons();
+    }
+  }
+  
+  renderBatch();
+}
+
+function diagnosticarCargaActivos() {
+  console.log('=== DIAGNÓSTICO DE CARGA DE ACTIVOS ===');
+  console.log('currentBuildingId:', currentBuildingId);
+  console.log('window.currentBuildingAssetsList:', window.currentBuildingAssetsList);
+  console.log('Elemento tbody existe:', !!document.getElementById('buildingAssetsBody'));
+  console.log('Pestaña visible:', !document.getElementById('tab-b-assets').classList.contains('d-none'));
+  
+  // Test de carga forzada
+  if (currentBuildingId) {
+    console.log('🔧 Forzando recarga...');
+    loadBuildingAssets();
+  } else {
+    console.error('❌ No se puede cargar sin currentBuildingId');
+  }
+}
 
 </script>
