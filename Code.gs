@@ -3356,41 +3356,59 @@ function updateEventDate(id, tipo, nuevaFechaISO) {
   }
   else if (tipo === 'CONTRATO') { // NUEVO: Actualizar fecha fin contrato
     const sheet = ss.getSheetByName('CONTRATOS');
-    const data = sheet.getDataRange().getValues();
-    for(let i=1; i<data.length; i++){
-      if(String(data[i][0]) === String(id)) {
-        sheet.getRange(i+1, 7).setValue(nuevaFecha); // Columna 7 es Fecha Fin
-        registrarLog("REPROGRAMAR", `Contrato ${id} extendido/movido a ${nuevaFechaISO}`);
-        invalidateCache('CONTRATOS'); // Limpiar caché para refrescar listas
-        return { success: true };
+      const data = sheet.getDataRange().getValues();
+      for(let i=1; i<data.length; i++){
+        if(String(data[i][0]) === String(id)) {
+          sheet.getRange(i+1, 7).setValue(nuevaFecha); // Columna 7 es Fecha Fin
+          registrarLog("REPROGRAMAR", `Contrato ${id} extendido/movido a ${nuevaFechaISO}`);
+          invalidateCache('CONTRATOS'); // Limpiar caché para refrescar listas
+          return { success: true };
+        }
       }
     }
+
+    return { success: false, error: "Elemento no encontrado o tipo no editable" };
   }
 
-  return { success: false, error: "Elemento no encontrado o tipo no editable" };
-}
+  // ==========================================
+  // 27. MÓDULO DE EXPORTACIÓN PARA AUDITORÍA
+  // ==========================================
 
-// ==========================================
-// 27. MÓDULO DE EXPORTACIÓN PARA AUDITORÍA
-// ==========================================
+  /**
+   * Obtiene los años disponibles en el histórico de mantenimiento
+   */
+  /**
+   * Obtiene los años disponibles en el histórico de mantenimiento
+   * CORREGIDA: Maneja fechas que vienen como String desde el caché JSON
+   */
+  function getAniosAuditoria() {
+    const planes = getCachedSheetData('PLAN_MANTENIMIENTO');
+    const anios = new Set();
+    
+    // Empezamos en 1 para saltar cabecera
+    for(let i=1; i<planes.length; i++) {
+      let fecha = planes[i][4]; // Columna Fecha (índice 4)
+      
+      // --- CORRECCIÓN CLAVE ---
+      // Si viene del caché, es un String. Lo convertimos a Date.
+      if (typeof fecha === 'string') {
+          // Intentar crear fecha. Si es formato ISO, funciona directo.
+          const fechaObj = new Date(fecha);
+          // Verificar que es una fecha válida
+          if (!isNaN(fechaObj.getTime())) {
+              fecha = fechaObj;
+          }
+      }
+      // ------------------------
 
-/**
- * Obtiene los años disponibles en el histórico de mantenimiento
- */
-function getAniosAuditoria() {
-  const planes = getCachedSheetData('PLAN_MANTENIMIENTO');
-  const anios = new Set();
-  
-  // Empezamos en 1 para saltar cabecera
-  for(let i=1; i<planes.length; i++) {
-    const fecha = planes[i][4]; // Columna Fecha
-    if (fecha instanceof Date) {
-      anios.add(fecha.getFullYear());
+      if (fecha instanceof Date && !isNaN(fecha.getTime())) {
+        anios.add(fecha.getFullYear());
+      }
     }
+    
+    // Convertir a array y ordenar descendente (2025, 2024...)
+    return Array.from(anios).sort((a,b) => b - a);
   }
-  // Convertir a array y ordenar descendente
-  return Array.from(anios).sort((a,b) => b - a);
-}
 
 /**
  * Genera una carpeta en Drive con toda la documentación copiada
