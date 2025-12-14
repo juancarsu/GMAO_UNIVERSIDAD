@@ -487,27 +487,48 @@
   background-color: #fff;
 }
 
-/* --- CORRECCIÓN DE CAPAS (Z-INDEX) PARA VISTA MÓVIL --- */
+/* --- CORRECCIÓN DE CAPAS (Z-INDEX) PARA VISTA MÓVIL --- 
 
-/* Fondo oscurecido del modal (backdrop) */
+/* Fondo oscurecido del modal (backdrop) 
 .modal-backdrop {
   z-index: 2040 !important;
 }
 
-/* El modal en sí */
+/* El modal en sí 
 .modal {
   z-index: 2050 !important;
 }
 
-/* Alertas de SweetAlert2 (Docs, confirmaciones...) */
+/* Alertas de SweetAlert2 (Docs, confirmaciones...) 
 div:where(.swal2-container) {
   z-index: 2060 !important;
 }
 
-/* Tooltips y Popovers de Bootstrap */
+/* Tooltips y Popovers de Bootstrap 
 .tooltip, .popover {
   z-index: 2070 !important;
 }
+*/
+/* --- Z-INDEX FIX PARA MODALES ANIDADOS (SOLUCIÓN ESPECÍFICA) --- */
+
+/* 1. Modales normales (Edificio, Activo...): Usan el defecto de Bootstrap (1055) */
+/* NO TOCAR .modal NI .modal-backdrop GLOBALMENTE */
+
+/* 2. Modal de Proveedor (Cuando se abre encima del Contrato) */
+#proveedorModal {
+  z-index: 1070 !important; /* Más alto que el contrato (1055) */
+}
+
+/* 3. Asegurar que las alertas (Toast/Swal) siempre estén encima de todo */
+div:where(.swal2-container) {
+  z-index: 2000 !important;
+}
+
+/* 4. Fix para móviles: asegurar que el contenido scrollable funcione */
+.modal-dialog-scrollable .modal-body {
+  overflow-y: auto !important;
+}
+
 
 /* ========================================== */
 /* SISTEMA DE ANIMACIONES MODERNAS           */
@@ -679,6 +700,58 @@ div:where(.swal2-container) {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+/* FIX para modales anidados 
+.modal {
+  overflow-y: auto !important;
+}
+
+.modal-backdrop {
+  transition: opacity 0.15s linear;
+}
+
+/* Asegurar que el modal de proveedor siempre esté encima 
+#proveedorModal {
+  z-index: 2060 !important;
+}
+
+#proveedorModal + .modal-backdrop {
+  z-index: 2055 !important;
+}
+*/
+
+/* ... resto de tu css ... */
+
+/* === CORRECCIÓN Z-INDEX MODALES === */
+/* Fuerza que el modal siempre esté por encima del fondo oscuro */
+.modal-backdrop {
+  z-index: 1050 !important;
+}
+
+/* Fix para el scroll cuando se cierra un modal y se abre otro */
+body.modal-open {
+  padding-right: 0 !important;
+  overflow: hidden;
+}
+
+/* Asegura que el modal flote por encima de todo */
+#modalGestionEdificios {
+    z-index: 1060 !important;
+}
+
+/* El fondo oscuro debe estar un nivel por debajo del modal */
+.modal-backdrop {
+    z-index: 1050 !important; 
+}
+
+.modal {
+  z-index: 1060 !important; /* La ventana flotante, ENCIMA del fondo */
+}
+  
+/* Esto asegura que las alertas siempre se vean */
+div:where(.swal2-container) {
+  z-index: 2000 !important; 
 }
 
 </style>
