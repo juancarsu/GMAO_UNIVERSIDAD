@@ -702,27 +702,6 @@ div:where(.swal2-container) {
   }
 }
 
-/* FIX para modales anidados 
-.modal {
-  overflow-y: auto !important;
-}
-
-.modal-backdrop {
-  transition: opacity 0.15s linear;
-}
-
-/* Asegurar que el modal de proveedor siempre esté encima 
-#proveedorModal {
-  z-index: 2060 !important;
-}
-
-#proveedorModal + .modal-backdrop {
-  z-index: 2055 !important;
-}
-*/
-
-/* ... resto de tu css ... */
-
 /* === CORRECCIÓN Z-INDEX MODALES === */
 /* Fuerza que el modal siempre esté por encima del fondo oscuro */
 .modal-backdrop {
@@ -927,6 +906,42 @@ div:where(.swal2-container) {
     color: #999 !important;
     font-size: 18px !important;
     padding: 8px !important;
+}
+
+/* SKELETON CALENDARIO */
+.cal-skeleton-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+.cal-skeleton-btn {
+  width: 80px; height: 35px;
+  border-radius: 6px;
+}
+.cal-skeleton-title {
+  width: 200px; height: 30px;
+  border-radius: 6px;
+}
+.cal-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: #e5e7eb; /* Color de las líneas de la rejilla */
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cal-skeleton-cell {
+  background: white;
+  height: 100px; /* Altura aprox de una celda de calendario */
+  padding: 10px;
+}
+.cal-skeleton-event {
+  height: 18px;
+  border-radius: 4px;
+  margin-bottom: 6px;
+  width: 80%;
 }
 
 </style>
