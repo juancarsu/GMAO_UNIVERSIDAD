@@ -61,7 +61,7 @@
 <body>
 
   <div id="app-loader"
-    style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.5s ease-out;">
+    style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: #ffffff; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 0.4s ease-out;">
     <div class="text-center">
       <div class="spinner-border text-danger mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
       <h2 class="fw-bold" style="color: #1f2937; letter-spacing: -1px;">GMAO Servicio de Obras y Mantenimiento</h2>
@@ -334,11 +334,11 @@
       <div id="container-edif-list" class="card border-0 shadow-sm">
         <div class="card-body p-0">
           <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light">
+            <thead>
               <tr>
-                <th class="ps-4">Edificio</th>
-                <th>Campus</th>
-                <th>Contacto</th>
+                <th class="ps-4 sortable" onclick="ordenarTabla('EDIFICIOS', 'nombre')">Edificio</th>
+                <th class="sortable" onclick="ordenarTabla('EDIFICIOS', 'campus')">Campus</th>
+                <th class="sortable" onclick="ordenarTabla('EDIFICIOS', 'contacto')">Contacto</th>
                 <th class="text-end pe-4">Acciones</th>
               </tr>
             </thead>
@@ -477,13 +477,12 @@
       <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
           <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light">
+            <thead>
               <tr>
-                <th class="ps-4">Activo</th>
-                <th>Tipo</th>
-                <th>Marca</th>
-                <th class="text-end pe-4">Acción</th>
-              </tr>
+                <th class="ps-4 sortable" onclick="ordenarTabla('ACTIVOS', 'nombre')">Activo</th>
+                <th class="sortable" onclick="ordenarTabla('ACTIVOS', 'tipo')">Tipo</th>
+                <th class="sortable" onclick="ordenarTabla('ACTIVOS', 'marca')">Marca</th>
+                <th class="text-end pe-4">Acción</th> </tr>
             </thead>
             <tbody id="tableActivos">
               <tr>
@@ -567,13 +566,13 @@
       <div class="card border-0 shadow-sm">
         <div style="max-height: 500px; overflow-y: auto;">
           <table class="table table-hover mb-0 align-middle">
-            <thead class="bg-light sticky-top">
+            <thead>
               <tr>
                 <th class="ps-4 text-center" style="width:50px;">#</th>
-                <th>Edificio</th>
-                <th>Activo</th>
-                <th>Tipo Revisión</th>
-                <th>Fecha Límite</th>
+                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'edificio')">Edificio</th>
+                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'activo')">Activo</th>
+                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'tipo')">Tipo Revisión</th>
+                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'dias')">Fecha Límite</th>
                 <th class="text-end pe-4">Acciones</th>
               </tr>
             </thead>
@@ -1104,38 +1103,44 @@
     </div>
 
     <div id="view-proveedores" class="view-section d-none">
-        <div class="page-header">
-          <h1 class="page-title">Gestión de Proveedores</h1>
-          <button class="btn btn-primary" onclick="openProveedorModal()">
-            <i class="bi bi-plus-lg"></i> Nuevo Proveedor
-          </button>
-        </div>
-        
-        <div class="card border-0 shadow-sm">
-          <div class="card-body p-0">
-            <table class="table table-hover mb-0 align-middle">
-              <thead class="bg-light">
-                <tr>
-                  <th class="ps-4">Proveedor</th>
-                  <th>CIF/NIF</th>
-                  <th>Contacto</th>
-                  <th>Teléfono</th>
-                  <th>Email</th>
-                  <th class="text-center">Estado</th>
-                  <th class="text-end pe-4">Acciones</th>
-                </tr>
-              </thead>
-              <tbody id="tableProveedoresBody">
-                <tr>
-                  <td colspan="7" class="text-center py-5">
-                    <div class="spinner-border text-primary"></div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+      <div class="page-header">
+        <h1 class="page-title">Gestión de Proveedores</h1>
+        <button class="btn btn-primary" onclick="openProveedorModal()">
+          <i class="bi bi-plus-lg"></i> Nuevo Proveedor
+        </button>
+      </div>
+      
+      <div class="card border-0 shadow-sm">
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0 align-middle">
+            <thead class="bg-light">
+              <tr>
+                <th class="ps-4 sortable" onclick="ordenarTabla('PROVEEDORES', 'nombre')">Proveedor</th>
+                
+                <th class="sortable" onclick="ordenarTabla('PROVEEDORES', 'cif')">CIF/NIF</th>
+                
+                <th class="sortable" onclick="ordenarTabla('PROVEEDORES', 'contacto')">Contacto</th>
+                
+                <th class="sortable" onclick="ordenarTabla('PROVEEDORES', 'telefono')">Teléfono</th>
+                
+                <th class="sortable" onclick="ordenarTabla('PROVEEDORES', 'email')">Email</th>
+                
+                <th class="text-center sortable" onclick="ordenarTabla('PROVEEDORES', 'activo')">Estado</th>
+                
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tableProveedoresBody">
+              <tr>
+                <td colspan="7" class="text-center py-5">
+                  <div class="spinner-border text-primary"></div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
+    </div>
 
 
   </main>
