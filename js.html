@@ -62,6 +62,8 @@
   window.currentBuildingAssetsList = [];
   window.allAssetsData = [];
   let currentRenderTimeout = null;
+  // Variable para evitar llamadas simultáneas
+  let _isLoadingDocs = false;
 
   // Instancias de Modales
   /* let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null;
@@ -1472,78 +1474,49 @@
     let h=''; d.forEach(r=>{ h+=`<tr><td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${r.id}');return false;">${r.nombre}</a></td><td>${r.campus}</td><td>${r.contacto}</td><td class="text-end pe-4"><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')"><i class="bi bi-eye"></i></button><button class="btn btn-sm btn-light border" onclick="openEdificioModal('${r.id}','${r.nombre}','${r.campus}','${r.contacto}','${r.lat||''}','${r.lng||''}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); t.innerHTML=h; refreshSecurityIcons();
   }
 
+  // SUSTITUIR EN js.html (Asegúrate de que solo haya una)
+
   function submitEdificio() {
       const id = document.getElementById('edifId').value;
       const n = document.getElementById('edifNombre').value;
       const c = document.getElementById('edifCampus').value;
       
-      // Validación básica
-      if (!n || !c) return notificarError("Nombre y Campus son obligatorios");
+      // Validación
+      if (!n || !c) return notificarError("Nombre y Campus obligatorios");
 
-      // Procesar coordenadas (cambiar comas por puntos)
+      // Coordenadas
       const latRaw = document.getElementById('edifLat').value;
       const lngRaw = document.getElementById('edifLng').value;
       let lat = null, lng = null;
       if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
       if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
 
-      // Botón en estado de carga
       setBtnLoading('btnEdifSubmit', true);
 
       const cb = (res) => {
           setBtnLoading('btnEdifSubmit', false);
           if (res.success) {
-              cerrarModalSeguro('edificioModal'); // <--- USAR EL CIERRE SEGURO
+              cerrarModalSeguro('modalGestionEdificios'); // O el ID que uses ('edificioModal')
+              if(document.getElementById('edificioModal')) cerrarModalSeguro('edificioModal');
+              
               notificarExito("Edificio guardado");
-              loadEdificiosList(); // Recargar la tabla
+              loadEdificiosList();
           } else {
               notificarError(res.error);
           }
       };
 
-      const p = {
-          id: id,
-          nombre: n,
-          idCampus: c,
-          contacto: document.getElementById('edifContacto').value,
-          lat: lat,
-          lng: lng
+      const p = { 
+        id: id, 
+        nombre: n, 
+        idCampus: c, 
+        contacto: document.getElementById('edifContacto').value, 
+        lat: lat, 
+        lng: lng 
       };
-
+      
       if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
       else google.script.run.withSuccessHandler(cb).crearEdificio(p);
-  }
-
-  function submitEdificio() {
-    const id = document.getElementById('edifId').value;
-    const n = document.getElementById('edifNombre').value;
-    const c = document.getElementById('edifCampus').value;
-    const latRaw = document.getElementById('edifLat').value;
-    const lngRaw = document.getElementById('edifLng').value;
-
-    let lat = null, lng = null;
-    if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
-    if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
-
-    if (!n || !c) return notificarError("El nombre y el campus son obligatorios");
-
-    setBtnLoading('btnEdifSubmit', true);
-
-    const cb = (res) => {
-        setBtnLoading('btnEdifSubmit', false);
-        if (res.success) {
-            if (edificioModalInst) edificioModalInst.hide(); // Usar la nueva variable
-            notificarExito("Edificio guardado");
-            loadEdificiosList();
-        } else {
-            notificarError(res.error);
-        }
-    };
-
-    const p = { id: id, nombre: n, idCampus: c, contacto: document.getElementById('edifContacto').value, lat: lat, lng: lng };
-    
-    if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
-    else google.script.run.withSuccessHandler(cb).crearEdificio(p);
   }
 
   function deleteEdificio(id) {
@@ -1622,78 +1595,128 @@
   }
 
   // CREAR (MODAL GENERICO)
+  // BUSCA ESTA FUNCIÓN Y ACTUALIZA EL HTML INTERIOR
   function mostrarModalCrear(t) {
-    if(myModal) {
-        document.getElementById('createForm').reset(); document.getElementById('modalType').value=t; document.getElementById('modalTitle').innerText='Nuevo '+t;
-        const ex=document.getElementById('extraFields'); ex.innerHTML='';
-        if(t==='ACTIVO') {
-            const fC=document.getElementById('filterCampus').value, fE=document.getElementById('filterEdificio').value;
-            ex.innerHTML=`<div class="mb-2"><label>Campus</label><select id="fCampusModal" class="form-select" onchange="loadEdificiosModal(this.value)"><option>...</option></select></div><div class="mb-2"><label>Edificio</label><select id="fEdificioModal" class="form-select" disabled></select></div><div class="mb-2"><label>Tipo</label><select id="fTipo" class="form-select" disabled></select></div><div class="mb-2"><label>Marca</label><input id="fMarca" class="form-control"></div>`;
-            google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>{ const s=(fC&&String(i.id)===String(fC))?'selected':''; h+=`<option value="${i.id}" ${s}>${i.nombre}</option>`; }); document.getElementById('fCampusModal').innerHTML=h; if(fC) loadEdificiosModal(fC,fE); }).getListaCampus();
-            google.script.run.withSuccessHandler(ts=>{ ts.sort((a,b)=>a.nombre.localeCompare(b.nombre)); let o='<option value="">- Seleccione -</option>'; ts.forEach(t=>o+=`<option value="${t.id}">${t.nombre}</option>`); document.getElementById('fTipo').innerHTML=o; document.getElementById('fTipo').disabled=false; }).getCatalogoInstalaciones();
-        }
-        myModal.show();
-    }
-  }
-  function loadEdificiosModal(idC, pre) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>{ const sel=(pre&&String(i.id)===String(pre))?'selected':''; h+=`<option value="${i.id}" ${sel}>${i.nombre}</option>`; }); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
-  function submitCreate() {
-    const t = document.getElementById('modalType').value;
-    const n = document.getElementById('fNombre').value;
-    const btn = 'btnCreateSubmit';
-    
-    if (!n) return;
-    
-    setBtnLoading(btn, true);
-    
-    const cb = (r) => {
-      setBtnLoading(btn, false);
-      
-      if (r.success) {
-        myModal.hide();
-        
-        // ✨ ANIMACIÓN: Toast moderno + recarga suave
-        toastModerno("Activo creado con éxito", 'success');
-        
-        if (t === 'ACTIVO') {
-          // En lugar de recargar brutalmente, añadimos la nueva fila animada
-          google.script.run
-            .withSuccessHandler(activo => {
-              const tbody = document.getElementById('tableActivos');
-              const tr = document.createElement('tr');
+      if(myModal) {
+          document.getElementById('createForm').reset(); 
+          document.getElementById('modalType').value=t; 
+          document.getElementById('modalTitle').innerText='Nuevo '+t;
+          const ex=document.getElementById('extraFields'); 
+          ex.innerHTML='';
+          
+          if(t==='ACTIVO') {
+              const fC=document.getElementById('filterCampus').value;
               
-              tr.innerHTML = `
-                <td class="fw-bold ps-4">
-                  <i class="bi bi-box-seam text-primary me-2"></i>${activo.nombre}
-                  <div class="small text-muted fw-normal ms-4">${activo.edificioNombre}</div>
-                </td>
-                <td><span class="badge bg-light text-dark border">${activo.tipo}</span></td>
-                <td>${activo.marca}</td>
-                <td class="text-end pe-4">
-                  <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${activo.id}')">Ver Ficha</button>
-                </td>
+              // HTML ACTUALIZADO CON CHECKBOX
+              ex.innerHTML=`
+                <div class="mb-2">
+                  <label>Campus</label>
+                  <select id="fCampusModal" class="form-select" onchange="loadEdificiosModal(this.value)">
+                    <option>...</option>
+                  </select>
+                </div>
+                
+                <div class="form-check mb-2 bg-light p-2 rounded border">
+                  <input class="form-check-input" type="checkbox" id="chkNivelCampus" onchange="toggleEdificioInput(this.checked)">
+                  <label class="form-check-label small" for="chkNivelCampus">
+                    Es un activo general del Campus (Farolas, Viales...)
+                  </label>
+                </div>
+
+                <div class="mb-2">
+                  <label>Edificio</label>
+                  <select id="fEdificioModal" class="form-select" disabled></select>
+                </div>
+                
+                <div class="mb-2"><label>Tipo</label><select id="fTipo" class="form-select" disabled></select></div>
+                <div class="mb-2"><label>Marca</label><input id="fMarca" class="form-control"></div>
               `;
               
-              tbody.insertBefore(tr, tbody.firstChild);
+              // Cargar datos
+              google.script.run.withSuccessHandler(l=>{ 
+                  let h='<option value="">- Seleccione -</option>'; 
+                  l.forEach(i=>{ 
+                      const s=(fC&&String(i.id)===String(fC))?'selected':''; 
+                      h+=`<option value="${i.id}" ${s}>${i.nombre}</option>`; 
+                  }); 
+                  document.getElementById('fCampusModal').innerHTML=h; 
+                  if(fC) loadEdificiosModal(fC); 
+              }).getListaCampus();
               
-              // ✨ Animación de entrada + destaque temporal
-              animateRowIn(tr);
-              setTimeout(() => tr.classList.add('pulse-once'), 100);
-            })
-            .getAssetInfo(r.newId);
-        }
-      } else {
-        notificarError(r.error);
+              google.script.run.withSuccessHandler(ts=>{ 
+                  ts.sort((a,b)=>a.nombre.localeCompare(b.nombre)); 
+                  let o='<option value="">- Seleccione -</option>'; 
+                  ts.forEach(t=>o+=`<option value="${t.id}">${t.nombre}</option>`); 
+                  document.getElementById('fTipo').innerHTML=o; 
+                  document.getElementById('fTipo').disabled=false; 
+              }).getCatalogoInstalaciones();
+          }
+          myModal.show();
       }
-    };
-    
-    if (t === 'ACTIVO') {
-      google.script.run.withSuccessHandler(cb).crearActivo({
-        nombre: n,
-        idEdificio: document.getElementById('fEdificioModal').value,
-        tipo: document.getElementById('fTipo').value,
-        marca: document.getElementById('fMarca').value
-      });
-    }
+  }
+
+  // NUEVA FUNCIÓN AUXILIAR
+  function toggleEdificioInput(isCampusLevel) {
+      const selEdif = document.getElementById('fEdificioModal');
+      if (isCampusLevel) {
+          selEdif.disabled = true;
+          selEdif.innerHTML = '<option value="">(Automático: Zonas Exteriores)</option>';
+      } else {
+          selEdif.disabled = false;
+          // Recargar lista si hay campus seleccionado
+          const idC = document.getElementById('fCampusModal').value;
+          if(idC) loadEdificiosModal(idC);
+      }
+  }
+
+  function loadEdificiosModal(idC, pre) { const s=document.getElementById('fEdificioModal'); s.disabled=true; s.innerHTML='...'; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>{ const sel=(pre&&String(i.id)===String(pre))?'selected':''; h+=`<option value="${i.id}" ${sel}>${i.nombre}</option>`; }); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
+
+  function submitCreate() {
+      const t = document.getElementById('modalType').value;
+      const n = document.getElementById('fNombre').value;
+      
+      if (!n) return notificarError("Nombre obligatorio");
+      
+      setBtnLoading('btnCreateSubmit', true);
+      
+      const cb = (r) => {
+          setBtnLoading('btnCreateSubmit', false);
+          if (r.success) {
+              myModal.hide();
+              toastModerno("Creado con éxito", 'success');
+              // Recargar para ver el nuevo activo
+              if (t === 'ACTIVO') loadAllAssets(true); 
+          } else {
+              notificarError(r.error);
+          }
+      };
+      
+      if (t === 'ACTIVO') {
+          const esCampus = document.getElementById('chkNivelCampus').checked;
+          const idCampus = document.getElementById('fCampusModal').value;
+          const idEdif = document.getElementById('fEdificioModal').value;
+
+          if (!idCampus) {
+              setBtnLoading('btnCreateSubmit', false);
+              return notificarError("Selecciona un Campus");
+          }
+          
+          // Si no es nivel campus y no hay edificio, error
+          if (!esCampus && !idEdif) {
+              setBtnLoading('btnCreateSubmit', false);
+              return notificarError("Selecciona un Edificio o marca 'Nivel Campus'");
+          }
+
+          const payload = {
+              nombre: n,
+              tipo: document.getElementById('fTipo').value,
+              marca: document.getElementById('fMarca').value,
+              idCampus: idCampus,
+              idEdificio: esCampus ? null : idEdif // Si es campus, enviamos null en edificio
+          };
+          
+          google.script.run.withSuccessHandler(cb).crearActivo(payload);
+      }
   }
 
   // DETALLES Y FICHAS
@@ -1798,91 +1821,217 @@
 
   // DOCUMENTOS & OBRAS
 
-  function loadDocs() {
+function loadDocs() {
     if (!currentAssetId) return;
-    
+    if (_isLoadingDocs) return; // Si ya está cargando, no hacemos nada
+
+    _isLoadingDocs = true;
     const tbody = document.getElementById('docsTableBody');
     
-    // ✨ SPINNER DE CARGA (restaurado)
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" class="text-center py-4">
-          <div class="spinner-border spinner-border-sm text-primary"></div>
-          <div class="small text-muted mt-2">Cargando documentación...</div>
-        </td>
-      </tr>
-    `;
-    
-    google.script.run.withSuccessHandler(docs => {
-      if (docs.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
-        return;
-      }
-      
-      let html = '';
-      docs.forEach(d => {
-        html += `<tr class="fade-in">
-          <td class="ps-3 align-middle text-truncate" style="max-width: 250px;">
-            <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
-            <a href="${d.url}" target="_blank" class="text-decoration-none text-dark fw-bold">${d.nombre}</a>
-          </td>
-          <td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td>
-          <td class="align-middle small text-muted">${d.fecha}</td>
-          <td class="text-end pe-3">
-            <div class="btn-group">
-              <a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a>
-              <button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
-            </div>
-          </td>
-        </tr>`;
-      });
-      
-      tbody.innerHTML = html;
-      refreshSecurityIcons();
-    }).obtenerDocs(currentAssetId);
-  }
+    // Detectamos si la tabla ya tiene datos reales
+    const tieneDatos = tbody.querySelectorAll('tr').length > 0 && 
+                       !tbody.innerText.includes('Cargando') && 
+                       !tbody.innerText.includes('Sin datos') &&
+                       !tbody.innerText.includes('No hay documentos');
 
+    // LÓGICA VISUAL INTELIGENTE:
+    // A. Si está vacía -> Ponemos el spinner (carga normal)
+    // B. Si ya tiene datos -> No borramos, solo bajamos opacidad (refresco suave)
+    if (!tieneDatos) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="4" class="text-center py-4">
+              <div class="spinner-border spinner-border-sm text-primary"></div>
+              <div class="small text-muted mt-2">Cargando documentación...</div>
+            </td>
+          </tr>
+        `;
+    } else {
+        tbody.style.transition = 'opacity 0.2s';
+        tbody.style.opacity = '0.5'; // Efecto visual de "actualizando"
+    }
 
-  function uploadFile() {
-  const f = document.getElementById('fileInput').files[0];
-  if (!f) return;
-  
-  // ✨ Cambiar visualmente el botón mientras sube
-  const btnUpload = event.target; // Si llamas desde el botón
-  const originalHTML = btnUpload ? btnUpload.innerHTML : '';
-  
-  if (btnUpload) {
-    btnUpload.disabled = true;
-    btnUpload.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Subiendo...';
-  }
-  
-  const r = new FileReader();
-  r.onload = e => {
     google.script.run
-      .withSuccessHandler(() => {
-        toastModerno(`"${f.name}" subido correctamente`, 'success');
+        .withSuccessHandler(docs => {
+            _isLoadingDocs = false;
+            tbody.style.opacity = '1'; // Restaurar visibilidad total
+
+            if (docs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
+                return;
+            }
+
+            let html = '';
+            docs.forEach(d => {
+                html += `<tr class="fade-in">
+                  <td class="ps-3 align-middle text-truncate" style="max-width: 250px;">
+                    <i class="bi bi-file-earmark-pdf text-danger me-2"></i>
+                    <a href="${d.url}" target="_blank" class="text-decoration-none text-dark fw-bold">${d.nombre}</a>
+                  </td>
+                  <td class="align-middle"><span class="badge bg-secondary">v${d.version}</span></td>
+                  <td class="align-middle small text-muted">${d.fecha}</td>
+                  <td class="text-end pe-3">
+                    <div class="btn-group">
+                      <a href="${d.url}" target="_blank" class="btn btn-sm btn-outline-primary" title="Ver"><i class="bi bi-eye"></i></a>
+                      <button class="btn btn-sm btn-outline-danger" onclick="deleteDoc('${d.id}')" title="Eliminar"><i class="bi bi-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>`;
+            });
+
+            tbody.innerHTML = html;
+            refreshSecurityIcons();
+        })
+        .withFailureHandler(err => {
+            _isLoadingDocs = false;
+            tbody.style.opacity = '1';
+            notificarError("Error cargando docs: " + err.message);
+        })
+        .obtenerDocs(currentAssetId, 'ACTIVO'); // Aseguramos que busque por ACTIVO
+  }
+
+
+  async function uploadFile() {
+    const input = document.getElementById('fileInput');
+    const files = input.files;
+
+    if (!files || files.length === 0) return;
+
+    // Referencia al botón para feedback visual
+    // (Usamos event.target o buscamos el botón si no está disponible)
+    const btn = event ? (event.target.closest('button') || event.target) : document.querySelector('button[onclick="uploadFile()"]');
+    const originalText = btn ? btn.innerHTML : 'Subir';
+    
+    if (btn) btn.disabled = true;
+
+    let successCount = 0;
+    let errors = [];
+
+    // Iteramos por cada archivo seleccionado
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         
-        if (btnUpload) {
-          btnUpload.disabled = false;
-          btnUpload.innerHTML = originalHTML;
+        // Actualizar botón con progreso
+        if (btn) {
+            btn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Subiendo ${i + 1}/${files.length}...`;
         }
+
+        try {
+            // Usamos tu helper readFileAsBase64 existente
+            const base64 = await readFileAsBase64(file);
+
+            // Envolvemos la llamada al servidor en una Promesa para esperar a que termine
+            await new Promise((resolve, reject) => {
+                google.script.run
+                    .withSuccessHandler(resolve)
+                    .withFailureHandler(msg => reject(msg))
+                    // Reutilizamos tu función existente en Code.gs
+                    .subirArchivo(base64, file.name, file.type, currentAssetId, 'ACTIVO');
+            });
+
+            successCount++;
+        } catch (e) {
+            console.error("Error subiendo " + file.name, e);
+            errors.push(file.name);
+        }
+    }
+
+    // --- LIMPIEZA Y RESULTADO ---
+    
+    // 1. Limpiar el input para que desaparezcan los nombres antiguos
+    input.value = '';
+
+    // 2. Restaurar botón
+    if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+
+    // 3. Notificaciones
+    if (errors.length > 0) {
+        notificarError(`Fallaron ${errors.length} archivos: ` + errors.join(", "));
+    }
+    
+    if (successCount > 0) {
+        // Mensaje de éxito
+        const msg = successCount === 1 ? "Archivo subido correctamente" : `${successCount} archivos subidos`;
+        toastModerno(msg, 'success');
         
+        // Recargar la lista
         loadDocs();
-      })
-      .withFailureHandler(err => {
-        toastModerno("Error al subir: " + err.message, 'error');
-        
-        if (btnUpload) {
-          btnUpload.disabled = false;
-          btnUpload.innerHTML = originalHTML;
+    }
+  }
+
+  function deleteDoc(id) {
+    // 1. Localizar la fila de forma más robusta
+    // Buscamos el botón que tenga el onclick con ese ID
+    const btn = document.querySelector(`button[onclick*="${id}"]`);
+    const row = btn ? btn.closest('tr') : null;
+
+    confirmarAccion("¿Borrar documento?", "Esta acción no se puede deshacer.", () => {
+        if (row) {
+            // --- ANIMACIÓN ROBUSTA (Con temporizadores) ---
+            
+            // 1. Bloquear visualmente
+            row.style.pointerEvents = 'none'; // Evitar dobles clics
+            row.style.transition = 'all 0.4s ease'; // Preparar transición
+            row.style.opacity = '0'; // Desvanecer
+            row.style.transform = 'translateX(20px)'; // Deslizar
+
+            // 2. Colapsar espacio después de desvanecer
+            setTimeout(() => {
+                row.style.height = row.offsetHeight + 'px'; // Fijar altura actual
+                row.offsetHeight; // Forzar repintado
+                row.style.padding = '0';
+                row.style.border = 'none';
+                row.style.height = '0'; // Colapsar a 0
+                row.style.margin = '0';
+                
+                // 3. Eliminar del DOM y llamar al servidor
+                setTimeout(() => {
+                    row.remove();
+                    
+                    // Si la tabla se vacía, mostrar mensaje
+                    const tbody = document.getElementById('docsTableBody');
+                    if (tbody && tbody.children.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted fst-italic py-3">No hay documentos adjuntos.</td></tr>';
+                    }
+                }, 300); // Esperar al colapso
+            }, 300); // Esperar al desvanecimiento
+
+            // --- LLAMADA AL SERVIDOR ---
+            // La lanzamos en paralelo a la animación para no perder tiempo
+            google.script.run
+                .withSuccessHandler((res) => {
+                    if (res && res.success === false) {
+                        // Si falla lógicamente (ej. no existe), recargamos para restaurar la verdad
+                        notificarError(res.error || "Error al borrar");
+                        loadDocs();
+                    } else {
+                        // Éxito silencioso (ya lo quitamos visualmente)
+                        toastModerno("Documento eliminado", 'success');
+                    }
+                })
+                .withFailureHandler(err => {
+                    // Si falla el servidor (ej. red o permisos), mostramos error y restauramos
+                    notificarError("Error crítico: " + err.message);
+                    loadDocs(); // Recargamos para que el usuario vea que el archivo sigue ahí
+                })
+                .eliminarDocumento(id);
+
+        } else {
+            // Fallback: Si no encontramos la fila visualmente (raro), método clásico
+            mostrarCargando("Borrando...");
+            google.script.run
+                .withSuccessHandler(() => { 
+                    Swal.close();
+                    notificarExito("Eliminado"); 
+                    loadDocs(); 
+                })
+                .eliminarDocumento(id);
         }
-      })
-      .subirArchivo(e.target.result.split(',')[1], f.name, f.type, currentAssetId, 'ACTIVO');
-  };
-  
-  r.readAsDataURL(f);
-}
-  function deleteDoc(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadDocs()).eliminarDocumento(id)); }
+    });
+  }
 
   function loadBuildingDocs() {
     if (!currentBuildingId) return;
@@ -2494,7 +2643,51 @@
   function toggleEdificiosView(m) { const l=document.getElementById('container-edif-list'), map=document.getElementById('container-edif-map'); if(m==='LIST'){ l.classList.remove('d-none'); map.classList.add('d-none'); destroyMap(); } else { l.classList.add('d-none'); map.classList.remove('d-none'); setTimeout(()=>initLeafletMap(),100); } }
   function destroyMap() { if(mapInstance){ mapInstance.remove(); mapInstance=null; document.getElementById('mapEdificios').innerHTML=''; } }
   function initLeafletMap() { destroyMap(); if(typeof L==='undefined') return; mapInstance=L.map('mapEdificios').setView([40.416, -3.703],5); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapInstance); renderMarkers(); }
-  function renderMarkers(d) { const data=d||allEdificiosData; if(!mapInstance||!data) return; if(markersLayer) mapInstance.removeLayer(markersLayer); const g=L.featureGroup(); data.forEach(e=>{ const lat=parseFloat(String(e.lat).replace(',','.')), lng=parseFloat(String(e.lng).replace(',','.')); if(!isNaN(lat)&&!isNaN(lng)){ L.marker([lat,lng]).bindPopup(`<b>${e.nombre}</b><br><button onclick="openBuildingDetail('${e.id}')">Ver</button>`).addTo(g); } }); g.addTo(mapInstance); markersLayer=g; try{ mapInstance.fitBounds(g.getBounds().pad(0.2)); }catch(e){} }
+
+  function renderMarkers(d) {
+      const data = d || allEdificiosData;
+      if (!mapInstance || !data) return;
+      
+      if (markersLayer) mapInstance.removeLayer(markersLayer);
+      
+      const g = L.featureGroup();
+      
+      data.forEach(e => {
+          const lat = parseFloat(String(e.lat).replace(',', '.'));
+          const lng = parseFloat(String(e.lng).replace(',', '.'));
+          
+          if (!isNaN(lat) && !isNaN(lng)) {
+              // DISEÑO ELEGANTE DEL POPUP
+              const popupContent = `
+                  <div class="p-1 text-center">
+                      <h6 class="fw-bold text-primary mb-1">${e.nombre}</h6>
+                      <div class="small text-muted mb-2 border-bottom pb-2">
+                          <i class="bi bi-geo-alt-fill text-danger"></i> ${e.campus || 'Campus'}
+                      </div>
+                      <button class="btn btn-sm btn-primary w-100 shadow-sm" onclick="openBuildingDetail('${e.id}')">
+                          <i class="bi bi-building me-1"></i> Ver Edificio
+                      </button>
+                  </div>
+              `;
+
+              L.marker([lat, lng])
+              .bindPopup(popupContent, {
+                  minWidth: 200,
+                  closeButton: false // Quitamos la X por defecto para un look más limpio (opcional)
+              })
+              .addTo(g);
+          }
+      });
+      
+      g.addTo(mapInstance);
+      markersLayer = g;
+      
+      try { 
+          if (data.length > 0) {
+              mapInstance.fitBounds(g.getBounds().pad(0.2)); 
+          }
+      } catch (e) {}
+  } 
 
   // CHANGELOG
   function openChangelogModal(e) { 
@@ -2827,17 +3020,19 @@
   let quickUploadFiles = []; // Almacena los archivos seleccionados
 
   function openQuickUpload(idActivo) {
-    if (!quickUploadModalInstance) quickUploadModalInstance = new bootstrap.Modal(document.getElementById('quickUploadModal'));
-    
-    // Resetear formulario
-    document.getElementById('quIdActivo').value = idActivo;
-    document.getElementById('quFiles').value = '';
-    document.getElementById('quFileListContainer').classList.add('d-none');
-    document.getElementById('quTableBody').innerHTML = '';
-    document.getElementById('btnQuickUpload').disabled = true;
-    quickUploadFiles = [];
-
-    quickUploadModalInstance.show();
+      // 1. APERTURA SEGURA (Esto arregla la pantalla negra)
+      // Mueve el modal al final del DOM y gestiona el z-index correctamente
+      abrirModalSeguro('quickUploadModal');
+      
+      // 2. Resetear formulario
+      document.getElementById('quIdActivo').value = idActivo;
+      document.getElementById('quFiles').value = '';
+      document.getElementById('quFileListContainer').classList.add('d-none');
+      document.getElementById('quTableBody').innerHTML = '';
+      document.getElementById('btnQuickUpload').disabled = true;
+      
+      // Limpiamos la variable global de archivos
+      quickUploadFiles = [];
   }
 
   function renderQuickUploadList() {
@@ -2941,6 +3136,8 @@
     else div.classList.add('d-none');
   }
 
+  // SUSTITUIR EN js.html
+
   async function startQuickUpload() {
     const idActivo = document.getElementById('quIdActivo').value;
     const btn = document.getElementById('btnQuickUpload');
@@ -2975,7 +3172,9 @@
       statusCell.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div>';
 
       try {
-        payload.base64 = await readFileAsBase64(file);
+        const base64 = await readFileAsBase64(file);
+        payload.base64 = base64; // Añadimos el base64 al payload
+
         await new Promise((resolve, reject) => {
           google.script.run
             .withSuccessHandler(res => res.success ? resolve(res) : reject(new Error(res.error)))
@@ -2990,14 +3189,16 @@
     }
 
     btn.innerHTML = '<i class="bi bi-check-all"></i> Terminado';
+    
     setTimeout(() => {
-        quickUploadModalInstance.hide();
+        // CIERRE SEGURO (Importante)
+        cerrarModalSeguro('quickUploadModal');
+        
         notificarExito("Proceso finalizado");
         
         // Recarga inteligente según la vista
         if (!document.getElementById('view-activos').classList.contains('d-none')) {
             loadAllAssets(true);
-            // Si tenemos el detalle abierto, recargar sus pestañas
             if (currentAssetId) { loadContracts(); loadDocs(); } 
         } else if (!document.getElementById('view-mantenimiento').classList.contains('d-none')) {
             loadGlobalMaint();
@@ -4306,6 +4507,38 @@ function diagnosticarCargaActivos() {
               }
           })
           .enviarFeedback({ tipo: t, mensaje: m });
+  }
+
+  // Variable global para guardar el manual y no pedirlo siempre
+  let _manualCache = null;
+
+  function cargarYAbrirManual() {
+    // 1. IDs CORRECTOS (coinciden con tu Index.html)
+    const idModal = 'manualModal'; 
+    const idContenedor = 'manualContent';
+
+    // 2. Abrir el modal inmediatamente (mostrará el spinner que ya tienes en el HTML)
+    abrirModalSeguro(idModal);
+
+    // 3. Si ya lo descargamos antes, lo mostramos de memoria (instantáneo)
+    if (_manualCache) {
+       document.getElementById(idContenedor).innerHTML = _manualCache;
+       return;
+    }
+
+    // 4. Si es la primera vez, llamamos al servidor
+    google.script.run
+      .withSuccessHandler(function(htmlContent) {
+         // Guardamos en memoria para la próxima
+         _manualCache = htmlContent;
+         // Pintamos el contenido
+         document.getElementById(idContenedor).innerHTML = htmlContent;
+      })
+      .withFailureHandler(function(error) {
+         document.getElementById(idContenedor).innerHTML = 
+            '<div class="alert alert-danger">Error al cargar el manual: ' + error.message + '</div>';
+      })
+      .getManualHTML();
   }
 
 </script>
