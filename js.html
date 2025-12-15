@@ -39,6 +39,12 @@
       }
   }
 
+  let currentSortState = {
+    view: null,
+    column: null,
+    direction: 'asc' // 'asc' o 'desc'
+  };
+
 
   // ==========================================
   // 1. VARIABLES GLOBALES
@@ -62,8 +68,26 @@
   window.currentBuildingAssetsList = [];
   window.allAssetsData = [];
   let currentRenderTimeout = null;
+  let _toastTimer = null;
   // Variable para evitar llamadas simultáneas
   let _isLoadingDocs = false;
+  // Configuración base del Toast (se define una vez)
+  const Toast = Swal.mixin({
+      toast: true,
+      position: 'top-end',
+      showConfirmButton: false,
+      timer: 3000,
+      timerProgressBar: false,
+      didOpen: (toast) => {
+          // Hacemos que el ratón no interactúe con el toast (clic a través)
+          // Esto evita que el timer se pause al pasar el ratón por encima
+          toast.style.pointerEvents = 'none';
+          
+          // Eliminamos los eventos de pausa por si acaso
+          toast.addEventListener('mouseenter', null);
+          toast.addEventListener('mouseleave', null);
+      }
+  });
 
   // Instancias de Modales
   /* let maintModal = null; let contractModal = null; let myModal = null; let obraModal = null;
@@ -74,6 +98,98 @@
   // ==========================================
   // 2. HELPERS VISUALES 
   // ==========================================
+
+  function ordenarTabla(vista, columna) {
+    // 1. Determinar datos y función de renderizado según la vista
+    let dataArray = null;
+    let renderFunction = null;
+
+    if (vista === 'ACTIVOS') {
+        dataArray = window.allAssetsData;
+        renderFunction = renderAssetsTable; // Función que ya tienes
+    } else if (vista === 'EDIFICIOS') {
+        dataArray = allEdificiosData;
+        renderFunction = renderEdificiosTable; // O loadEdificiosList si usas render interno
+    } else if (vista === 'MANTENIMIENTO') {
+        dataArray = globalMaintData;
+        renderFunction = renderGlobalMaintTable;
+    } else if (vista === 'CONTRATOS') {
+        dataArray = globalContractData;
+        renderFunction = renderGlobalContractsTable;
+    } else if (vista === 'PROVEEDORES') {
+        // Necesitas guardar los proveedores en una variable global al cargarlos
+        // Asegúrate de modificar loadProveedoresList para guardar en window.allProveedoresData
+        dataArray = window.allProveedoresData; 
+        // Si no tienes función separada de render, tendrás que crearla o adaptar la carga
+    }
+
+    if (!dataArray || dataArray.length === 0) return;
+
+    // 2. Calcular Dirección (Toggle)
+    let direction = 'asc';
+    if (currentSortState.view === vista && currentSortState.column === columna) {
+        direction = currentSortState.direction === 'asc' ? 'desc' : 'asc';
+    }
+    
+    // Guardar estado
+    currentSortState = { view: vista, column: columna, direction: direction };
+
+    // 3. Ejecutar Ordenación
+    dataArray.sort((a, b) => {
+        let valA = a[columna];
+        let valB = b[columna];
+
+        // Gestión de nulos
+        if (valA == null) valA = "";
+        if (valB == null) valB = "";
+
+        // Si son strings, usar localeCompare para acentos y eñes
+        if (typeof valA === 'string') {
+            valA = valA.toLowerCase();
+            valB = valB.toLowerCase();
+            return direction === 'asc' ? valA.localeCompare(valB, 'es') : valB.localeCompare(valA, 'es');
+        } 
+        
+        // Si son números
+        if (typeof valA === 'number') {
+            return direction === 'asc' ? valA - valB : valB - valA;
+        }
+
+        // Default
+        if (valA < valB) return direction === 'asc' ? -1 : 1;
+        if (valA > valB) return direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    // 4. Actualizar Iconos Visuales en el HTML
+    actualizarIconosCabecera(vista, columna, direction);
+
+    // 5. Repintar la tabla
+    renderFunction(dataArray);
+  }
+
+  function actualizarIconosCabecera(vista, columnaActiva, direccion) {
+      // Buscar la tabla correspondiente
+      let tablaId = '';
+      if (vista === 'ACTIVOS') tablaId = 'view-activos';
+      if (vista === 'EDIFICIOS') tablaId = 'view-edificios';
+      if (vista === 'MANTENIMIENTO') tablaId = 'view-mantenimiento';
+      if (vista === 'CONTRATOS') tablaId = 'view-contratos';
+
+      const container = document.getElementById(tablaId);
+      if(!container) return;
+
+      // Quitar clases asc/desc de todas las cabeceras de esa tabla
+      const headers = container.querySelectorAll('th.sortable');
+      headers.forEach(th => {
+          th.classList.remove('asc', 'desc');
+          // Si es la columna activa, añadir la clase correspondiente
+          // Nota: Usamos el atributo onclick para identificar la columna de forma sencilla
+          if (th.getAttribute('onclick').includes(`'${columnaActiva}'`)) {
+              th.classList.add(direccion);
+          }
+      });
+  }
 
   function escapeQuote(str) {
     if (!str) return '';
@@ -144,14 +260,59 @@
     }).then((result) => { if (result.isConfirmed) callback(); });
   }
 
-  // Toast moderno (Redirige a las nuevas funciones nucleares)
+  // Toast moderno
+
   function toastModerno(mensaje, tipo = 'success') {
-    if(tipo === 'success') notificarExito(mensaje);
-    else if(tipo === 'error') notificarError(mensaje);
-    else notificar(mensaje, tipo);
+      // 1. Crear el contenedor si no existe
+      let container = document.getElementById('native-toast-container');
+      if (!container) {
+          container = document.createElement('div');
+          container.id = 'native-toast-container';
+          document.body.appendChild(container);
+      }
+
+      // 2. Definir iconos y colores
+      const config = {
+          success: { icon: '<i class="bi bi-check-circle-fill" style="color:#10b981; font-size: 1.2rem;"></i>', class: 'success' },
+          error:   { icon: '<i class="bi bi-x-circle-fill" style="color:#ef4444; font-size: 1.2rem;"></i>', class: 'error' },
+          info:    { icon: '<i class="bi bi-info-circle-fill" style="color:#3b82f6; font-size: 1.2rem;"></i>', class: 'info' },
+          warning: { icon: '<i class="bi bi-exclamation-triangle-fill" style="color:#f59e0b; font-size: 1.2rem;"></i>', class: 'warning' }
+      };
+      
+      const settings = config[tipo] || config.success;
+
+      // 3. Crear el elemento Toast
+      const toast = document.createElement('div');
+      toast.className = `native-toast ${settings.class}`;
+      toast.innerHTML = `
+          <div class="native-toast-content">
+              ${settings.icon}
+              <span>${mensaje}</span>
+          </div>
+      `;
+
+      // 4. Añadir al DOM
+      container.appendChild(toast);
+
+      // 5. Programar autodestrucción (3.5 segundos)
+      setTimeout(() => {
+          // Añadir clase de salida (animación)
+          toast.classList.add('hide');
+          
+          // Esperar a que termine la animación y eliminar del HTML
+          toast.addEventListener('animationend', () => {
+              toast.remove();
+          });
+          
+          // Failsafe: Si la animación falla, borrar a la fuerza a los 500ms
+          setTimeout(() => {
+              if(toast.parentElement) toast.remove();
+          }, 500);
+          
+      }, 3500);
   }
 
-  // Helpers de botones y carga (SIN CAMBIOS)
+  // Helpers de botones y carga
   function setBtnLoading(btnId, loading) {
     const btn = document.getElementById(btnId); if (!btn) return;
     if (loading) { 
@@ -180,47 +341,108 @@
   // 3. INICIALIZACIÓN OPTIMIZADA (V2)
   // ==========================================
     window.onload = function() {
-        console.time("CargaInicial");
+    console.time("CargaTotal");
 
-        // 1. Inicializar UI básica
-        initModalsAndListeners();
+    // 1. Inicializar UI básica
+    initModalsAndListeners();
 
-        // 2. LLAMADA LIGERA (Carga usuario y listas)
-        google.script.run
-          .withSuccessHandler(initData => {
-            console.timeEnd("CargaInicial");
+    // ============================================================
+    // ESTRATEGIA "OFFLINE FIRST" (Carga Instantánea)
+    // ============================================================
+    
+    let yaHemosAbierto = false;
+    const cacheKey = 'GMAO_INIT_DATA_V1'; // Cambiar versión si modificas la estructura de datos
+    const localData = localStorage.getItem(cacheKey);
 
-            // A. Aplicar Usuario y Seguridad
+    if (localData) {
+        try {
+            console.log("🚀 Usando datos en caché local...");
+            const initData = JSON.parse(localData);
+            
+            // Carga Inmediata con datos guardados
+            inicializarAppConDatos(initData);
+            yaHemosAbierto = true;
+            
+            // Notificación sutil
+            toastModerno("Cargado desde caché", "info");
+        } catch (e) {
+            console.warn("Caché local corrupta, limpiando...");
+            localStorage.removeItem(cacheKey);
+        }
+    }
+
+    // ============================================================
+    // LLAMADA AL SERVIDOR (Segundo Plano o Primera Vez)
+    // ============================================================
+    
+    // Si no había caché, mostramos loader. Si había, ya está oculta pero seguimos cargando.
+    if (!yaHemosAbierto) {
+        // Aseguramos que el loader se ve si es la primera vez absoluta
+        document.getElementById('app-loader').style.display = 'flex';
+        document.getElementById('app-loader').style.opacity = '1';
+    } else {
+        // Si ya abrimos, ponemos skeletons en el dashboard para indicar que se refrescarán los números
+        mostrarSkeletonsDashboard();
+    }
+
+    google.script.run
+      .withSuccessHandler(initData => {
+        console.timeEnd("CargaTotal");
+
+        // Guardar en caché para la próxima vez (CRÍTICO)
+        localStorage.setItem(cacheKey, JSON.stringify(initData));
+
+        // Si es la primera vez (no había caché), inicializamos todo
+        if (!yaHemosAbierto) {
+            inicializarAppConDatos(initData);
+        } else {
+            // Si ya habíamos abierto con caché, solo actualizamos variables silenciosamente
+            // por si el usuario cambió de rol o hay campus nuevos
             currentUser = initData.usuario;
-            applySecurityUI();
+            // Opcional: Podrías forzar repintado de selects si crees que cambian mucho
+        }
 
-            // B. Rellenar Selectores (para que estén listos)
-            populateSelectsIniciales(initData.listaCampus, initData.catalogo);
+        // --- FASE 2: CARGAR DATOS PESADOS (DASHBOARD) ---
+        // Esto siempre se pide fresco al servidor
+        loadDashboard(); 
 
-            // C. ¡ABRIR APP YA! (Quitamos la pantalla blanca)
-            ocultarLoader();
+        // Admin: Cargar buzón
+        if (currentUser.rol === 'ADMIN') {
+             google.script.run.withSuccessHandler(list => {
+                 const nuevos = list.filter(i => i.estado === 'NUEVO').length;
+                 updateBadgeFeedback(nuevos);
+             }).getFeedbackList();
+        }
 
-            // D. Admin: Cargar buzón en segundo plano
-            if (currentUser.rol === 'ADMIN') {
-                google.script.run.withSuccessHandler(list => {
-                    const nuevos = list.filter(i => i.estado === 'NUEVO').length;
-                    updateBadgeFeedback(nuevos);
-                }).getFeedbackList();
-            }
-
-            // E. CARGA DIFERIDA DEL DASHBOARD (Lo pesado va aquí)
-            // Ponemos skeletons o "..." mientras carga
-            mostrarSkeletonsDashboard(); 
-            loadDashboard(); // Esta función ya llama a getDatosDashboard en el servidor
-
-          })
-          .withFailureHandler(err => {
-            console.error(err);
-            notificarError("Error al iniciar: " + err.message);
-            ocultarLoader(); // Quitamos loader aunque falle para que no se quede bloqueado
-          })
-          .getAppInitData();
+      })
+      .withFailureHandler(err => {
+        console.error(err);
+        if (!yaHemosAbierto) {
+            // Solo mostramos error fatal si no pudimos cargar ni la caché
+            document.getElementById('app-loader').innerHTML = `<div class="text-danger p-4">Error de conexión. Recarga la página.<br><small>${err.message}</small></div>`;
+        } else {
+            // Si ya estamos dentro, es un error menor de actualización
+            console.warn("No se pudo actualizar datos en segundo plano");
+        }
+      })
+      .getAppInitData();
   };
+
+  // Función auxiliar para no repetir código
+  function inicializarAppConDatos(initData) {
+      // 1. Usuario y Seguridad
+      currentUser = initData.usuario;
+      applySecurityUI();
+
+      // 2. Rellenar Selectores
+      populateSelectsIniciales(initData.listaCampus, initData.catalogo);
+
+      // 3. ¡ABRIR PUERTAS!
+      ocultarLoader();
+      
+      // 4. Preparar el terreno para los datos pesados
+      mostrarSkeletonsDashboard();
+  }
 
   // Función visual para poner "..." o animación mientras carga el dashboard
 
@@ -1528,46 +1750,46 @@
   // SUSTITUIR EN js.html (Asegúrate de que solo haya una)
 
   function submitEdificio() {
-      const id = document.getElementById('edifId').value;
-      const n = document.getElementById('edifNombre').value;
-      const c = document.getElementById('edifCampus').value;
-      
-      // Validación
-      if (!n || !c) return notificarError("Nombre y Campus obligatorios");
-
-      // Coordenadas
-      const latRaw = document.getElementById('edifLat').value;
-      const lngRaw = document.getElementById('edifLng').value;
-      let lat = null, lng = null;
-      if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
-      if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
-
-      setBtnLoading('btnEdifSubmit', true);
-
-      const cb = (res) => {
-          setBtnLoading('btnEdifSubmit', false);
-          if (res.success) {
-              cerrarModalSeguro('modalGestionEdificios'); // O el ID que uses ('edificioModal')
-              if(document.getElementById('edificioModal')) cerrarModalSeguro('edificioModal');
-              
-              notificarExito("Edificio guardado");
-              loadEdificiosList();
-          } else {
-              notificarError(res.error);
-          }
-      };
-
-      const p = { 
-        id: id, 
-        nombre: n, 
-        idCampus: c, 
-        contacto: document.getElementById('edifContacto').value, 
-        lat: lat, 
-        lng: lng 
-      };
-      
-      if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
-      else google.script.run.withSuccessHandler(cb).crearEdificio(p);
+    const id = document.getElementById('edifId').value;
+    const n = document.getElementById('edifNombre').value;
+    const c = document.getElementById('edifCampus').value;
+    
+    // Validación
+    if (!n || !c) return notificarError("Nombre y Campus obligatorios");
+    
+    // Coordenadas
+    const latRaw = document.getElementById('edifLat').value;
+    const lngRaw = document.getElementById('edifLng').value;
+    let lat = null, lng = null;
+    if (latRaw) lat = parseFloat(latRaw.replace(',', '.'));
+    if (lngRaw) lng = parseFloat(lngRaw.replace(',', '.'));
+    
+    setBtnLoading('btnEdifSubmit', true);
+    
+    const cb = (res) => {
+    setBtnLoading('btnEdifSubmit', false);
+    if (res.success) {
+    cerrarModalSeguro('modalGestionEdificios'); // O el ID que uses ('edificioModal')
+    if(document.getElementById('edificioModal')) cerrarModalSeguro('edificioModal');
+    
+    notificarExito("Edificio guardado");
+    loadEdificiosList();
+    } else {
+    notificarError(res.error);
+    }
+    };
+    
+    const p = {
+    id: id,
+    nombre: n,
+    idCampus: c,
+    contacto: document.getElementById('edifContacto').value,
+    lat: lat,
+    lng: lng
+    };
+    
+    if (id) google.script.run.withSuccessHandler(cb).updateEdificio(p);
+    else google.script.run.withSuccessHandler(cb).crearEdificio(p);
   }
 
   function deleteEdificio(id) {
@@ -2686,7 +2908,49 @@ function loadDocs() {
   // SEARCH & MAP
   let searchTimeout=null;
   function handleGlobalSearch() { const t=document.getElementById('globalSearchInput').value; if(searchTimeout) clearTimeout(searchTimeout); if(t.length<3) { closeSearchResults(); return; } searchTimeout=setTimeout(()=>executeGlobalSearch(),300); }
-  function executeGlobalSearch() { const t=document.getElementById('globalSearchInput').value; const c=document.getElementById('globalSearchResults'); c.classList.remove('d-none'); c.innerHTML='Buscando...'; google.script.run.withSuccessHandler(r=>{ let h=''; r.forEach(i=>h+=`<button class="list-group-item" onclick="goToResult('${i.id}','${i.tipo}')">${i.texto}</button>`); c.innerHTML=h||'Sin resultados'; }).buscarGlobal(t); }
+
+  function executeGlobalSearch() {
+      const t = document.getElementById('globalSearchInput').value;
+      const c = document.getElementById('globalSearchResults');
+      
+      c.classList.remove('d-none');
+      c.innerHTML = '<div class="list-group-item text-center"><span class="spinner-border spinner-border-sm text-secondary"></span> Buscando...</div>';
+      
+      google.script.run.withSuccessHandler(r => {
+          let h = '';
+          if (!r || r.length === 0) {
+              h = '<div class="list-group-item text-muted small fst-italic">Sin resultados</div>';
+          } else {
+              r.forEach(i => {
+                  // LÓGICA DE ICONOS
+                  let icon = 'bi-question-circle';
+                  let color = 'text-secondary';
+                  
+                  if (i.tipo === 'ACTIVO') { 
+                      icon = 'bi-box-seam'; 
+                      color = 'text-primary'; // Azul
+                  } else if (i.tipo === 'EDIFICIO') { 
+                      icon = 'bi-building'; 
+                      color = 'text-danger';  // Rojo
+                  } else if (i.tipo === 'CAMPUS') {
+                      icon = 'bi-bank';
+                      color = 'text-dark';
+                  }
+
+                  h += `
+                  <button class="list-group-item list-group-item-action d-flex align-items-center gap-3 py-2" onclick="goToResult('${i.id}','${i.tipo}')">
+                      <div class="fs-5 ${color}"><i class="bi ${icon}"></i></div>
+                      <div>
+                          <div class="fw-bold text-dark" style="font-size: 0.9rem;">${i.texto}</div>
+                          <div class="small text-muted" style="font-size: 0.75rem;">${i.subtexto || i.tipo}</div>
+                      </div>
+                  </button>`;
+              });
+          }
+          c.innerHTML = h;
+      }).buscarGlobal(t);
+  }
+
   function closeSearchResults() { document.getElementById('globalSearchResults').classList.add('d-none'); }
   function goToResult(id, t) { closeSearchResults(); if(t==='ACTIVO') openAssetDetail(id); else openBuildingDetail(id); }
   function toggleSidebar() { const s=document.getElementById('sidebar'), o=document.getElementById('sidebarOverlay'); s.classList.toggle('active'); o.classList.toggle('active'); }
@@ -2771,13 +3035,16 @@ function loadDocs() {
   }
 
   // CHANGELOG
-  function openChangelogModal(e) { 
-      // 1. Evitar recarga de página
-      if(e) e.preventDefault(); 
 
-      if(!changelogModal) changelogModal = new bootstrap.Modal(document.getElementById('changelogModal')); 
-      
-      // 2. Lógica para mostrar el botón "Nueva" solo si es ADMIN
+  function openChangelogModal(e) {
+      // 1. Evitar navegación del enlace
+      if (e) e.preventDefault();
+
+      // 2. APERTURA SEGURA (Esto arregla la pantalla negra)
+      // Mueve el modal al final del DOM y gestiona el z-index correctamente
+      abrirModalSeguro('changelogModal');
+
+      // 3. Lógica del botón "Nueva Versión" (Solo Admin)
       const btnNew = document.getElementById('btnNewVersion');
       if (currentUser && currentUser.rol === 'ADMIN') {
           btnNew.classList.remove('d-none');
@@ -2785,42 +3052,95 @@ function loadDocs() {
           btnNew.classList.add('d-none');
       }
 
-      // 3. Mostrar carga y abrir
-      document.getElementById('changelogContainer').innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>'; 
-      changelogModal.show(); 
-      
-      // 4. Cargar datos
-      google.script.run.withSuccessHandler(l => { 
-          let h = ''; 
-          if (!l || l.length === 0) {
-              h = '<div class="text-center text-muted">No hay novedades registradas.</div>';
-          } else {
-              l.forEach(i => {
-                  let badgeClass = 'badge-secondary';
-                  let icon = 'bi-info-circle';
-                  
-                  if(i.tipo === 'NUEVO') { badgeClass = 'badge-new'; icon = 'bi-stars'; }
-                  if(i.tipo === 'MEJORA') { badgeClass = 'badge-improvement'; icon = 'bi-graph-up-arrow'; }
-                  if(i.tipo === 'CORRECCION') { badgeClass = 'badge-fix'; icon = 'bi-bug'; }
+      // 4. Mostrar spinner de carga
+      document.getElementById('changelogContainer').innerHTML = 
+          '<div class="text-center py-4"><div class="spinner-border text-primary"></div><div class="mt-2 small text-muted">Cargando historial...</div></div>';
 
-                  h += `<div class="timeline-item">
+      // 5. Cargar datos del servidor
+      google.script.run
+          .withSuccessHandler(l => {
+              let h = '';
+              if (!l || l.length === 0) {
+                  h = '<div class="text-center text-muted py-4">No hay novedades registradas.</div>';
+              } else {
+                  l.forEach(i => {
+                      let badgeClass = 'badge-secondary';
+                      let icon = 'bi-info-circle';
+
+                      if (i.tipo === 'NUEVO') { badgeClass = 'badge-new'; icon = 'bi-stars'; }
+                      if (i.tipo === 'MEJORA') { badgeClass = 'badge-improvement'; icon = 'bi-graph-up-arrow'; }
+                      if (i.tipo === 'CORRECCION') { badgeClass = 'badge-fix'; icon = 'bi-bug'; }
+
+                      // Formatear saltos de línea para que se vean bien
+                      const desc = i.descripcion ? i.descripcion.replace(/\n/g, '<br>') : '';
+
+                      h += `
+                      <div class="timeline-item">
                           <span class="timeline-dot"></span>
                           <div class="timeline-date">${i.fecha}</div>
-                          <div class="timeline-title d-flex align-items-center gap-2">
-                             ${i.titulo} 
-                             <span class="badge ${badgeClass} border rounded-pill fw-normal" style="font-size:0.7rem">
-                                <i class="bi ${icon} me-1"></i>${i.version}
-                             </span>
+                          <div class="timeline-title d-flex align-items-center gap-2 flex-wrap">
+                              ${i.titulo} 
+                              <span class="badge ${badgeClass} border rounded-pill fw-normal" style="font-size:0.7rem">
+                                  <i class="bi ${icon} me-1"></i>${i.version}
+                              </span>
                           </div>
-                          <p class="timeline-desc">${i.descripcion}</p>
-                        </div>`;
-              });
-          }
-          document.getElementById('changelogContainer').innerHTML = h; 
-      }).getNovedadesApp(); 
+                          <p class="timeline-desc text-muted">${desc}</p>
+                      </div>`;
+                  });
+              }
+              document.getElementById('changelogContainer').innerHTML = h;
+          })
+          .withFailureHandler(err => {
+              document.getElementById('changelogContainer').innerHTML = 
+                  `<div class="alert alert-danger">Error cargando novedades: ${err.message}</div>`;
+          })
+          .getNovedadesApp();
   }
-  function openNewVersionModal() { if(changelogModal) changelogModal.hide(); if(!newVersionModal) newVersionModal=new bootstrap.Modal(document.getElementById('newVersionModal')); newVersionModal.show(); }
-  function submitNewVersion() { const v=document.getElementById('nvVersion').value, t=document.getElementById('nvTitulo').value; if(!v) return; setBtnLoading('btnNvSubmit',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnNvSubmit',false); if(r.success){ newVersionModal.hide(); notificarExito("Publicado"); } }).crearNovedad({version:v, titulo:t, descripcion:document.getElementById('nvDesc').value, tipo:document.getElementById('nvTipo').value}); }
+
+  function openNewVersionModal() {
+      // 1. Cerrar el modal actual (Lista de Novedades) de forma segura
+      cerrarModalSeguro('changelogModal');
+
+      // 2. Esperar un instante (300ms) para que termine la animación de cierre 
+      // y abrir el nuevo modal limpiamente. Esto evita conflictos de "backdrops".
+      setTimeout(() => {
+          // APERTURA SEGURA (Arregla la pantalla negra)
+          abrirModalSeguro('newVersionModal');
+
+          // 3. Limpiar el formulario para que esté vacío
+          document.getElementById('nvVersion').value = '';
+          document.getElementById('nvTitulo').value = '';
+          document.getElementById('nvDesc').value = '';
+          document.getElementById('nvTipo').value = 'MEJORA'; // Valor por defecto
+      }, 300);
+  }
+
+  function submitNewVersion() {
+      const v = document.getElementById('nvVersion').value;
+      const t = document.getElementById('nvTitulo').value;
+      
+      if (!v) return notificarError("La versión es obligatoria");
+      
+      setBtnLoading('btnNvSubmit', true);
+      
+      google.script.run.withSuccessHandler(r => {
+          setBtnLoading('btnNvSubmit', false);
+          if (r.success) {
+              // Cierre seguro de ambos modales
+              cerrarModalSeguro('newVersionModal');
+              cerrarModalSeguro('changelogModal');
+              
+              notificarExito("Versión publicada");
+          } else {
+              notificarError(r.error);
+          }
+      }).crearNovedad({
+          version: v, 
+          titulo: t, 
+          descripcion: document.getElementById('nvDesc').value, 
+          tipo: document.getElementById('nvTipo').value
+      });
+  }
 
   // QR
   function descargarQRActivo() { if(!currentAssetId) return; notificar("Generando..."); google.script.run.withSuccessHandler(r=>{ if(r.success) Swal.fire({title:r.activo.nombre, html:`<img src="${r.qrUrl}" style="width:200px">`, confirmButtonText:'Cerrar'}); else notificarError(r.error); }).generarQRActivo(currentAssetId); }
@@ -3525,177 +3845,140 @@ function loadDocs() {
   }
 
   // ==========================================
-// SISTEMA DE ANIMACIONES MODERNAS
-// ==========================================
+  // SISTEMA DE ANIMACIONES MODERNAS
+  // ==========================================
 
-/**
- * Anima la entrada de una nueva fila en una tabla
- * @param {HTMLElement} row - Fila del DOM
- */
-function animateRowIn(row) {
-  row.classList.add('row-enter');
-  row.addEventListener('animationend', () => {
-    row.classList.remove('row-enter');
-  }, { once: true });
-}
+  /**
+   * Anima la entrada de una nueva fila en una tabla
+   * @param {HTMLElement} row - Fila del DOM
+   */
+  function animateRowIn(row) {
+    row.classList.add('row-enter');
+    row.addEventListener('animationend', () => {
+      row.classList.remove('row-enter');
+    }, { once: true });
+  }
 
-/**
- * Anima la salida de una fila con colapso
- * @param {HTMLElement} row - Fila a eliminar
- * @param {Function} callback - Función a ejecutar tras la animación
- */
-function animateRowOut(row, callback) {
-  // 1. Fase de fade-out lateral
-  row.classList.add('row-exit');
-  
-  row.addEventListener('animationend', () => {
-    // 2. Fase de colapso vertical
-    row.classList.remove('row-exit');
-    row.classList.add('row-collapse');
+  /**
+   * Anima la salida de una fila con colapso
+   * @param {HTMLElement} row - Fila a eliminar
+   * @param {Function} callback - Función a ejecutar tras la animación
+   */
+  function animateRowOut(row, callback) {
+    // 1. Fase de fade-out lateral
+    row.classList.add('row-exit');
     
     row.addEventListener('animationend', () => {
-      if (callback) callback();
-      row.remove();
+      // 2. Fase de colapso vertical
+      row.classList.remove('row-exit');
+      row.classList.add('row-collapse');
+      
+      row.addEventListener('animationend', () => {
+        if (callback) callback();
+        row.remove();
+      }, { once: true });
     }, { once: true });
-  }, { once: true });
-}
-
-/**
- * Flash de éxito en una fila (ej. al actualizar)
- */
-function flashSuccess(row) {
-  row.classList.add('success-flash');
-  setTimeout(() => row.classList.remove('success-flash'), 1000);
-}
-
-/**
- * Skeleton Loader para tablas (mientras cargan datos)
- */
-function showSkeletonTable(tbody, rows = 5, cols = 4) {
-  let html = '';
-  for (let i = 0; i < rows; i++) {
-    html += '<tr>';
-    for (let j = 0; j < cols; j++) {
-      const width = Math.random() * (80 - 40) + 40; // Anchos variables
-      html += `<td><div class="skeleton" style="height: 20px; width: ${width}%;"></div></td>`;
-    }
-    html += '</tr>';
   }
-  tbody.innerHTML = html;
-}
 
-/**
- * Notificación Toast mejorada con icono y color
- */
-function toastModerno(mensaje, tipo = 'success') {
-  const iconos = {
-    success: '✓',
-    error: '✕',
-    info: 'ℹ',
-    warning: '⚠'
-  };
-  
-  const colores = {
-    success: '#10b981',
-    error: '#ef4444',
-    info: '#3b82f6',
-    warning: '#f59e0b'
-  };
-  
-  Swal.fire({
-    toast: true,
-    position: 'top-end',
-    icon: tipo,
-    title: mensaje,
-    showConfirmButton: false,
-    timer: 3000,
-    timerProgressBar: true,
-    iconColor: colores[tipo],
-    customClass: {
-      popup: 'swal2-toast-modern'
-    },
-    didOpen: (toast) => {
-      toast.addEventListener('mouseenter', Swal.stopTimer);
-      toast.addEventListener('mouseleave', Swal.resumeTimer);
-    }
-  });
-}
+  /**
+   * Flash de éxito en una fila (ej. al actualizar)
+   */
+  function flashSuccess(row) {
+    row.classList.add('success-flash');
+    setTimeout(() => row.classList.remove('success-flash'), 1000);
+  }
 
-/**
- * Renderizado optimizado de tablas con animación progresiva
- */
-function renderTableAnimated(tbody, data, renderRow, options = {}) {
-  const {
-    pageSize = 30,
-    animationDelay = 10, // ms entre cada fila (más rápido = menos perceptible)
-    showSkeleton = true
-  } = options;
-  
-  // 1. Mostrar skeleton mientras preparamos datos
-  if (showSkeleton && data.length > 10) {
-    showSkeletonTable(tbody, Math.min(data.length, 10), 5);
+  /**
+   * Skeleton Loader para tablas (mientras cargan datos)
+   */
+  function showSkeletonTable(tbody, rows = 5, cols = 4) {
+    let html = '';
+    for (let i = 0; i < rows; i++) {
+      html += '<tr>';
+      for (let j = 0; j < cols; j++) {
+        const width = Math.random() * (80 - 40) + 40; // Anchos variables
+        html += `<td><div class="skeleton" style="height: 20px; width: ${width}%;"></div></td>`;
+      }
+      html += '</tr>';
+    }
+    tbody.innerHTML = html;
   }
-  
-  if (!data || data.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5 fst-italic">No hay datos para mostrar</td></tr>';
-    return;
-  }
-  
-  let currentIndex = 0;
-  
-  function renderBatch() {
-    const end = Math.min(currentIndex + pageSize, data.length);
-    const fragment = document.createDocumentFragment();
+
+  /**
+   * Renderizado optimizado de tablas con animación progresiva
+   */
+  function renderTableAnimated(tbody, data, renderRow, options = {}) {
+    const {
+      pageSize = 30,
+      animationDelay = 10, // ms entre cada fila (más rápido = menos perceptible)
+      showSkeleton = true
+    } = options;
     
-    for (let i = currentIndex; i < end; i++) {
-      const tr = document.createElement('tr');
-      tr.innerHTML = renderRow(data[i], i);
-      tr.style.opacity = '0';
-      fragment.appendChild(tr);
+    // 1. Mostrar skeleton mientras preparamos datos
+    if (showSkeleton && data.length > 10) {
+      showSkeletonTable(tbody, Math.min(data.length, 10), 5);
     }
     
-    if (currentIndex === 0) {
-      tbody.innerHTML = '';
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-5 fst-italic">No hay datos para mostrar</td></tr>';
+      return;
     }
     
-    tbody.appendChild(fragment);
+    let currentIndex = 0;
     
-    // Animación de entrada escalonada
-    const newRows = tbody.querySelectorAll('tr[style*="opacity: 0"]');
-    newRows.forEach((row, idx) => {
-      setTimeout(() => {
-        row.style.opacity = '1';
-        row.classList.add('fade-in');
-      }, idx * animationDelay);
-    });
+    function renderBatch() {
+      const end = Math.min(currentIndex + pageSize, data.length);
+      const fragment = document.createDocumentFragment();
+      
+      for (let i = currentIndex; i < end; i++) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = renderRow(data[i], i);
+        tr.style.opacity = '0';
+        fragment.appendChild(tr);
+      }
+      
+      if (currentIndex === 0) {
+        tbody.innerHTML = '';
+      }
+      
+      tbody.appendChild(fragment);
+      
+      // Animación de entrada escalonada
+      const newRows = tbody.querySelectorAll('tr[style*="opacity: 0"]');
+      newRows.forEach((row, idx) => {
+        setTimeout(() => {
+          row.style.opacity = '1';
+          row.classList.add('fade-in');
+        }, idx * animationDelay);
+      });
+      
+      currentIndex = end;
+      
+      if (currentIndex < data.length) {
+        requestAnimationFrame(renderBatch);
+      } else {
+        refreshSecurityIcons();
+      }
+    }
     
-    currentIndex = end;
+    renderBatch();
+  }
+
+  function diagnosticarCargaActivos() {
+    console.log('=== DIAGNÓSTICO DE CARGA DE ACTIVOS ===');
+    console.log('currentBuildingId:', currentBuildingId);
+    console.log('window.currentBuildingAssetsList:', window.currentBuildingAssetsList);
+    console.log('Elemento tbody existe:', !!document.getElementById('buildingAssetsBody'));
+    console.log('Pestaña visible:', !document.getElementById('tab-b-assets').classList.contains('d-none'));
     
-    if (currentIndex < data.length) {
-      requestAnimationFrame(renderBatch);
+    // Test de carga forzada
+    if (currentBuildingId) {
+      console.log('🔧 Forzando recarga...');
+      loadBuildingAssets();
     } else {
-      refreshSecurityIcons();
+      console.error('❌ No se puede cargar sin currentBuildingId');
     }
   }
-  
-  renderBatch();
-}
-
-function diagnosticarCargaActivos() {
-  console.log('=== DIAGNÓSTICO DE CARGA DE ACTIVOS ===');
-  console.log('currentBuildingId:', currentBuildingId);
-  console.log('window.currentBuildingAssetsList:', window.currentBuildingAssetsList);
-  console.log('Elemento tbody existe:', !!document.getElementById('buildingAssetsBody'));
-  console.log('Pestaña visible:', !document.getElementById('tab-b-assets').classList.contains('d-none'));
-  
-  // Test de carga forzada
-  if (currentBuildingId) {
-    console.log('🔧 Forzando recarga...');
-    loadBuildingAssets();
-  } else {
-    console.error('❌ No se puede cargar sin currentBuildingId');
-  }
-}
 
   function obtenerIconoRelacion(tipo) {
     const mapa = {
@@ -3769,6 +4052,7 @@ function diagnosticarCargaActivos() {
     tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary"></div></td></tr>';
     
     google.script.run.withSuccessHandler(lista => {
+      window.allProveedoresData = lista;
       if (!lista || lista.length === 0) {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-5 fst-italic">No hay proveedores registrados</td></tr>';
         return;
