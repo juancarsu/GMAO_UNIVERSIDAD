@@ -546,22 +546,14 @@ function getAllAssetsList() {
 }
 
 function getAssetInfo(idActivo) {
+  // Aseguramos que el índice esté fresco
   const index = buildActivosIndex();
   const activo = index.byId[String(idActivo)];
   
   if (!activo) return null;
 
-    // ⭐ DEBUG TEMPORAL
-  Logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  Logger.log('getAssetInfo llamado para: ' + idActivo);
-  Logger.log('Activo encontrado en índice:');
-  Logger.log('├─ ID: ' + activo.id);
-  Logger.log('├─ Nombre: ' + activo.nombre);
-  Logger.log('├─ Campus: ' + activo.campus);
-  Logger.log('├─ idCampus: ' + activo.idCampus + ' (tipo: ' + typeof activo.idCampus + ')');
-  Logger.log('├─ Edificio: ' + activo.edificio);
-  Logger.log('└─ idEdificio: ' + activo.idEdificio + ' (tipo: ' + typeof activo.idEdificio + ')');
-  Logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  // Debug para verificar
+  Logger.log('Recuperando activo recién creado: ' + activo.nombre);
   
   return {
     id: activo.id,
@@ -570,10 +562,15 @@ function getAssetInfo(idActivo) {
     marca: activo.marca,
     fechaAlta: activo.fechaAlta instanceof Date ? 
                Utilities.formatDate(activo.fechaAlta, Session.getScriptTimeZone(), "dd/MM/yyyy") : "-",
-    edificio: activo.edificio,
+    // --- CORRECCIÓN AQUÍ ---
+    // El frontend espera 'edificioNombre' para la lista, pero 'edificio' para el detalle.
+    // Enviamos ambos para evitar el "undefined".
+    edificio: activo.edificio,       
+    edificioNombre: activo.edificio, 
+    // -----------------------
     idEdificio: activo.idEdificio,
     campus: activo.campus,
-    idCampus: activo.idCampus  // ⭐ ASEGURAR QUE ESTO EXISTA
+    idCampus: activo.idCampus
   };
 }
 
@@ -1477,55 +1474,197 @@ function getDatosDashboard(idCampus) {
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
 
+// SUSTITUIR EN Code.gs
+
 function crearCampus(d) {
-  verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
-  const fId = crearCarpeta(d.nombre, getRootFolderId()); ss.getSheetByName('CAMPUS').appendRow([Utilities.getUuid(), d.nombre, d.provincia, d.direccion, fId]); 
-  registrarLog("CREAR CAMPUS", "Nombre: " + d.nombre);
-  invalidateCache('CAMPUS');    
-  invalidateCache('EDIFICIOS');
-  invalidateCache('ACTIVOS');
-  return { success: true };
+  try {
+    verificarPermiso(['WRITE']);
+    if (!d.nombre) throw new Error("El nombre es obligatorio.");
+
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    
+    // Intentar crear carpeta, si falla usar raíz
+    let fId = getRootFolderId();
+    try {
+      fId = crearCarpeta(d.nombre, fId); // Crea carpeta dentro de la raíz
+    } catch (err) {
+      console.warn("Error creando carpeta de Campus: " + err);
+    }
+
+    ss.getSheetByName('CAMPUS').appendRow([
+      Utilities.getUuid(), 
+      d.nombre, 
+      d.provincia, 
+      d.direccion, 
+      fId
+    ]);
+    
+    SpreadsheetApp.flush(); // Forzar guardado
+    invalidateCache('CAMPUS');
+    registrarLog("CREAR CAMPUS", "Nombre: " + d.nombre);
+    
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
 }
 
-function crearEdificio(d) { 
-  verificarPermiso(['WRITE']); 
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID')); 
-  const cData = getSheetData('CAMPUS'); 
-  let pId; 
-  for(let i=1; i<cData.length; i++) if(String(cData[i][0])==String(d.idCampus)) pId=cData[i][4]; 
-  
-  const fId = crearCarpeta(d.nombre, pId); 
-  const aId = crearCarpeta("Activos", fId); 
-  
-  // Añadimos d.lat y d.lng al final
-  ss.getSheetByName('EDIFICIOS').appendRow([Utilities.getUuid(), d.idCampus, d.nombre, d.contacto, fId, aId, d.lat, d.lng]); 
-  
-  registrarLog("CREAR EDIFICIO", "Nombre: " + d.nombre); // Auditoría
-  invalidateCache('EDIFICIOS');
-  invalidateCache('ACTIVOS');
-  return {success:true}; 
+function crearEdificio(d) {
+  try {
+    verificarPermiso(['WRITE']);
+    if (!d.nombre || !d.idCampus) throw new Error("Faltan datos obligatorios.");
+
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    
+    // 1. Buscar carpeta del Campus padre
+    const cData = getCachedSheetData('CAMPUS');
+    let pId = getRootFolderId(); // Por defecto raíz
+    
+    for(let i=1; i<cData.length; i++) {
+      if(String(cData[i][0]) === String(d.idCampus)) {
+        if(cData[i][4]) pId = cData[i][4]; // Usar carpeta del campus si existe
+        break;
+      }
+    }
+
+    // 2. Crear carpetas (Edificio y Activos)
+    let fId = "", aId = "";
+    try {
+      fId = crearCarpeta(d.nombre, pId);
+      aId = crearCarpeta("Activos - " + d.nombre, fId);
+    } catch (err) {
+      console.warn("Error carpetas edificio: " + err);
+      if(!fId) fId = pId; // Fallback
+      if(!aId) aId = pId;
+    }
+
+    // 3. Guardar
+    ss.getSheetByName('EDIFICIOS').appendRow([
+      Utilities.getUuid(), 
+      d.idCampus, 
+      d.nombre, 
+      d.contacto, 
+      fId, 
+      aId, 
+      d.lat, 
+      d.lng
+    ]);
+
+    SpreadsheetApp.flush();
+    invalidateCache('EDIFICIOS');
+    registrarLog("CREAR EDIFICIO", "Nombre: " + d.nombre); 
+    
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
 }
+
+// SUSTITUIR EN Code.gs
 
 function crearActivo(d) {
-  verificarPermiso(['WRITE']);
-  const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
-  const eData = getSheetData('EDIFICIOS');
-  let pId;
-  for (let i = 1; i < eData.length; i++)
-    if (String(eData[i][0]) == String(d.idEdificio)) pId = eData[i][5];
-  const fId = crearCarpeta(d.nombre, pId);
-  const id = Utilities.getUuid();
-  const cats = getSheetData('CAT_INSTALACIONES');
-  let nombreTipo = d.tipo;
-  for (let i = 1; i < cats.length; i++) {
-    if (String(cats[i][0]) === String(d.tipo)) {
-      nombreTipo = cats[i][1]; break;
+  try {
+    verificarPermiso(['WRITE']);
+    
+    // LÓGICA ACTIVOS DE CAMPUS (NUEVO)
+    // Si viene idCampus pero NO idEdificio, asignamos al edificio "General"
+    if (!d.idEdificio && d.idCampus) {
+       const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+       const sheetEdif = ss.getSheetByName('EDIFICIOS');
+       const datosEdif = sheetEdif.getDataRange().getValues();
+       const nombreGeneral = "ZONAS EXTERIORES / GENERAL";
+       
+       let idEdificioGeneral = null;
+       let carpetaPadreId = null;
+
+       // 1. Buscar si ya existe el edificio "General" en este campus
+       for(let i=1; i<datosEdif.length; i++) {
+         if (String(datosEdif[i][1]) === String(d.idCampus) && 
+             String(datosEdif[i][2]).toUpperCase() === nombreGeneral) {
+             idEdificioGeneral = datosEdif[i][0];
+             carpetaPadreId = datosEdif[i][5]; // Carpeta activos
+             break;
+         }
+       }
+
+       // 2. Si no existe, lo creamos automáticamente
+       if (!idEdificioGeneral) {
+         Logger.log("Creando edificio virtual General para el campus " + d.idCampus);
+         idEdificioGeneral = Utilities.getUuid();
+         // Buscamos carpeta del campus para anidar bien
+         const campus = getCachedSheetData('CAMPUS');
+         let idCarpetaCampus = getRootFolderId();
+         for(let c=1; c<campus.length; c++) {
+            if(String(campus[c][0]) === String(d.idCampus)) { idCarpetaCampus = campus[c][4]; break; }
+         }
+         // Crear carpetas
+         let fIdEdif = crearCarpeta(nombreGeneral, idCarpetaCampus);
+         let fIdActivos = crearCarpeta("Activos", fIdEdif);
+         
+         sheetEdif.appendRow([
+           idEdificioGeneral, d.idCampus, nombreGeneral, "Gestión Campus", fIdEdif, fIdActivos, "", ""
+         ]);
+         invalidateCache('EDIFICIOS'); // Limpiar caché para que aparezca luego
+         carpetaPadreId = fIdActivos;
+       }
+       
+       // Asignamos el ID encontrado/creado
+       d.idEdificio = idEdificioGeneral;
+       // Pasamos la carpeta padre explícitamente para ahorrar búsqueda
+       d._carpetaPadreCache = carpetaPadreId; 
     }
+
+    // --- VALIDACIÓN ESTÁNDAR ---
+    if (!d.idEdificio) throw new Error("No has seleccionado un Edificio ni Campus.");
+    if (!d.nombre) throw new Error("El nombre es obligatorio.");
+
+    const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
+    const eData = getCachedSheetData('EDIFICIOS');
+    
+    // 1. Buscar carpeta (si no la hemos pre-calculado arriba)
+    let pId = d._carpetaPadreCache || null;
+    let nombreEdificio = "Desconocido";
+
+    if (!pId) {
+      for (let i = 1; i < eData.length; i++) {
+        if (String(eData[i][0]) === String(d.idEdificio)) {
+          pId = eData[i][5]; 
+          nombreEdificio = eData[i][2];
+          break;
+        }
+      }
+    }
+
+    // 2. Crear carpeta del activo
+    let fId = "";
+    try {
+      if (!pId) pId = getRootFolderId();
+      fId = crearCarpeta(d.nombre, pId);
+    } catch (errDrive) {
+      fId = "ERROR_DRIVE"; 
+    }
+
+    // 3. Resolver nombre Tipo
+    const cats = getCachedSheetData('CAT_INSTALACIONES');
+    let nombreTipo = d.tipo;
+    for (let i = 1; i < cats.length; i++) {
+      if (String(cats[i][0]) === String(d.tipo)) { nombreTipo = cats[i][1]; break; }
+    }
+
+    // 4. Guardar
+    const newId = Utilities.getUuid();
+    ss.getSheetByName('ACTIVOS').appendRow([
+      newId, d.idEdificio, nombreTipo, d.nombre, d.marca || '', new Date(), fId
+    ]);
+
+    SpreadsheetApp.flush(); 
+    invalidateCache('ACTIVOS');
+    
+    return { success: true, newId: newId };
+
+  } catch (e) {
+    return { success: false, error: e.toString() };
   }
-  ss.getSheetByName('ACTIVOS').appendRow([id, d.idEdificio, nombreTipo, d.nombre, d.marca, new Date(), fId]);
-  invalidateCache('ACTIVOS');
-  return { success: true };
 }
 
 function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]})); }
@@ -4046,4 +4185,499 @@ function DIAGNOSTICO_CONTRATOS() {
       }
     }
   }
+}
+
+function getManualHTML() {
+  // Aquí puedes guardar el manual en HTML
+  // Por ahora lo devolvemos como string, pero podrías guardarlo en una hoja de cálculo
+  
+  return `
+    <div class="manual-toc">
+      <h3><i class="bi bi-list-ul me-2"></i>Índice de Contenidos</h3>
+      <ul>
+        <li><a href="#intro">1. Introducción</a></li>
+        <li><a href="#acceso">2. Acceso al Sistema</a></li>
+        <li><a href="#permisos">3. Permisos y Roles</a></li>
+        <li><a href="#navegacion">4. Navegación Principal</a></li>
+        <li><a href="#campus">5. Gestión de Campus y Edificios</a></li>
+        <li><a href="#activos">6. Gestión de Activos</a></li>
+        <li><a href="#mantenimiento">7. Plan de Mantenimiento</a></li>
+        <li><a href="#contratos">8. Gestión de Contratos</a></li>
+        <li><a href="#incidencias">9. Incidencias</a></li>
+        <li><a href="#qr">10. Códigos QR</a></li>
+        <li><a href="#adicionales">11. Funciones Adicionales</a></li>
+        <li><a href="#soporte">12. Soporte</a></li>
+      </ul>
+    </div>
+
+    <section id="intro" class="manual-section">
+      <h1>📋 Introducción</h1>
+      <p>El <strong>GMAO (Sistema de Gestión de Mantenimiento Asistido por Ordenador)</strong> de la Universidad de Navarra es una aplicación web diseñada para gestionar de forma integral todos los activos, instalaciones y mantenimientos de los diferentes campus universitarios.</p>
+      
+      <h3>Características Principales</h3>
+      <ul>
+        <li>✅ Gestión centralizada de activos e instalaciones</li>
+        <li>✅ Programación automática de mantenimientos legales y periódicos</li>
+        <li>✅ Control de contratos con proveedores</li>
+        <li>✅ Reportes de incidencias con fotografías</li>
+        <li>✅ Códigos QR para identificación rápida</li>
+        <li>✅ Alertas automáticas por email</li>
+        <li>✅ Historial completo de documentación</li>
+      </ul>
+    </section>
+
+    <section id="acceso" class="manual-section">
+      <h1>🔐 Acceso al Sistema</h1>
+      
+      <h3>Primer Acceso</h3>
+      <ol>
+        <li>Abra el enlace proporcionado por el administrador</li>
+        <li>Inicie sesión con su cuenta de Google corporativa (@unav.es)</li>
+        <li>El sistema detectará automáticamente sus permisos</li>
+      </ol>
+
+      <h3>Interfaz Principal</h3>
+      <p>La aplicación se divide en tres zonas:</p>
+      
+      <div class="alert-box info">
+        <strong>💡 Barra Lateral Izquierda (Menú)</strong><br>
+        Dashboard, Campus, Edificios, Activos, Mantenimiento, Incidencias, Contratos, Planificador, Proveedores, Configuración
+      </div>
+      
+      <div class="alert-box success">
+        <strong>📱 Botones Flotantes (esquina inferior derecha)</strong><br>
+        • 💬 Botón azul: Enviar sugerencias/reportar errores<br>
+        • 🔴 Botón rojo: Reportar avería urgente
+      </div>
+    </section>
+
+    <section id="permisos" class="manual-section">
+      <h1>👥 Permisos y Roles</h1>
+      <p>El sistema tiene tres niveles de acceso:</p>
+
+      <h3>👁️ CONSULTA (Solo lectura)</h3>
+      <ul>
+        <li>✅ Ver toda la información</li>
+        <li>✅ Descargar documentos</li>
+        <li>✅ Reportar averías</li>
+        <li>❌ No puede crear ni modificar</li>
+      </ul>
+
+      <h3>🔧 TÉCNICO (Operativo)</h3>
+      <ul>
+        <li>✅ Todo lo de Consulta</li>
+        <li>✅ Crear y editar activos</li>
+        <li>✅ Programar mantenimientos</li>
+        <li>✅ Subir documentación</li>
+        <li>✅ Gestionar contratos</li>
+        <li>❌ No puede eliminar registros</li>
+        <li>❌ No puede gestionar usuarios</li>
+      </ul>
+
+      <h3>👑 ADMINISTRADOR (Control total)</h3>
+      <ul>
+        <li>✅ Acceso completo</li>
+        <li>✅ Eliminar registros</li>
+        <li>✅ Gestionar usuarios</li>
+        <li>✅ Configurar catálogo de instalaciones</li>
+        <li>✅ Ver logs de auditoría</li>
+      </ul>
+    </section>
+
+    <section id="navegacion" class="manual-section">
+      <h1>📊 Dashboard</h1>
+      
+      <p>El <strong>Dashboard</strong> muestra un resumen general del estado del sistema.</p>
+      
+      <h3>Tarjetas de Estado</h3>
+      <ul>
+        <li><strong>Activos:</strong> Número total de equipos registrados</li>
+        <li><strong>Vencidas:</strong> Revisiones que no se han realizado a tiempo (🔴 rojo)</li>
+        <li><strong>Pendientes:</strong> Revisiones próximas a vencer en 30 días (🟡 amarillo)</li>
+        <li><strong>Incidencias:</strong> Averías sin resolver</li>
+        <li><strong>Contratos:</strong> Contratos vigentes</li>
+      </ul>
+
+      <div class="alert-box success">
+        <strong>💡 Truco:</strong> Haga clic en cualquier tarjeta para ir directamente a esa sección
+      </div>
+
+      <h3>Calendario</h3>
+      <ul>
+        <li><strong style="color: #10b981;">Verde:</strong> Mantenimiento al día</li>
+        <li><strong style="color: #f59e0b;">Amarillo:</strong> Próximo a vencer (≤30 días)</li>
+        <li><strong style="color: #ef4444;">Rojo:</strong> Vencido</li>
+      </ul>
+    </section>
+
+    <section id="campus" class="manual-section">
+      <h1>🏛️ Campus y Edificios</h1>
+      
+      <h2>Gestión de Campus</h2>
+      
+      <h3>Crear Nuevo Campus</h3>
+      <ol>
+        <li>Clic en <strong>"+ Nuevo Campus"</strong></li>
+        <li>Complete los campos:
+          <ul>
+            <li><strong>Nombre:</strong> Ej. "Campus de Pamplona"</li>
+            <li><strong>Provincia:</strong> Ej. "Navarra"</li>
+            <li><strong>Dirección:</strong> Dirección completa</li>
+          </ul>
+        </li>
+        <li>Clic en <strong>"Guardar"</strong></li>
+      </ol>
+
+      <div class="alert-box warning">
+        <strong>⚠️ Importante:</strong> Al crear un campus, se crea automáticamente una carpeta en Google Drive
+      </div>
+
+      <h2>Gestión de Edificios</h2>
+      
+      <h3>Crear Nuevo Edificio</h3>
+      <ol>
+        <li>Clic en <strong>"+ Nuevo Edificio"</strong></li>
+        <li>Complete los datos requeridos</li>
+        <li>Opcionalmente, añada coordenadas para visualización en mapa</li>
+      </ol>
+
+      <div class="alert-box info">
+        <strong>💡 Para obtener coordenadas:</strong><br>
+        1. Abra Google Maps<br>
+        2. Clic derecho sobre el edificio<br>
+        3. Copie las coordenadas que aparecen
+      </div>
+
+      <h3>Ficha de Edificio</h3>
+      <p>Al hacer clic en el ojo (👁️) de un edificio, accede a:</p>
+      <ul>
+        <li><strong>📋 Información:</strong> Datos básicos</li>
+        <li><strong>📁 Documentación:</strong> Licencias, planos, certificados</li>
+        <li><strong>🏗️ Obras:</strong> Historial de reformas</li>
+        <li><strong>🔧 Activos:</strong> Lista de equipos instalados</li>
+      </ul>
+    </section>
+
+    <section id="activos" class="manual-section">
+      <h1>📦 Gestión de Activos</h1>
+      
+      <p>Los <strong>activos</strong> son todos los equipos e instalaciones: calderas, ascensores, aire acondicionado, cuadros eléctricos, etc.</p>
+
+      <h2>Crear Nuevo Activo</h2>
+      
+      <h3>Método Manual</h3>
+      <ol>
+        <li>Clic en <strong>"+ Crear Activo"</strong></li>
+        <li>Seleccione ubicación (Campus + Edificio)</li>
+        <li>Elija tipo del catálogo</li>
+        <li>Asigne nombre único</li>
+        <li>Indique marca/fabricante</li>
+      </ol>
+
+      <h3>Método Masivo (Importación)</h3>
+      <p>Para dar de alta muchos activos a la vez:</p>
+      <ol>
+        <li>Clic en <strong>"Importar"</strong></li>
+        <li>Prepare sus datos en Excel: <code>Campus | Edificio | Tipo | Nombre | Marca</code></li>
+        <li>Copie las filas (sin cabeceras)</li>
+        <li>Pegue en el cuadro de texto</li>
+        <li>Clic en <strong>"Procesar Importación"</strong></li>
+      </ol>
+
+      <h2>Ficha Completa de Activo</h2>
+      
+      <h3>📁 Documentación</h3>
+      <p>Aquí se guardan manuales, certificados, fichas técnicas, etc.</p>
+      
+      <div class="alert-box success">
+        <strong>📤 Subida Rápida (botón nube ☁️):</strong><br>
+        • Permite subir varios archivos a la vez<br>
+        • Clasifica automáticamente OCAs y contratos<br>
+        • Programa revisiones futuras automáticamente
+      </div>
+
+      <h3>🔧 Mantenimiento</h3>
+      <p>Programar nueva revisión:</p>
+      <ol>
+        <li>Clic en <strong>"+ Programar Revisión"</strong></li>
+        <li>Seleccione tipo (Legal, Periódica, Reparación, Extraordinaria)</li>
+        <li>Si es Legal, elija normativa (se autocompleta frecuencia)</li>
+        <li>Active "Repetir" para crear futuras automáticamente</li>
+        <li>Adjunte evidencia si ya la tiene</li>
+        <li>Opcionalmente sincronice con Google Calendar</li>
+      </ol>
+
+      <h3>Marcar Revisión como Realizada</h3>
+      <ol>
+        <li>Clic en botón ✅ (check verde)</li>
+        <li>Confirmar</li>
+      </ol>
+      <p>La revisión pasará a "Histórico" (azul) y no aparecerá en alertas.</p>
+    </section>
+
+    <section id="mantenimiento" class="manual-section">
+      <h1>🔧 Plan de Mantenimiento</h1>
+      
+      <p>Vista global con <strong>todas las revisiones programadas</strong> de todos los activos.</p>
+
+      <h2>Sistema de Filtros</h2>
+      
+      <h3>Filtros de Ubicación</h3>
+      <ul>
+        <li><strong>Campus:</strong> Filtra por campus específico</li>
+        <li><strong>Edificio:</strong> Filtra por edificio</li>
+      </ul>
+
+      <h3>Filtros de Estado</h3>
+      <ul>
+        <li><strong>Todas:</strong> Muestra todas excepto históricas</li>
+        <li><strong>Vencidas (🔴):</strong> Ya pasaron su fecha</li>
+        <li><strong>Próximas (🟡):</strong> Vencen en ≤30 días</li>
+        <li><strong>Al día (🟢):</strong> Bien de fecha</li>
+        <li><strong>Histórico (🔵):</strong> Ya realizadas</li>
+      </ul>
+
+      <h2>Informe PDF</h2>
+      <p>Clic en <strong>"Informe Legal PDF"</strong> genera un documento con todas las revisiones reglamentarias, ideal para auditorías externas.</p>
+    </section>
+
+    <section id="contratos" class="manual-section">
+      <h1>📑 Gestión de Contratos</h1>
+      
+      <h2>Estados de Contratos</h2>
+      <ul>
+        <li>🟢 <strong>Vigente:</strong> Contrato activo</li>
+        <li>🟡 <strong>Próximo:</strong> Caduca en ≤90 días</li>
+        <li>🔴 <strong>Caducado:</strong> Ya venció</li>
+        <li>⚪ <strong>Inactivo:</strong> Desactivado manualmente</li>
+      </ul>
+
+      <h2>Crear Nuevo Contrato</h2>
+      
+      <h3>Paso 1: Proveedor</h3>
+      <p>Seleccione de la lista o clic en <strong>"+ Nuevo"</strong> para crear uno</p>
+
+      <h3>Paso 2: Ubicación (¿A qué aplica?)</h3>
+      <ul>
+        <li><strong>Todo el Campus:</strong> No seleccione edificio ni activo</li>
+        <li><strong>Todo un Edificio:</strong> Seleccione edificio, no activo</li>
+        <li><strong>Un Activo Concreto:</strong> Seleccione hasta activo específico</li>
+        <li><strong>Varios Activos:</strong> Active casilla y seleccione múltiples</li>
+      </ul>
+
+      <h3>Paso 3: Datos del Contrato</h3>
+      <ul>
+        <li>Referencia/Nº de contrato</li>
+        <li>Fechas de inicio y fin</li>
+        <li>Estado (Activo/Inactivo)</li>
+      </ul>
+
+      <h3>Paso 4: Adjuntar PDF</h3>
+      <p>Suba el documento del contrato firmado (opcional)</p>
+    </section>
+
+    <section id="incidencias" class="manual-section">
+      <h1>⚠️ Sistema de Incidencias</h1>
+      
+      <h2>Reportar una Avería</h2>
+      
+      <h3>Botón Flotante Rojo (Acceso Rápido)</h3>
+      <ol>
+        <li>Clic en botón 🔴 (esquina inferior derecha)</li>
+        <li>Complete:
+          <ul>
+            <li>Ubicación (Campus, Edificio, Activo)</li>
+            <li>Descripción del problema</li>
+            <li>Prioridad: Baja, Media, Alta, ¡Urgente!</li>
+            <li>Foto (opcional)</li>
+          </ul>
+        </li>
+        <li>Clic en <strong>"Enviar Reporte"</strong></li>
+      </ol>
+
+      <div class="alert-box warning">
+        <strong>📧 Notificación automática:</strong> Se envía email a todos los técnicos y administradores con avisos activados
+      </div>
+
+      <h2>Estados de Incidencias</h2>
+      <ul>
+        <li>🔴 <strong>Pendiente:</strong> Recién creada</li>
+        <li>🔵 <strong>En Proceso:</strong> Ya se está trabajando</li>
+        <li>🟢 <strong>Resuelta:</strong> Cerrada</li>
+      </ul>
+    </section>
+
+    <section id="qr" class="manual-section">
+      <h1>📱 Códigos QR</h1>
+      
+      <p>Los códigos QR permiten acceso instantáneo a la ficha de un activo desde el móvil.</p>
+
+      <h2>Generar QR Individual</h2>
+      <ol>
+        <li>Entre en la ficha del activo</li>
+        <li>Clic en <strong>"Descargar QR"</strong></li>
+        <li>Se descarga imagen PNG</li>
+        <li>Imprima y pegue en el equipo físico</li>
+      </ol>
+
+      <h2>Generar QR de Edificio Completo (PDF)</h2>
+      <ol>
+        <li>Desde ficha del edificio</li>
+        <li>Botón <strong>"QR Edificio (PDF)"</strong></li>
+        <li>Se genera PDF con etiquetas de todos los activos</li>
+        <li>Listo para imprimir (2 columnas/página)</li>
+      </ol>
+
+      <h2>Escanear un QR</h2>
+      <ol>
+        <li>Abra cámara del móvil</li>
+        <li>Enfoque el código QR</li>
+        <li>Toque el enlace</li>
+        <li>Se abre Vista Móvil Optimizada con:
+          <ul>
+            <li>Datos del activo</li>
+            <li>Estado de mantenimiento</li>
+            <li>Botones: Reportar avería, Realizar revisión, Ver manuales</li>
+          </ul>
+        </li>
+      </ol>
+    </section>
+
+    <section id="adicionales" class="manual-section">
+      <h1>➕ Funciones Adicionales</h1>
+      
+      <h2>📅 Planificador</h2>
+      <p>Vista de calendario unificada con:</p>
+      <ul>
+        <li>🔧 Mantenimientos programados</li>
+        <li>🏗️ Obras en curso</li>
+        <li>⚠️ Incidencias pendientes</li>
+        <li>📄 Vencimientos de contratos</li>
+      </ul>
+      <p><strong>Función de arrastrar:</strong> Puede cambiar fechas arrastrando eventos en el calendario</p>
+
+      <h2>📊 Auditoría (Exportación Masiva)</h2>
+      <ol>
+        <li>Seleccione año</li>
+        <li>Seleccione tipo (Solo Legales o Todo)</li>
+        <li>Clic en <strong>"Generar Paquete"</strong></li>
+      </ol>
+      <p>Se crea carpeta en Drive con copia de todos los certificados, archivos renombrados automáticamente.</p>
+
+      <h2>🔔 Alertas Automáticas</h2>
+      <p>Si tiene activadas las alertas, recibirá emails diarios con:</p>
+      <ul>
+        <li>⚠️ Revisiones vencidas</li>
+        <li>📅 Revisiones próximas (≤7 días)</li>
+        <li>📄 Contratos próximos a caducar (≤60 días)</li>
+      </ul>
+
+      <h2>💬 Buzón de Sugerencias</h2>
+      <p>Botón flotante azul para enviar:</p>
+      <ul>
+        <li>💡 Ideas de mejora</li>
+        <li>🐛 Reportes de errores</li>
+        <li>💬 Comentarios generales</li>
+      </ul>
+    </section>
+
+    <section id="soporte" class="manual-section">
+      <h1>📞 Soporte y Contacto</h1>
+      
+      <div class="alert-box info">
+        <strong>Administrador del Sistema:</strong><br>
+        Email: jcsuarez@unav.es<br>
+        Departamento: Servicio de Obras y Mantenimiento
+      </div>
+
+      <h3>Para solicitar:</h3>
+      <ul>
+        <li>✅ Cambio de permisos</li>
+        <li>✅ Alta de nuevos usuarios</li>
+        <li>✅ Resolución de incidencias técnicas</li>
+        <li>✅ Formación adicional</li>
+      </ul>
+
+      <h2>🆘 Resolución de Problemas</h2>
+      
+      <h3>El sistema no carga</h3>
+      <ol>
+        <li>Verifique conexión a internet</li>
+        <li>Cierre y vuelva a abrir la pestaña</li>
+        <li>Borre caché del navegador</li>
+        <li>Contacte con administrador si persiste</li>
+      </ol>
+
+      <h3>No puedo crear/editar</h3>
+      <p>Probablemente tiene permisos de Solo Consulta. Contacte con administrador.</p>
+
+      <h3>No encuentro un activo</h3>
+      <ol>
+        <li>Seleccione Campus</li>
+        <li>Seleccione Edificio</li>
+        <li>Use el buscador (mínimo 3 caracteres)</li>
+      </ol>
+    </section>
+
+    <section class="manual-section">
+      <h1>📝 Consejos Finales</h1>
+      
+      <div class="alert-box success">
+        <ul style="margin-bottom: 0; padding-left: 20px;">
+          <li>✅ <strong>Use los códigos QR:</strong> Ahorra muchísimo tiempo en campo</li>
+          <li>✅ <strong>Suba las OCAs con función rápida:</strong> Programa automáticamente siguientes revisiones</li>
+          <li>✅ <strong>Active alertas por email:</strong> No se le pasará ningún mantenimiento</li>
+          <li>✅ <strong>Use el Planificador:</strong> Visión global de toda la carga de trabajo</li>
+          <li>✅ <strong>Reporte todas las averías:</strong> Ayuda a detectar patrones</li>
+          <li>✅ <strong>Revise Dashboard regularmente:</strong> Los números en rojo necesitan atención urgente</li>
+        </ul>
+      </div>
+
+      <hr style="margin: 30px 0; border-color: #e5e7eb;">
+      
+      <p style="text-align: center; color: #9ca3af; font-size: 0.9rem;">
+        <strong>Versión del Manual:</strong> 1.0 | 
+        <strong>Última Actualización:</strong> Diciembre 2025<br>
+        <strong>Sistema GMAO</strong> - Universidad de Navarra
+      </p>
+    </section>
+  `;
+}
+
+function generarPDFManual() {
+  const contenido = getManualHTML();
+  
+  // Envolvemos el contenido en una estructura HTML completa con estilos para PDF
+  const html = `
+    <html>
+      <head>
+        <style>
+          body { font-family: 'Helvetica', sans-serif; font-size: 10pt; color: #333; line-height: 1.5; }
+          h1 { color: #CC0605; font-size: 18pt; border-bottom: 2px solid #CC0605; padding-bottom: 5px; margin-top: 20px; }
+          h2 { color: #1f2937; font-size: 14pt; margin-top: 15px; background-color: #f3f4f6; padding: 5px; }
+          h3 { color: #4b5563; font-size: 12pt; border-left: 4px solid #CC0605; padding-left: 10px; }
+          .alert-box { padding: 10px; border: 1px solid #ddd; background-color: #f9fafb; margin: 10px 0; border-radius: 4px; font-size: 9pt; }
+          ul, ol { margin-bottom: 10px; }
+          li { margin-bottom: 5px; }
+          .manual-toc { page-break-after: always; background-color: #f8f9fa; padding: 20px; }
+          a { text-decoration: none; color: #333; }
+        </style>
+      </head>
+      <body>
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="border:none; font-size: 24pt;">Manual de Usuario GMAO</h1>
+          <p style="color: #666;">Universidad de Navarra</p>
+        </div>
+        ${contenido}
+      </body>
+    </html>
+  `;
+
+  const blob = Utilities.newBlob(html, MimeType.HTML).getAs(MimeType.PDF);
+  blob.setName("Manual_Usuario_GMAO.pdf");
+
+  return {
+    base64: Utilities.base64Encode(blob.getBytes()),
+    filename: "Manual_Usuario_GMAO.pdf"
+  };
 }
