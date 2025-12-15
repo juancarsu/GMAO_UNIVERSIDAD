@@ -944,4 +944,94 @@ div:where(.swal2-container) {
   width: 80%;
 }
 
+/* --- TOAST NATIVO (INFALIBLE) --- */
+#native-toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000; /* Por encima de todo, incluso modales */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.native-toast {
+  background: white;
+  min-width: 300px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  animation: toastSlideIn 0.3s ease-out forwards;
+  border-left: 5px solid #ccc; /* Color por defecto */
+  font-family: 'Inter', sans-serif;
+  opacity: 0; /* Empieza invisible */
+}
+
+.native-toast.success { border-left-color: #10b981; }
+.native-toast.error   { border-left-color: #ef4444; }
+.native-toast.info    { border-left-color: #3b82f6; }
+.native-toast.warning { border-left-color: #f59e0b; }
+
+.native-toast-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.native-toast.hide {
+  animation: toastSlideOut 0.4s ease-in forwards;
+}
+
+@keyframes toastSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes toastSlideOut {
+  from { transform: translateX(0); opacity: 1; }
+  to { transform: translateX(100%); opacity: 0; }
+}
+
+/* ESTILOS PARA CABECERAS ORDENABLES */
+th.sortable {
+  cursor: pointer;
+  user-select: none; /* Evita que se seleccione el texto al hacer doble clic */
+  position: relative;
+  padding-right: 25px !important; /* Espacio para el icono */
+  transition: background-color 0.2s;
+}
+
+th.sortable:hover {
+  background-color: #e5e7eb !important; /* Gris un poco más oscuro al pasar el ratón */
+  color: var(--primary-color);
+}
+
+/* Icono de ordenación */
+th.sortable::after {
+  content: '⇅'; /* Icono por defecto (sin ordenar) */
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.3;
+  font-size: 0.8em;
+}
+
+th.sortable.asc::after {
+  content: '▲';
+  opacity: 1;
+  color: var(--primary-color);
+}
+
+th.sortable.desc::after {
+  content: '▼';
+  opacity: 1;
+  color: var(--primary-color);
+}
+
 </style>
