@@ -179,44 +179,95 @@
   // ==========================================
   // 3. INICIALIZACIÓN OPTIMIZADA (V2)
   // ==========================================
-  window.onload = function() {
-    console.time("CargaInicial");
+    window.onload = function() {
+        console.time("CargaInicial");
 
-    // 1. Inicializar UI (Modales y Listeners)
-    initModalsAndListeners();
+        // 1. Inicializar UI básica
+        initModalsAndListeners();
 
-    // 2. LLAMADA ÚNICA AL BACKEND
-    google.script.run
-      .withSuccessHandler(initData => {
-        console.timeEnd("CargaInicial");
+        // 2. LLAMADA LIGERA (Carga usuario y listas)
+        google.script.run
+          .withSuccessHandler(initData => {
+            console.timeEnd("CargaInicial");
 
-        // A. Usuario
-        currentUser = initData.usuario;
-        applySecurityUI();
+            // A. Aplicar Usuario y Seguridad
+            currentUser = initData.usuario;
+            applySecurityUI();
 
-        // B. Dashboard (Gráficos y Calendario)
-        renderDashboardData(initData.dashboard);
+            // B. Rellenar Selectores (para que estén listos)
+            populateSelectsIniciales(initData.listaCampus, initData.catalogo);
 
-        // C. Selectores Globales
-        populateSelectsIniciales(initData.listaCampus, initData.catalogo);
+            // C. ¡ABRIR APP YA! (Quitamos la pantalla blanca)
+            ocultarLoader();
 
-        // D. Admin: Cargar buzón
-        if (currentUser.rol === 'ADMIN') {
-          google.script.run.withSuccessHandler(list => {
-            const nuevos = list.filter(i => i.estado === 'NUEVO').length;
-            updateBadgeFeedback(nuevos);
-          }).getFeedbackList();
-        }
+            // D. Admin: Cargar buzón en segundo plano
+            if (currentUser.rol === 'ADMIN') {
+                google.script.run.withSuccessHandler(list => {
+                    const nuevos = list.filter(i => i.estado === 'NUEVO').length;
+                    updateBadgeFeedback(nuevos);
+                }).getFeedbackList();
+            }
 
-        ocultarLoader();
-      })
-      .withFailureHandler(err => {
-        console.error(err);
-        notificarError("Error crítico al iniciar: " + err.message);
-        ocultarLoader();
-      })
-      .getAppInitData();
+            // E. CARGA DIFERIDA DEL DASHBOARD (Lo pesado va aquí)
+            // Ponemos skeletons o "..." mientras carga
+            mostrarSkeletonsDashboard(); 
+            loadDashboard(); // Esta función ya llama a getDatosDashboard en el servidor
+
+          })
+          .withFailureHandler(err => {
+            console.error(err);
+            notificarError("Error al iniciar: " + err.message);
+            ocultarLoader(); // Quitamos loader aunque falle para que no se quede bloqueado
+          })
+          .getAppInitData();
   };
+
+  // Función visual para poner "..." o animación mientras carga el dashboard
+
+  function mostrarSkeletonsDashboard() {
+      // 1. Skeletons para las tarjetas numéricas
+      const ids = ['d-activos', 'd-vencidas', 'd-pendientes', 'd-incidencias', 'd-contratos', 'd-edificios', 'd-campus'];
+      ids.forEach(id => {
+          const el = document.getElementById(id);
+          if(el) el.innerHTML = '<div class="skeleton" style="height: 30px; width: 60px; border-radius: 6px;"></div>';
+      });
+
+      // 2. Skeleton avanzado para el Calendario
+      renderCalendarSkeleton();
+  }
+
+  // Dibuja un calendario falso animado
+  function renderCalendarSkeleton() {
+      const el = document.getElementById('calendar');
+      if (!el) return;
+
+      let gridHtml = '';
+      // Creamos 35 celdas (5 filas x 7 columnas) simulando un mes
+      for (let i = 0; i < 35; i++) {
+          // Añadimos "eventos fantasma" aleatorios en algunas celdas para dar realismo
+          let eventsHtml = '';
+          if (Math.random() > 0.7) {
+              const width = Math.random() * (90 - 50) + 50;
+              eventsHtml = `<div class="skeleton cal-skeleton-event" style="width: ${width}%"></div>`;
+          }
+          gridHtml += `<div class="cal-skeleton-cell">${eventsHtml}</div>`;
+      }
+
+      el.innerHTML = `
+        <div class="cal-skeleton-container p-2">
+          <div class="cal-skeleton-header">
+            <div class="d-flex gap-2">
+                <div class="skeleton cal-skeleton-btn" style="width: 40px;"></div> <div class="skeleton cal-skeleton-btn" style="width: 40px;"></div> <div class="skeleton cal-skeleton-btn"></div> </div>
+            <div class="skeleton cal-skeleton-title"></div> <div class="d-flex gap-2">
+                <div class="skeleton cal-skeleton-btn"></div> <div class="skeleton cal-skeleton-btn"></div> </div>
+          </div>
+          
+          <div class="cal-skeleton-grid">
+            ${gridHtml}
+          </div>
+        </div>
+      `;
+  }
 
   // --- FUNCIONES AUXILIARES DE INICIALIZACIÓN ---
   function initModalsAndListeners() {
