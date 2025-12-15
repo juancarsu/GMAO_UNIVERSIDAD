@@ -47,31 +47,24 @@ function include(filename) { return HtmlService.createHtmlOutputFromFile(filenam
 
 /**
  * OBTENER TODO DE UNA VEZ PARA EL FRONTEND
- * Devuelve: Usuario, Dashboard, Filtros Campus, Catálogo
  */
 function getAppInitData() {
-  const t1 = new Date();
-  
-  // 1. Obtener Usuario
   const usuario = getMyRole();
   
-  // 2. Obtener Dashboard (reutiliza la lógica existente)
-  // Nota: getDatosDashboard ya usa cachés, así que es rápido
-  const dashboard = getDatosDashboard(null); 
-  
-  // 3. Obtener Listas para Filtros (Campus y Catálogo)
+  // 1. Campus ordenados
   const campusRaw = getCachedSheetData('CAMPUS');
-  const listaCampus = campusRaw.slice(1).map(r => ({ id: r[0], nombre: r[1] }));
+  const listaCampus = campusRaw.slice(1)
+    .map(r => ({ id: r[0], nombre: r[1] }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })); // <--- AÑADIDO
   
+  // 2. Catálogo ordenado
   const catalogoRaw = getCachedSheetData('CAT_INSTALACIONES');
-  const catalogo = catalogoRaw.slice(1).map(r=>({id:r[0], nombre:r[1], dias:r[3]}));
-
-  // Log de tiempo para depuración
-  Logger.log("Tiempo InitData: " + (new Date() - t1) + "ms");
+  const catalogo = catalogoRaw.slice(1)
+    .map(r => ({ id: r[0], nombre: r[1], dias: r[3] }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })); // <--- AÑADIDO
 
   return {
     usuario: usuario,
-    dashboard: dashboard,
     listaCampus: listaCampus,
     catalogo: catalogo
   };
@@ -308,15 +301,37 @@ function buildActivosIndex() {
 // ==========================================
 // 2. SEGURIDAD Y ROLES
 // ==========================================
+// SUSTITUIR EN Code.gs
+
 function getMyRole() {
   const email = Session.getActiveUser().getEmail();
-  const data = getSheetData('USUARIOS');
+  const cacheKey = 'USER_ROLE_' + email;
+  const cache = CacheService.getUserCache(); // Caché privada del usuario
+  
+  // 1. Intentar leer de memoria rápida
+  const cachedRole = cache.get(cacheKey);
+  if (cachedRole) {
+    return JSON.parse(cachedRole);
+  }
+
+  // 2. Si no está, leer de la hoja (Lento)
+  // Usamos getCachedSheetData para aprovechar la caché general si ya existe
+  const data = getCachedSheetData('USUARIOS'); 
+  
+  let usuario = { email: email, nombre: "Invitado", rol: 'CONSULTA' }; // Default
+
+  // Buscamos (empezando en 1 para saltar cabecera)
   for(let i=1; i<data.length; i++) {
     if(String(data[i][2]).trim().toLowerCase() === email.toLowerCase()) {
-      return { email: email, nombre: data[i][1], rol: data[i][3] }; 
+      usuario = { email: email, nombre: data[i][1], rol: data[i][3] }; 
+      break;
     }
   }
-  return { email: email, nombre: "Invitado", rol: 'CONSULTA' };
+
+  // 3. Guardar en memoria rápida por 20 minutos
+  cache.put(cacheKey, JSON.stringify(usuario), 1200);
+  
+  return usuario;
 }
 
 function verificarPermiso(accionesPermitidas) {
@@ -381,9 +396,20 @@ function textoAFecha(txt) {
 // 4. API VISTAS
 // ==========================================
 
-function getListaCampus() { const data = getSheetData('CAMPUS'); return data.slice(1).map(r => ({ id: r[0], nombre: r[1] })); }
+function getListaCampus() { 
+  const data = getSheetData('CAMPUS'); 
+  return data.slice(1)
+    .map(r => ({ id: r[0], nombre: r[1] }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })); 
+}
 
-function getEdificiosPorCampus(idCampus) { const data = getSheetData('EDIFICIOS'); return data.slice(1).filter(r => String(r[1]) === String(idCampus)).map(r => ({ id: r[0], nombre: r[2] })); }
+function getEdificiosPorCampus(idCampus) { 
+  const data = getSheetData('EDIFICIOS'); 
+  return data.slice(1)
+    .filter(r => String(r[1]) === String(idCampus))
+    .map(r => ({ id: r[0], nombre: r[2] }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })); // <--- AÑADIDO
+}
 
 function getActivosPorEdificio(idEdificio) {
   try {
@@ -542,8 +568,12 @@ function getAllAssetsList() {
   }
   
   // Ordenar alfabéticamente por nombre
-  return list.sort((a,b) => a.nombre.localeCompare(b.nombre));
+  return list.sort((a, b) => {
+    // Ordenar alfabéticamente por nombre (insensible a mayúsculas/minúsculas)
+    return a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+});
 }
+
 
 function getAssetInfo(idActivo) {
   // Aseguramos que el índice esté fresco
@@ -1302,7 +1332,19 @@ function obtenerContratosGlobal() {
     });
   }
   
-  return result.sort((a, b) => a.fin.localeCompare(b.fin));
+  return result.sort((a, b) => {
+    // Primero por nombre de Proveedor
+    const compareProv = a.proveedor.localeCompare(b.proveedor, 'es', { sensitivity: 'base' });
+    
+    // Si es el mismo proveedor, ordenar por fecha fin (lo más urgente primero)
+    if (compareProv === 0) {
+        if (a.fin === "-") return 1;
+        if (b.fin === "-") return -1;
+        return a.fin.localeCompare(b.fin);
+    }
+    
+    return compareProv;
+});
 }
 
 function crearContrato(d) {
@@ -1473,8 +1515,6 @@ function getDatosDashboard(idCampus) {
 
   return { activos: cAct, edificios: cEdif, pendientes: revPend, vencidas: revVenc, ok: revOk, contratos: contCount, incidencias: incCount, campus: cCampus, chartLabels: chartLabels, chartData: chartData, calendarEvents: calendarEvents }; 
 }
-
-// SUSTITUIR EN Code.gs
 
 function crearCampus(d) {
   try {
@@ -1672,68 +1712,53 @@ function getCatalogoInstalaciones() { return getSheetData('CAT_INSTALACIONES').s
 function getTableData(tipo) {
   const ss = SpreadsheetApp.openById(PROPS.getProperty('DB_SS_ID'));
   
+  // --- CAMPUS ---
   if (tipo === 'CAMPUS') {
     const data = getCachedSheetData('CAMPUS');
-    return data.slice(1).map(r => ({
-      id: r[0], nombre: r[1], provincia: r[2], direccion: r[3]
-    }));
+    return data.slice(1)
+      .map(r => ({
+        id: r[0], nombre: r[1], provincia: r[2], direccion: r[3]
+      }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' })); // <--- ORDENAR A-Z
   }
   
+  // --- EDIFICIOS ---
   if (tipo === 'EDIFICIOS') {
     const data = getCachedSheetData('EDIFICIOS');
     const dataC = getCachedSheetData('CAMPUS');
     
-    // --- NUEVO: Cargar datos para contadores ---
+    // ... (Mantén aquí la lógica de contadores que añadimos antes: countActivos, countInc) ...
+    // Para simplificar te pongo la versión compacta, pero mantén tus contadores si los tienes
     const dataActivos = getCachedSheetData('ACTIVOS');
     const dataInc = getCachedSheetData('INCIDENCIAS');
     
-    // 1. Mapear Campus
     const mapCampus = {};
     dataC.slice(1).forEach(r => mapCampus[r[0]] = r[1]);
     
-    // 2. Contar Activos por Edificio
     const countActivos = {};
-    dataActivos.slice(1).forEach(r => {
-      const idEdif = String(r[1]);
-      countActivos[idEdif] = (countActivos[idEdif] || 0) + 1;
-    });
+    dataActivos.slice(1).forEach(r => { const id = String(r[1]); countActivos[id] = (countActivos[id] || 0) + 1; });
 
-    // 3. Contar Incidencias PENDIENTES por Edificio
     const countInc = {};
-    dataInc.slice(1).forEach(r => {
-      // r[1] = TipoOrigen, r[2] = IDOrigen, r[6] = Estado
-      if (r[6] !== 'RESUELTA') {
-        let idEdif = null;
-        
-        if (r[1] === 'EDIFICIO') {
-           idEdif = String(r[2]);
-        } else if (r[1] === 'ACTIVO') {
-           // Si es incidencia de activo, hay que buscar su edificio. 
-           // Esto es costoso, para optimizar asumimos conteo directo a edificio 
-           // o lo dejamos simple. Para esta versión rápida, contamos solo las directas al edificio
-           // o hacemos un lookup rápido si tienes el mapa de activos a mano.
-           // *Mejora simple:* Contamos las directas al edificio para no ralentizar.
-           idEdif = String(r[2]);
-        }
-        
-        if(idEdif) {
-           countInc[idEdif] = (countInc[idEdif] || 0) + 1;
-        }
-      }
-    });
+    dataInc.slice(1).forEach(r => { if(r[6]!=='RESUELTA') { const id=String(r[2]); if(r[1]==='EDIFICIO' || r[1]==='ACTIVO') countInc[id]=(countInc[id]||0)+1; } }); // Simplificado
 
-    // Devolver datos enriquecidos
-    return data.slice(1).map(r => ({
-      id: r[0],
-      campus: mapCampus[r[1]] || '-',
-      nombre: r[2],
-      contacto: r[3],
-      lat: r[6],
-      lng: r[7],
-      // Nuevos campos calculados
-      nActivos: countActivos[String(r[0])] || 0,
-      nIncidencias: countInc[String(r[0])] || 0
-    }));
+    return data.slice(1)
+      .map(r => ({
+        id: r[0],
+        campus: mapCampus[r[1]] || '-',
+        nombre: r[2],
+        contacto: r[3],
+        lat: r[6],
+        lng: r[7],
+        nActivos: countActivos[String(r[0])] || 0,
+        nIncidencias: countInc[String(r[0])] || 0
+      }))
+      .sort((a, b) => {
+         // Primero ordenamos por Campus
+         const cmpCampus = a.campus.localeCompare(b.campus, 'es', { sensitivity: 'base' });
+         if (cmpCampus !== 0) return cmpCampus;
+         // Si es el mismo campus, por nombre de Edificio
+         return a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' });
+      });
   }
   
   return [];
@@ -3897,6 +3922,8 @@ function enviarAlertaIncidencia(datos) {
 /**
  * Obtener lista completa de proveedores
  */
+// En Code.gs -> function getListaProveedores()
+
 function getListaProveedores() {
   const data = getSheetData('PROVEEDORES');
   
@@ -3904,15 +3931,18 @@ function getListaProveedores() {
     return [];
   }
   
-  return data.slice(1).map(r => ({
+  const lista = data.slice(1).map(r => ({
     id: r[0],
     nombre: r[1],
     cif: r[2] || '-',
     contacto: r[3] || '-',
     telefono: r[4] || '-',
     email: r[5] || '-',
-    activo: r[6] !== 'NO' // Si no dice NO, asumimos que sí está activo
+    activo: r[6] !== 'NO' 
   }));
+
+  // AÑADIR ESTE ORDENAMIENTO:
+  return lista.sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
 }
 
 /**
