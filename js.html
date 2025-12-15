@@ -2645,49 +2645,79 @@ function loadDocs() {
   function initLeafletMap() { destroyMap(); if(typeof L==='undefined') return; mapInstance=L.map('mapEdificios').setView([40.416, -3.703],5); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(mapInstance); renderMarkers(); }
 
   function renderMarkers(d) {
-      const data = d || allEdificiosData;
-      if (!mapInstance || !data) return;
-      
-      if (markersLayer) mapInstance.removeLayer(markersLayer);
-      
-      const g = L.featureGroup();
-      
-      data.forEach(e => {
-          const lat = parseFloat(String(e.lat).replace(',', '.'));
-          const lng = parseFloat(String(e.lng).replace(',', '.'));
-          
-          if (!isNaN(lat) && !isNaN(lng)) {
-              // DISEÑO ELEGANTE DEL POPUP
-              const popupContent = `
-                  <div class="p-1 text-center">
-                      <h6 class="fw-bold text-primary mb-1">${e.nombre}</h6>
-                      <div class="small text-muted mb-2 border-bottom pb-2">
-                          <i class="bi bi-geo-alt-fill text-danger"></i> ${e.campus || 'Campus'}
-                      </div>
-                      <button class="btn btn-sm btn-primary w-100 shadow-sm" onclick="openBuildingDetail('${e.id}')">
-                          <i class="bi bi-building me-1"></i> Ver Edificio
-                      </button>
-                  </div>
-              `;
+    const data = d || allEdificiosData;
+    if (!mapInstance || !data) return;
+    
+    if (markersLayer) mapInstance.removeLayer(markersLayer);
+    
+    const g = L.featureGroup();
+    
+    data.forEach(e => {
+        const lat = parseFloat(String(e.lat).replace(',', '.'));
+        const lng = parseFloat(String(e.lng).replace(',', '.'));
+        
+        if (!isNaN(lat) && !isNaN(lng)) {
+            
+            // Lógica de Badges (Etiquetas)
+            
+            // 1. Incidencias (Rojo si hay problemas, Verde si todo OK)
+            let badgeInc = '';
+            if (e.nIncidencias > 0) {
+                badgeInc = `<span class="badge bg-danger ms-1"><i class="bi bi-exclamation-triangle-fill me-1"></i>${e.nIncidencias} Averías</span>`;
+            } else {
+                badgeInc = `<span class="badge bg-success ms-1"><i class="bi bi-check-circle-fill me-1"></i>OK</span>`;
+            }
 
-              L.marker([lat, lng])
-              .bindPopup(popupContent, {
-                  minWidth: 200,
-                  closeButton: false // Quitamos la X por defecto para un look más limpio (opcional)
-              })
-              .addTo(g);
-          }
-      });
-      
-      g.addTo(mapInstance);
-      markersLayer = g;
-      
-      try { 
-          if (data.length > 0) {
-              mapInstance.fitBounds(g.getBounds().pad(0.2)); 
-          }
-      } catch (e) {}
-  } 
+            // 2. Activos (Gris/Azul informativo)
+            const badgeActivos = `<span class="badge bg-light text-dark border"><i class="bi bi-box-seam me-1"></i>${e.nActivos}</span>`;
+
+            // HTML DEL POPUP
+            const popupContent = `
+                <div class="p-1" style="min-width: 220px;">
+                    <div class="text-center border-bottom pb-2 mb-2">
+                        <h6 class="fw-bold text-primary mb-1">${e.nombre}</h6>
+                        <small class="text-muted d-block">${e.campus}</small>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-2 px-2">
+                        <small class="text-muted">Estado:</small>
+                        <div>${badgeInc}</div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                        <small class="text-muted">Equipos:</small>
+                        <div>${badgeActivos}</div>
+                    </div>
+
+                    ${e.contacto ? `
+                    <div class="alert alert-light p-1 mb-2 small text-center border">
+                        <i class="bi bi-person-circle me-1"></i> ${e.contacto}
+                    </div>` : ''}
+
+                    <button class="btn btn-sm btn-primary w-100 shadow-sm mt-1" onclick="openBuildingDetail('${e.id}')">
+                        <i class="bi bi-building me-1"></i> Entrar al Edificio
+                    </button>
+                </div>
+            `;
+
+            L.marker([lat, lng])
+             .bindPopup(popupContent, {
+                 closeButton: false,
+                 maxWidth: 260
+             })
+             .addTo(g);
+        }
+    });
+    
+    g.addTo(mapInstance);
+    markersLayer = g;
+    
+    try { 
+        if (data.length > 0) {
+            mapInstance.fitBounds(g.getBounds().pad(0.2)); 
+        }
+    } catch (e) {}
+  }
 
   // CHANGELOG
   function openChangelogModal(e) { 
