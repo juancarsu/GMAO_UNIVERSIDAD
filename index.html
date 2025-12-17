@@ -494,97 +494,95 @@
       </div>
     </div>
 
-    <div id="view-mantenimiento" class="view-section d-none">
-      <div class="page-header">
-        <h1 class="page-title">Plan de Mantenimiento Global</h1>
-
-        <div class="d-flex gap-2">
-          <button id="btnPdfLegal" class="btn btn-outline-danger btn-sm" onclick="descargarInforme('LEGAL')">
-            <i class="bi bi-file-earmark-pdf"></i> Informe Legal PDF
-          </button>
-          <button class="btn btn-primary btn-sm" onclick="mostrarModalRevision()">
-            <i class="bi bi-plus-lg"></i> Nueva Revisión
-          </button>
-        </div>
-      </div>
-
-      <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-3">
-          <div class="row align-items-center g-3">
-
-            <div class="col-md-3 d-flex gap-2">
-              <select id="maintFilterCampus" class="form-select form-select-sm"
-                onchange="loadEdificiosMaintFilter(this.value)">
-                <option value="">Todos los Campus</option>
-              </select>
-              <select id="maintFilterEdificio" class="form-select form-select-sm"
-                onchange="setMaintFilter('edificio', this.value)">
-                <option value="">Todos los Edificios</option>
-              </select>
-            </div>
-
-            <div class="col-md-9 d-flex justify-content-end align-items-center gap-3">
-
-              <div class="d-flex align-items-center">
-                <span class="text-muted small fw-bold me-2 text-uppercase"
-                  style="font-size: 0.75rem; letter-spacing: 1px;">Estado</span>
-                <div class="btn-group shadow-sm" id="filterGroupColor" role="group">
-                  <button class="btn btn-sm btn-outline-secondary active px-3"
-                    onclick="setMaintFilter('color', 'all', this)">Todas</button>
-                  <button class="btn btn-sm btn-outline-danger px-3"
-                    onclick="setMaintFilter('color', 'rojo', this)">Vencidas</button>
-                  <button class="btn btn-sm btn-outline-warning text-dark px-3"
-                    onclick="setMaintFilter('color', 'amarillo', this)">Próximas</button>
-                  <button class="btn btn-sm btn-outline-success px-3"
-                    onclick="setMaintFilter('color', 'verde', this)">Al día</button>
-                  <button class="btn btn-sm btn-outline-info text-dark px-3" onclick="setMaintFilter('color', 'azul', this)">Histórico</button>
-                </div>
-              </div>
-
-              <div class="d-flex align-items-center">
-                <span class="text-muted small fw-bold me-2 text-uppercase"
-                  style="font-size: 0.75rem; letter-spacing: 1px;">Tipo</span>
-                <div class="btn-group shadow-sm" id="filterGroupType" role="group">
-                  <button class="btn btn-sm btn-outline-secondary active px-3"
-                    onclick="setMaintFilter('type', 'all', this)">Todos</button>
-                  <button class="btn btn-sm btn-outline-primary px-3"
-                    onclick="setMaintFilter('type', 'Legal', this)">Legal</button>
-                  <button class="btn btn-sm btn-outline-primary px-3"
-                    onclick="setMaintFilter('type', 'Periódica', this)">Periódica</button>
-                  <button class="btn btn-sm btn-outline-primary px-3"
-                    onclick="setMaintFilter('type', 'Reparación', this)">Reparación</button>
-                  <button class="btn btn-sm btn-outline-primary px-3"
-                    onclick="setMaintFilter('type', 'Extraordinaria', this)">Extraordinaria</button>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      </div>
-      <div class="card border-0 shadow-sm">
-        <div style="max-height: 500px; overflow-y: auto;">
-          <table class="table table-hover mb-0 align-middle">
-            <thead>
-              <tr>
-                <th class="ps-4 text-center" style="width:50px;">#</th>
-                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'edificio')">Edificio</th>
-                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'activo')">Activo</th>
-                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'tipo')">Tipo Revisión</th>
-                <th class="sortable" onclick="ordenarTabla('MANTENIMIENTO', 'dias')">Fecha Límite</th>
-                <th class="text-end pe-4">Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="tableGlobalMaint">
-              <tr>
-                <td colspan="6" class="text-center py-5">Cargando...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
+<div id="view-mantenimiento" class="view-section d-none p-4">
+  
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h2 class="page-title">Plan de Mantenimiento Global</h2>
+    <div>
+      <button class="btn btn-outline-danger me-2" onclick="descargarInforme('LEGAL')" id="btnPdfLegal">
+        <i class="bi bi-file-earmark-pdf me-2"></i>Informe Legal PDF
+      </button>
+      <button class="btn btn-primary" onclick="mostrarModalRevision()">
+        + Nueva Revisión
+      </button>
     </div>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4 bg-light p-2 rounded shadow-sm">
+    
+    <div class="d-flex gap-2 flex-grow-1" style="min-width: 260px;">
+      <select id="maintFilterCampus" class="form-select border-0 shadow-sm" onchange="loadEdificiosMaintFilter(this.value)">
+        <option value="">- Todos los Campus -</option>
+      </select>
+      <select id="maintFilterCampusEdificios" class="form-select border-0 shadow-sm" onchange="applyGlobalMaintFilters()">
+        <option value="">- Todos los Edificios -</option>
+      </select>
+    </div>
+
+    <div class="d-flex flex-wrap gap-3 justify-content-end">
+      
+      <div class="btn-group shadow-sm" role="group">
+          <input type="radio" class="btn-check" name="btnradioState" id="stTodas" autocomplete="off" checked onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="stTodas">Todas</label>
+
+          <input type="radio" class="btn-check" name="btnradioState" id="stProximas" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-warning btn-sm text-dark" for="stProximas">Próximas</label>
+
+          <input type="radio" class="btn-check" name="btnradioState" id="stAlDia" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-success btn-sm" for="stAlDia">Al día</label>
+          
+          <input type="radio" class="btn-check" name="btnradioState" id="stHistorico" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-info btn-sm" for="stHistorico">Histórico</label>
+      </div>
+
+      <div class="btn-group shadow-sm" role="group">
+          <input type="radio" class="btn-check" name="btnradioType" id="tpTodos" autocomplete="off" checked onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="tpTodos">Todos</label>
+
+          <input type="radio" class="btn-check" name="btnradioType" id="tpLegal" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="tpLegal">Legal</label>
+
+          <input type="radio" class="btn-check" name="btnradioType" id="tpPeriodica" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="tpPeriodica">Periódica</label>
+          
+          <input type="radio" class="btn-check" name="btnradioType" id="tpReparacion" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="tpReparacion">Reparación</label>
+          
+          <input type="radio" class="btn-check" name="btnradioType" id="tpExtra" autocomplete="off" onchange="applyGlobalMaintFilters()">
+          <label class="btn btn-outline-secondary btn-sm" for="tpExtra">Extra</label>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="card shadow-sm border-0">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="bg-light">
+          <tr>
+            <th class="text-center text-muted" style="width: 50px;">#</th>
+            <th>EDIFICIO</th>
+            <th>ACTIVO</th>
+            <th>TIPO REVISIÓN</th>
+            <th>FECHA LÍMITE</th>
+            <th class="text-end">ACCIONES</th>
+          </tr>
+        </thead>
+        
+        <tbody id="globalMaintTableBody">
+           </tbody>
+        </table>
+    </div>
+    
+    <div id="globalMaintLoading" class="text-center py-5 d-none">
+       <div class="spinner-border text-primary" role="status"></div>
+       <div class="mt-2 text-muted small">Cargando plan...</div>
+    </div>
+  </div>
+
+</div>
+
+
 
     <div id="view-incidencias" class="view-section d-none">
       <div class="page-header">
