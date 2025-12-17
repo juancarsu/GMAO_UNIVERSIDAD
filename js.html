@@ -65,6 +65,8 @@
   let newVersionModal = null;
   let plannerCalendar = null;
   let allPlannerEvents = []; 
+  let localCampus = [];
+  let localEdificios = [];
   window.currentBuildingAssetsList = [];
   window.allAssetsData = [];
   let currentRenderTimeout = null;
@@ -434,20 +436,18 @@
   };
 
   // Función auxiliar para no repetir código
-  function inicializarAppConDatos(initData) {
-      // 1. Usuario y Seguridad
-      currentUser = initData.usuario;
-      applySecurityUI();
-
-      // 2. Rellenar Selectores
-      populateSelectsIniciales(initData.listaCampus, initData.catalogo);
-
-      // 3. ¡ABRIR PUERTAS!
-      ocultarLoader();
-      
-      // 4. Preparar el terreno para los datos pesados
-      mostrarSkeletonsDashboard();
-  }
+function inicializarAppConDatos(initData) {
+    currentUser = initData.usuario;
+    // GUARDAR LOS DATOS EN LAS VARIABLES LOCALES
+    localCampus = initData.listaCampus || []; 
+    localEdificios = initData.listaEdificios || [];
+    
+    applySecurityUI();
+    // Pasar los datos locales a la función de poblado
+    populateSelectsIniciales(localCampus, initData.catalogo); 
+    ocultarLoader();
+    mostrarSkeletonsDashboard();
+}
 
   // Función visual para poner "..." o animación mientras carga el dashboard
 
@@ -577,27 +577,32 @@
   function populateSelectsIniciales(listaCampus, listaCatalogo) {
     let htmlC = '<option value="">- Todos los Campus -</option>';
     let htmlC_Sel = '<option value="">- Seleccione -</option>';
+    
     listaCampus.forEach(c => {
        htmlC += `<option value="${c.id}">${c.nombre}</option>`;
        htmlC_Sel += `<option value="${c.id}">${c.nombre}</option>`;
     });
 
+    // Filtros principales
     const selDash = document.getElementById('dashboardCampusFilter'); if(selDash) selDash.innerHTML = htmlC;
     const selFilterCampus = document.getElementById('filterCampus'); if(selFilterCampus) selFilterCampus.innerHTML = htmlC_Sel;
-    
-    // Filtro edificios por nombre
     const selFilterEdif = document.getElementById('filterCampusEdificios');
     if (selFilterEdif) {
         let htmlN = '<option value="">- Todos los Campus -</option>';
         listaCampus.forEach(c => htmlN += `<option value="${c.nombre}">${c.nombre}</option>`);
         selFilterEdif.innerHTML = htmlN;
     }
-
     const selMaint = document.getElementById('maintFilterCampus'); if(selMaint) selMaint.innerHTML = htmlC;
     const selCont = document.getElementById('contractFilterCampus'); if(selCont) selCont.innerHTML = htmlC;
 
+    // --- ESTA ES LA LÍNEA QUE FALTABA (Selector del Modal) ---
+    const selMaintModal = document.getElementById('maintCampus'); 
+    if(selMaintModal) selMaintModal.innerHTML = htmlC_Sel;
+    // ---------------------------------------------------------
+
+    // Catálogo (Normativa)
     const selNorma = document.getElementById('revNorma');
-    if (selNorma) {
+    if (selNorma && listaCatalogo) {
       let htmlN = '<option value="">Seleccione norma...</option>';
       listaCatalogo.forEach(n => htmlN += `<option value="${n.id}" data-dias="${n.dias}">${n.nombre}</option>`);
       selNorma.innerHTML = htmlN;
@@ -685,7 +690,7 @@
     if (viewId === 'dashboard') loadDashboard();
     if (viewId === 'campus') loadCampusList();
     if (viewId === 'edificios') loadEdificiosList();
-    if (viewId === 'mantenimiento') loadGlobalMaint(); // Eliminada carga de filtros (ya hecha al inicio)
+    if (viewId === 'mantenimiento') loadGlobalMaintenance(); // Eliminada carga de filtros (ya hecha al inicio)
     if (viewId === 'contratos') loadGlobalContracts(); // Eliminada carga de filtros
     if (viewId === 'activos') {
       if (window.allAssetsData.length === 0) loadAllAssets();
@@ -732,6 +737,7 @@
     if (!data || data.length === 0) { tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted py-4">Sin datos</td></tr>'; return; }
     let currentPage = 0;
     const totalPages = Math.ceil(data.length / pageSize);
+
     function loadPage() {
       const start = currentPage * pageSize;
       const end = Math.min(start + pageSize, data.length);
@@ -748,98 +754,293 @@
   // ==========================================
   // MANTENIMIENTO
   // ==========================================
-  function loadGlobalMaint() {
-    const tbody = document.getElementById('tableGlobalMaint');
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando plan...</td></tr>';
-    google.script.run.withSuccessHandler(data => { globalMaintData = data; renderGlobalMaintTable(data); }).getGlobalMaintenance();
-  }
 
-  function renderGlobalMaintTable(data) {
-    const tbody = document.getElementById('tableGlobalMaint');
-    
-    renderTableLazy(tbody, data, (r, index) => {
-      // 1. Lógica de colores (Semáforo)
-      let dotClass = 'bg-secondary';
-      if (r.color === 'rojo') dotClass = 'bg-rojo';
-      if (r.color === 'amarillo') dotClass = 'bg-amarillo';
-      if (r.color === 'verde') dotClass = 'bg-verde';
-      if (r.color === 'azul') dotClass = 'bg-info';
+  // ==============================================================
+//  LÓGICA COMPLETA DE MANTENIMIENTO GLOBAL (Sustituir Bloque)
+// ==============================================================
 
-      // 2. Iconos informativos
-      let clipIcon = r.hasDocs ? '<i class="bi bi-paperclip text-primary ms-1"></i>' : '';
-      let calIcon = r.hasCalendar ? '<i class="bi bi-calendar-check text-success ms-1"></i>' : '';
+// ==============================================================
+//  BLOQUE MANTENIMIENTO GLOBAL (VERSIÓN DEBUG / A PRUEBA DE FALLOS)
+// ==============================================================
 
-      // 3. Texto de Fecha
-      let fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted ms-1">(${r.dias} días)</small>`;
-      
-      // --- ZONA DE BOTONES (Corregida) ---
-      
-      // A. Botón Nube (Siempre visible)
-      const btnCloud = `<button class="btn btn-sm btn-outline-secondary border me-1" onclick="openQuickUpload('${r.idActivo}')" title="Subida Rápida"><i class="bi bi-cloud-arrow-up-fill"></i></button>`;
-      
-      // B. Botón Editar (Lápiz) o Ver (Ojo) si es histórico
-      let btnEdit = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Editar"><i class="bi bi-pencil"></i></button>`;
-      
-      // C. Botón Completar (Check) - Solo si NO es histórico
-      let btnCheck = `<button class="btn btn-sm btn-outline-success ms-1" onclick="marcarHecho('${r.id}')" data-id="${r.id}" title="Completar"><i class="bi bi-check-lg"></i></button>`;
+function loadGlobalMaintenance() {
+  console.log("1. Iniciando carga de mantenimiento...");
+  
+  const loading = document.getElementById('globalMaintLoading');
+  const tbody = document.getElementById('globalMaintTableBody');
+  
+  if(loading) loading.classList.remove('d-none');
+  if(tbody) tbody.innerHTML = ''; 
 
-      // Ajustes para Histórico (Azul)
-      if (r.color === 'azul') { 
-         fechaTexto = `<span class="dot ${dotClass}"></span> ${r.fecha} <small class="text-muted fst-italic ms-1">Histórico</small>`; 
-         // En histórico cambiamos Lápiz por Ojo y quitamos el Check
-         btnEdit = `<button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}', ${r.hasCalendar})" title="Ver Detalle"><i class="bi bi-eye"></i></button>`;
-         btnCheck = ''; 
+  google.script.run
+    .withSuccessHandler(data => {
+      console.log("2. Datos recibidos del servidor:", data ? data.length + " registros" : "Sin datos");
+      
+      // Aseguramos que sea un array
+      globalMaintData = data || []; 
+      
+      if(loading) loading.classList.add('d-none');
+      
+      // Intentamos aplicar filtros
+      try {
+          applyGlobalMaintFilters();
+      } catch(e) {
+          console.error("ERROR FATAL en filtros:", e);
+          // Si fallan los filtros, intentamos pintar la tabla tal cual para que veas algo
+          renderGlobalMaintTable(globalMaintData);
       }
+    })
+    .withFailureHandler(err => {
+      console.error("ERROR DE SERVIDOR:", err);
+      if(loading) loading.classList.add('d-none');
+      if(tbody) tbody.innerHTML = '<tr><td colspan="6" class="text-danger text-center">Error de conexión: ' + err.message + '</td></tr>';
+    })
+    .getGlobalMaintenance();
+}
 
-      // Concatenamos todo de forma segura
-      const botones = btnCloud + btnEdit + btnCheck;
+function applyGlobalMaintFilters() {
+  console.log("3. Aplicando filtros...");
+  if (!globalMaintData) {
+      console.warn("No hay datos globales para filtrar");
+      return;
+  }
 
-      return `<tr>
-        <td class="text-center ps-4 small">${index + 1}</td>
-        <td><div class="fw-bold">${r.edificio}</div><small class="text-muted">${r.campusNombre}</small></td>
-        <td>${r.activo}</td>
-        <td><span class="badge bg-light text-dark border">${r.tipo}</span>${clipIcon}${calIcon}</td>
-        <td>${fechaTexto}</td>
-        <td class="text-end pe-4">
-            <div class="btn-group">${botones}</div>
+  // --- LECTURA SEGURA DE FILTROS ---
+  
+  // 1. Ubicación
+  const elCampus = document.getElementById('maintFilterCampus');
+  const elEdif = document.getElementById('maintFilterCampusEdificios');
+  const fCampus = elCampus ? elCampus.value : '';
+  const fEdif = elEdif ? elEdif.value : '';
+
+  // 2. Estado (Buscamos botones con seguridad)
+  let fEstado = 'stTodas';
+  const btnProx = document.getElementById('stProximas');
+  const btnAlDia = document.getElementById('stAlDia');
+  const btnHist = document.getElementById('stHistorico');
+
+  // Log para ver si encuentra los botones
+  // console.log("Botones Estado encontrados:", !!btnProx, !!btnAlDia, !!btnHist);
+
+  if (btnProx && btnProx.checked) fEstado = 'stProximas';
+  else if (btnAlDia && btnAlDia.checked) fEstado = 'stAlDia';
+  else if (btnHist && btnHist.checked) fEstado = 'stHistorico';
+
+  // 3. Tipo
+  let fTipo = 'tpTodos';
+  const btnLegal = document.getElementById('tpLegal');
+  const btnPeriod = document.getElementById('tpPeriodica'); // Ojo al ID en tu HTML
+  const btnRep = document.getElementById('tpReparacion');
+  const btnExtra = document.getElementById('tpExtra');
+
+  if (btnLegal && btnLegal.checked) fTipo = 'Legal';
+  else if (btnPeriod && btnPeriod.checked) fTipo = 'Periódica';
+  else if (btnRep && btnRep.checked) fTipo = 'Reparación';
+  else if (btnExtra && btnExtra.checked) fTipo = 'Extraordinaria';
+
+  console.log("Filtros detectados -> Estado:", fEstado, "| Tipo:", fTipo, "| Campus:", fCampus);
+
+  // --- FILTRADO ---
+  const filtered = globalMaintData.filter(item => {
+    // A. Ubicación
+    if (fCampus && String(item.campusId) !== String(fCampus)) return false;
+    if (fEdif && String(item.edificio) !== String(fEdif) && String(item.edificioId) !== String(fEdif)) return false;
+
+    // B. Tipo
+    if (fTipo !== 'tpTodos') {
+        const tipoItem = item.tipo || "";
+        if (!tipoItem.toLowerCase().includes(fTipo.toLowerCase())) return false;
+    }
+
+    // C. Estado
+    const dias = parseInt(item.dias); // Asegurar número
+    if (isNaN(dias)) return true; // Por si acaso
+
+    if (fEstado === 'stHistorico') {
+       // Histórico si es azul o 9999
+       return dias === 9999 || item.color === 'azul';
+    } else {
+       // Ocultar históricos
+       if (dias === 9999 || item.color === 'azul') return false;
+
+       if (fEstado === 'stProximas') {
+           // Atrasadas (<0) o Próximas (<=30)
+           return dias <= 30;
+       }
+       if (fEstado === 'stAlDia') {
+           return dias > 30;
+       }
+    }
+    
+    return true; 
+  });
+
+  console.log("4. Resultados tras filtro:", filtered.length);
+  renderGlobalMaintTable(filtered);
+}
+
+function renderGlobalMaintTable(data) {
+  console.log("5. Renderizando tabla...");
+  const tbody = document.getElementById('globalMaintTableBody');
+  
+  if (!tbody) {
+      console.error("¡NO EXISTE EL TBODY EN EL HTML! ID: globalMaintTableBody");
+      return;
+  }
+
+  let html = ''; // Reiniciamos variable
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted"><h5><i class="bi bi-search me-2"></i>Sin resultados</h5><p class="mb-0">No hay tareas con estos filtros.</p></td></tr>';
+    return;
+  }
+
+  data.forEach((r, index) => {
+    let fechaTexto = r.fecha || '-';
+    let badge = '';
+    
+    // Convertir a número por seguridad
+    const dias = (r.dias === undefined) ? 0 : parseInt(r.dias);
+
+    if (dias === 9999) {
+        fechaTexto = 'Realizada';
+        badge = '<span class="badge bg-secondary">Histórico</span>';
+    } else if (dias < 0) {
+        badge = `<span class="badge bg-danger">${Math.abs(dias)} días tarde</span>`;
+    } else if (dias === 0) {
+        badge = `<span class="badge bg-danger">HOY</span>`;
+    } else if (dias <= 30) {
+        badge = `<span class="badge bg-warning text-dark">${dias} días</span>`;
+    } else {
+        badge = `<span class="badge bg-success">${dias} días</span>`;
+    }
+
+    const nombreCampus = (r.campus && r.campus !== 'undefined') ? r.campus : '';
+    const idRoto = r.activo && r.activo.includes('ID Roto');
+
+    html += `
+      <tr class="align-middle border-bottom">
+        <td class="text-center text-muted small">${index + 1}</td>
+        
+        <td>
+           <div class="fw-bold text-dark">${r.edificio || 'General'}</div>
+           <div class="small text-muted">${nombreCampus}</div>
         </td>
-      </tr>`;
-    });
+        
+        <td>
+           <div class="fw-medium">${r.activo}</div>
+           ${idRoto ? '<i class="bi bi-exclamation-triangle-fill text-danger small" title="Activo no encontrado"></i>' : ''}
+        </td>
+
+        <td><span class="badge bg-light text-dark border">${r.tipo}</span></td>
+
+        <td>
+          <div class="d-flex flex-column">
+            <span class="fw-bold text-dark small">${fechaTexto}</span>
+            <div class="mt-1">${badge}</div>
+          </div>
+        </td>
+
+        <td class="text-end">
+          <div class="btn-group">
+            <button class="btn btn-sm btn-light border" onclick="editRevision('${r.id}', '${r.tipo}', '${r.fechaISO}', '${r.idActivo}')" title="Editar">
+                <i class="bi bi-pencil"></i>
+            </button>
+            
+            ${ dias !== 9999 && !idRoto ? 
+               `<button class="btn btn-sm btn-success" onclick="completarTareaModal('${r.id}', '${r.activo}')" title="Completar">
+                  <i class="bi bi-check-lg"></i>
+                </button>` : '' 
+            }
+
+            <button class="btn btn-sm btn-outline-danger border-0" onclick="borrarRevisionGlobal('${r.id}')" title="Borrar">
+                <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+  console.log("6. Tabla renderizada correctamente.");
+}
+
+function loadEdificiosMaintFilter(idCampus) {
+  const sel = document.getElementById('maintFilterCampusEdificios'); // ID corregido según tu HTML
+  if (!sel) return;
+
+  if (!idCampus) {
+    sel.innerHTML = '<option value="">- Todos los Edificios -</option>';
+    applyGlobalMaintFilters();
+    return;
   }
 
-  function setMaintFilter(tipoFiltro, valor, btn) {
-    if (btn) { const p = btn.parentElement; p.querySelectorAll('button').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
-    const fCampus = document.getElementById('maintFilterCampus').value;
-    const fEdificio = document.getElementById('maintFilterEdificio').value;
-    let fColor = 'all', fType = 'all';
-    const cBtn = document.querySelector('#filterGroupColor .active');
-    if (cBtn) { if (cBtn.innerText === 'Todas') fColor = 'all'; else if (cBtn.classList.contains('btn-outline-danger')) fColor = 'rojo'; else if (cBtn.classList.contains('btn-outline-warning')) fColor = 'amarillo'; else if (cBtn.classList.contains('btn-outline-success')) fColor = 'verde'; else if (cBtn.classList.contains('btn-outline-info')) fColor = 'azul'; }
-    const tBtn = document.querySelector('#filterGroupType .active');
-    if (tBtn && tBtn.innerText !== 'Todos') { const txt = tBtn.getAttribute('onclick'); if (txt.includes('Legal')) fType = 'Legal'; else if (txt.includes('Periódica')) fType = 'Periódica'; else if (txt.includes('Reparación')) fType = 'Reparación'; else if (txt.includes('Extraordinaria')) fType = 'Extraordinaria'; }
-    if (!globalMaintData) return;
-    const filtered = globalMaintData.filter(i => {
-      const matchC = (fCampus === "") || (String(i.campusId) === String(fCampus));
-      const matchE = (fEdificio === "") || (String(i.edificioId) === String(fEdificio));
-      const matchT = (fType === 'all') || (i.tipo === fType);
-      let matchCol = false; if (fColor === 'all') matchCol = (i.color !== 'azul'); else matchCol = (i.color === fColor);
-      return matchC && matchE && matchT && matchCol;
-    });
-    renderGlobalMaintTable(filtered);
-  }
+  // Filtrado instantáneo desde memoria local
+  const filtrados = localEdificios.filter(e => String(e.idCampus) === String(idCampus));
+  
+  let h = '<option value="">- Todos los Edificios -</option>';
+  filtrados.forEach(e => h += `<option value="${e.id}">${e.nombre}</option>`);
+  
+  sel.innerHTML = h;
+  sel.disabled = false;
+  
+  // Aplicar filtros de la tabla inmediatamente
+  applyGlobalMaintFilters();
+}
 
-  function loadEdificiosMaintFilter(idCampus) {
-    const sel = document.getElementById('maintFilterEdificio'); sel.innerHTML = '<option>Cargando...</option>';
-    if (!idCampus) { sel.innerHTML = '<option value="">Todos los Edificios</option>'; setMaintFilter('edificio',''); return; }
-    google.script.run.withSuccessHandler(l => { let h='<option value="">Todos los Edificios</option>'; l.forEach(e => h+=`<option value="${e.id}">${e.nombre}</option>`); sel.innerHTML=h; setMaintFilter('edificio',''); }).getEdificiosPorCampus(idCampus);
-  }
-
-  function mostrarModalRevision(dateStr) {
+function mostrarModalRevision(dateStr) {
+    // 1. Asegurar que la instancia del modal existe
     if (!maintModal) maintModal = new bootstrap.Modal(document.getElementById('maintModal'));
-    document.getElementById('revId').value = ""; document.getElementById('revTipo').value = "Legal"; document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0]; document.getElementById('maintModalTitle').innerText = 'Programar Revisión'; document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos</div>';
-    document.getElementById('revRecur').checked = false; document.getElementById('revFreq').value = "365"; document.getElementById('secRecurOptions').classList.add('d-none');
-    if (currentAssetId) { document.getElementById('assetSelector').classList.add('d-none'); } else { document.getElementById('assetSelector').classList.remove('d-none'); const s = document.getElementById('maintCampus'); if(s.options.length<=1) populateSelectsIniciales([],[]); document.getElementById('maintEdificio').innerHTML='<option value="">- Edificio -</option>'; document.getElementById('maintEdificio').disabled=true; document.getElementById('maintActivo').innerHTML='<option value="">- Activo -</option>'; document.getElementById('maintActivo').disabled=true; }
-    updateMaintFormVisibility(); maintModal.show();
-  }
+
+    // 2. Limpiar y resetear el formulario
+    document.getElementById('revId').value = ""; 
+    document.getElementById('revTipo').value = "Legal"; 
+    
+    // Si nos pasan fecha (del planificador), la usamos. Si no, ponemos hoy.
+    document.getElementById('revFecha').value = dateStr || new Date().toISOString().split('T')[0]; 
+    
+    document.getElementById('maintModalTitle').innerText = 'Programar Revisión'; 
+    document.getElementById('revDocsList').innerHTML = '<div class="text-center text-muted fst-italic py-2">Sin documentos</div>';
+    
+    // Resetear opciones de repetición
+    document.getElementById('revRecur').checked = false; 
+    document.getElementById('revFreq').value = "365"; 
+    document.getElementById('secRecurOptions').classList.add('d-none');
+
+    // 3. Configurar selectores de ubicación (Campus -> Edificio -> Activo)
+    if (currentAssetId) { 
+        // CASO A: Estamos dentro de la ficha de un activo. No necesitamos preguntar dónde es.
+        document.getElementById('assetSelector').classList.add('d-none'); 
+    } else { 
+        // CASO B: Estamos en el Dashboard o Planificador. Hay que elegir el activo.
+        document.getElementById('assetSelector').classList.remove('d-none'); 
+        
+        const s = document.getElementById('maintCampus'); 
+        
+        // --- AQUÍ ESTÁ EL ARREGLO ---
+        // Si el select está vacío (solo tiene la opción por defecto), cargamos los campus
+        if (s.options.length <= 1) {
+             s.innerHTML = '<option>Cargando...</option>'; // Feedback visual
+             google.script.run.withSuccessHandler(l => {
+                 let h = '<option value="">- Seleccione Campus -</option>';
+                 l.forEach(c => h += `<option value="${c.id}">${c.nombre}</option>`);
+                 s.innerHTML = h;
+             }).getListaCampus();
+        }
+        
+        // Resetear los selectores dependientes
+        document.getElementById('maintEdificio').innerHTML = '<option value="">- Primero elija Campus -</option>'; 
+        document.getElementById('maintEdificio').disabled = true; 
+        
+        document.getElementById('maintActivo').innerHTML = '<option value="">- Primero elija Edificio -</option>'; 
+        document.getElementById('maintActivo').disabled = true; 
+    }
+
+    // 4. Actualizar visibilidad de campos extra (Normativa, etc.) y mostrar
+    updateMaintFormVisibility(); 
+    maintModal.show();
+}
 
   function editRevision(id, tipo, fecha, activoId, hasCalendar) {
     document.getElementById('maintModalTitle').innerText = 'Editar Revisión'; document.getElementById('revId').value = id; document.getElementById('revTipo').value = tipo; document.getElementById('revFecha').value = fecha; document.getElementById('revCalendar').checked = hasCalendar;
@@ -858,7 +1059,6 @@
     setBtnLoading('btnMaintSubmit', true);
     var payload = { idActivo: activeAssetId, idPlan: id, tipo: tipo, fechaProx: fecha, esRecursiva: document.getElementById('revRecur').checked, diasFreq: document.getElementById('revFreq').value, syncCalendar: document.getElementById('revCalendar').checked };
     
-    // Gestión de archivo adjunto al crear
     var fileInput = document.getElementById('revFileInput'); var file = (fileInput && fileInput.files.length > 0) ? fileInput.files[0] : null;
 
     const finish = (res) => {
@@ -866,7 +1066,18 @@
        if (res.success) {
          if (maintModal) maintModal.hide(); notificarExito(id ? "Actualizado" : "Creado");
          if (fileInput) fileInput.value = '';
-         if (currentAssetId) loadMaint(); else loadGlobalMaint(); loadDashboard();
+         
+         // Actualizar tablas
+         if (currentAssetId) loadMaint(); else loadGlobalMaintenance(); 
+         loadDashboard();
+
+         // --- NUEVO: ACTUALIZAR PLANIFICADOR ---
+         // Si el calendario existe, recargamos sus eventos
+         if (typeof plannerCalendar !== 'undefined' && plannerCalendar) {
+             loadPlannerEvents();
+         }
+         // --------------------------------------
+
        } else { notificarError(res.error); }
     };
 
@@ -953,7 +1164,7 @@
                 }, 500); // Tiempo del fade-out
               } else {
                 // Fallback si no hay fila (raro)
-                loadGlobalMaint();
+                loadGlobalMaintenance();
               }
             } else {
               // Error: Restaurar estado original
@@ -980,7 +1191,7 @@
   
   function updateMaintFormVisibility() { const t = document.getElementById('revTipo').value; const l = document.getElementById('secLegal'), r = document.getElementById('secRecur'); if(l) l.classList.add('d-none'); if(r) r.classList.add('d-none'); if(t==='Legal'){ l.classList.remove('d-none'); r.classList.remove('d-none'); } else if(t==='Periódica') r.classList.remove('d-none'); }
   function loadRevDocs(id) { const c = document.getElementById('revDocsList'); c.innerHTML='...'; google.script.run.withSuccessHandler(d=>{ let h='<ul class="list-group list-group-flush">'; if(!d.length) h='Sin docs'; else d.forEach(x=>h+=`<li class="list-group-item p-1"><a href="${x.url}" target="_blank">${x.nombre}</a></li>`); c.innerHTML=h+'</ul>'; }).obtenerDocs(id,'REVISION'); }
-  function deleteRevision(id) { confirmarAccion("¿Eliminar?", "", () => google.script.run.withSuccessHandler(() => { notificarExito("Eliminada"); if(currentAssetId) loadMaint(); else loadGlobalMaint(); }).eliminarRevision(id)); }
+  function deleteRevision(id) { confirmarAccion("¿Eliminar?", "", () => google.script.run.withSuccessHandler(() => { notificarExito("Eliminada"); if(currentAssetId) loadMaint(); else loadGlobalMaintenance(); }).eliminarRevision(id)); }
   function loadEdificiosModalMaint(idC) { const s=document.getElementById('maintEdificio'); s.innerHTML='<option>...</option>'; s.disabled=true; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Edificio -</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
   function loadActivosModalMaint(idE) { const s=document.getElementById('maintActivo'); s.innerHTML='<option>...</option>'; s.disabled=true; google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Activo -</option>'; l.forEach(a=>h+=`<option value="${a.id}">${a.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getActivosPorEdificio(idE); }
 
@@ -1265,6 +1476,35 @@
     }
     function loadEdificiosContractFilter(idC) { const s=document.getElementById('contractFilterEdificio'); s.innerHTML='<option>...</option>'; s.disabled=true; if(!idC){ s.innerHTML='<option value="">Todos</option>'; setContractFilter(); return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">Todos</option>'; l.forEach(e=>h+=`<option value="${e.id}">${e.nombre}</option>`); s.innerHTML=h; s.disabled=false; setContractFilter(); }).getEdificiosPorCampus(idC); }
 
+function loadEdificiosContModal(idCampus) {
+  const sEdificio = document.getElementById('contEdificio');
+  const sActivo = document.getElementById('contActivo');
+  
+  if (!idCampus) {
+    sEdificio.innerHTML = '<option value="">- Todo el Campus (General) -</option>';
+    sEdificio.disabled = true;
+    sActivo.disabled = true;
+    return;
+  }
+
+  // Filtrado instantáneo desde la memoria local
+  const filtrados = localEdificios.filter(e => String(e.idCampus) === String(idCampus));
+  
+  let html = '<option value="">- Todo el Edificio -</option>';
+  filtrados.forEach(e => {
+      html += `<option value="${e.id}">${e.nombre}</option>`;
+  });
+  
+  sEdificio.innerHTML = html;
+  sEdificio.disabled = false; // DESBLOQUEA EL SELECTOR
+  
+  // Limpiar y bloquear activos hasta que se elija edificio
+  if(sActivo) {
+    sActivo.innerHTML = '<option value="">- Activo Específico (Opcional) -</option>';
+    sActivo.disabled = true;
+  }
+}
+
   function mostrarModalContrato() {
       if (!contractModal) contractModal = new bootstrap.Modal(document.getElementById('contractModalV2'));
       
@@ -1458,29 +1698,29 @@
   }
 
   // Función auxiliar para continuar la cascada (Paso 2: Edificios)
-  function triggerLoadEdificios(datosContrato) {
-    if (!datosContrato.idCampus) return;
 
-    const sEdificio = document.getElementById('contEdificio');
-    sEdificio.disabled = true;
-    sEdificio.innerHTML = '<option>Cargando...</option>';
-    
-    google.script.run.withSuccessHandler(lista => {
-        let html = '<option value="">- Todo el Campus (General) -</option>';
-        lista.forEach(e => {
-             // Comparación estricta como String para evitar errores
-             const sel = (String(e.id) === String(datosContrato.idEdificio)) ? 'selected' : '';
-             html += `<option value="${e.id}" ${sel}>${e.nombre}</option>`;
-        });
-        sEdificio.innerHTML = html;
-        sEdificio.disabled = false;
+function triggerLoadEdificios(datosContrato) {
+  if (!datosContrato.idCampus) return;
 
-        // Si hay edificio, lanzamos la carga de activos
-        if (datosContrato.idEdificio) {
-            triggerLoadActivos(datosContrato);
-        }
-    }).getEdificiosPorCampus(datosContrato.idCampus);
+  const sEdificio = document.getElementById('contEdificio');
+  
+  // Filtrado instantáneo
+  const filtrados = localEdificios.filter(e => String(e.idCampus) === String(datosContrato.idCampus));
+  
+  let html = '<option value="">- Todo el Campus (General) -</option>';
+  filtrados.forEach(e => {
+      const sel = (String(e.id) === String(datosContrato.idEdificio)) ? 'selected' : '';
+      html += `<option value="${e.id}" ${sel}>${e.nombre}</option>`;
+  });
+  
+  sEdificio.innerHTML = html;
+  sEdificio.disabled = false;
+
+  // Si ya tiene un edificio preseleccionado, cargar sus activos
+  if (datosContrato.idEdificio) {
+      triggerLoadActivos(datosContrato);
   }
+}
 
   // Función auxiliar final (Paso 3: Activos)
   function triggerLoadActivos(datosContrato) {
@@ -1726,50 +1966,73 @@
   tbody.innerHTML = html;
 }
 
-// --- PEGAR AL FINAL DE js.html ---
-
 // Función para el filtro desplegable "Campus -> Edificio" en la pantalla de Activos
+
 function loadEdificios(idCampus) {
-  const select = document.getElementById('filterEdificio');
-  if (!select) return; // Seguridad si estamos en otra pantalla
+    const select = document.getElementById('filterEdificio');
+    if (!select) return;
 
-  // Limpiamos y ponemos feedback
-  select.innerHTML = '<option value="">Cargando...</option>';
-  select.disabled = true;
+    // Si no hay campus seleccionado, vaciar edificios
+    if (!idCampus) {
+        select.innerHTML = '<option value="">- Seleccione Edificio -</option>';
+        select.disabled = true;
+        applyAssetFilters(); // Refrescar lista de activos
+        return;
+    }
 
-  // Si se selecciona "Todos", reseteamos
-  if (!idCampus) {
-      select.innerHTML = '<option value="">- Seleccione -</option>';
-      select.disabled = false;
-      // Recargar lista completa
-      if (typeof loadAllAssets === 'function') loadAllAssets(); 
-      return;
-  }
-
-  // Llamada al servidor
-  google.script.run
-    .withSuccessHandler(lista => {
+    // Comprobamos si tenemos los edificios en la memoria local
+    if (localEdificios && localEdificios.length > 0) {
+        console.log("⚡ Filtrando edificios en memoria local...");
+        
+        // Filtrado instantáneo
+        const filtrados = localEdificios.filter(e => String(e.idCampus) === String(idCampus));
+        
         let html = '<option value="">- Todos los Edificios -</option>';
-        lista.forEach(e => {
+        filtrados.forEach(e => {
             html += `<option value="${e.id}">${e.nombre}</option>`;
         });
+        
         select.innerHTML = html;
         select.disabled = false;
-        
-        // Al cambiar campus, también filtramos la tabla
-        if (typeof loadAllAssets === 'function') loadAllAssets(); 
-    })
-    .withFailureHandler(err => {
-        console.error(err);
-        select.innerHTML = '<option value="">Error al cargar</option>';
-    })
-    .getEdificiosPorCampus(idCampus);
+        applyAssetFilters(); // Filtro instantáneo de la tabla de activos
+    } else {
+        // FALLBACK: Si la memoria local está vacía, pedimos al servidor (método lento antiguo)
+        console.warn("⚠️ Memoria local vacía, cargando desde servidor...");
+        select.innerHTML = '<option>Cargando...</option>';
+        google.script.run
+            .withSuccessHandler(lista => {
+                let h = '<option value="">- Todos los Edificios -</option>';
+                lista.forEach(e => h += `<option value="${e.id}">${e.nombre}</option>`);
+                select.innerHTML = h;
+                select.disabled = false;
+            })
+            .getEdificiosPorCampus(idCampus);
+    }
+}
+
+// Repetir la misma lógica para el modal de mantenimiento
+function loadEdificiosModalMaint(idC) {
+  const s = document.getElementById('maintEdificio');
+  if (!s) return;
+
+  const filtrados = localEdificios.filter(e => String(e.idCampus) === String(idC));
+  
+  let h = '<option value="">- Edificio -</option>';
+  filtrados.forEach(e => h += `<option value="${e.id}">${e.nombre}</option>`);
+  
+  s.innerHTML = h;
+  s.disabled = false;
 }
 
 // Función que se ejecuta al cambiar el select de Edificio
 function loadActivos(idEdificio) {
-    // Simplemente llamamos a aplicar filtros locales, ya que tenemos todos los datos
-    applyAssetFilters();
+    // Si ya tenemos los activos cargados globalmente, solo filtramos visualmente
+    if (window.allAssetsData && window.allAssetsData.length > 0) {
+        applyAssetFilters();
+    } else {
+        // Solo si no hay datos, pedimos al servidor (primera carga)
+        loadAllAssets();
+    }
 }
 
     function loadActivos(idE) { 
@@ -1781,7 +2044,23 @@ function loadActivos(idEdificio) {
     
     applyAssetFilters(); 
   }
+
+function loadActivosContModal(idEdificio) {
+  const sActivo = document.getElementById('contActivo');
+  if (!idEdificio) {
+    sActivo.disabled = true;
+    return;
+  }
+
+  sActivo.innerHTML = '<option>Cargando activos...</option>';
   
+  google.script.run.withSuccessHandler(activos => {
+    let h = '<option value="">- Activo Específico (Opcional) -</option>';
+    activos.forEach(a => h += `<option value="${a.id}">${a.nombre}</option>`);
+    sActivo.innerHTML = h;
+    sActivo.disabled = false; // DESBLOQUEA EL SELECTOR
+  }).getActivosPorEdificio(idEdificio); //
+}
   function filterAssets() { applyAssetFilters(); }
 
   // IMPORTACION
@@ -2511,17 +2790,14 @@ function loadDocs() {
   function deleteDocBuilding(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadBuildingDocs()).eliminarDocumento(id)); }
 
 
-function showModalObra() {
+function showModalObra(fechaPre) { // <--- AHORA ACEPTA FECHA
     var el = document.getElementById('obraModal');
     
-    // SOLUCIÓN DEFINITIVA: Mover el modal al final del cuerpo del documento
-    // Esto lo saca de las pestañas y evita que el fondo negro lo tape.
+    // Mover al body por seguridad (z-index)
     if (el.parentNode !== document.body) {
         document.body.appendChild(el);
     }
     
-    // Crear instancia limpia
-    // Usamos 'new bootstrap.Modal' directamente para asegurar
     var modal = new bootstrap.Modal(el, {
         backdrop: 'static',
         keyboard: false
@@ -2530,7 +2806,9 @@ function showModalObra() {
     // Limpiar campos
     document.getElementById('obraNombre').value = '';
     document.getElementById('obraDesc').value = '';
-    document.getElementById('obraFecha').value = '';
+    
+    // Asignar fecha preseleccionada o limpiar
+    document.getElementById('obraFecha').value = fechaPre || ''; 
     
     var fileInput = document.getElementById('obraFileInit');
     if(fileInput) fileInput.value = '';
@@ -2542,11 +2820,11 @@ function submitObra() {
     var n = document.getElementById('obraNombre').value;
     
     if (!n) return notificarError("El nombre de la obra es obligatorio");
-
+    
     setBtnLoading('btnObraSubmit', true);
 
     var payload = {
-        idEdificio: currentBuildingId,
+        idEdificio: currentBuildingId, // Puede ser null si venimos del calendario, el backend lo gestionará o dará error si es obligatorio
         nombre: n,
         descripcion: document.getElementById('obraDesc').value,
         fechaInicio: document.getElementById('obraFecha').value
@@ -2557,13 +2835,18 @@ function submitObra() {
             setBtnLoading('btnObraSubmit', false);
             
             if (r.success) {
-                // Cerrar modal correctamente
-                var el = document.getElementById('obraModal');
-                var modal = bootstrap.Modal.getInstance(el);
-                if(modal) modal.hide();
+                // Cerrar modal de forma segura
+                cerrarModalSeguro('obraModal');
                 
-                // Recargar la lista (ahora vendrá de Firestore)
-                loadBuildingObras();
+                // Recargar lista si estamos en un edificio
+                if (currentBuildingId) loadBuildingObras();
+                
+                // --- NUEVO: ACTUALIZAR PLANIFICADOR ---
+                if (typeof plannerCalendar !== 'undefined' && plannerCalendar) {
+                    loadPlannerEvents();
+                }
+                // --------------------------------------
+
                 notificarExito("Obra creada correctamente");
             } else {
                 notificarError(r.error);
@@ -2574,7 +2857,7 @@ function submitObra() {
             notificarError("Error: " + err.message);
         })
         .crearObra(payload);
-}
+  }
 
   function loadBuildingObras() {
     if (!currentBuildingId) return;
@@ -3456,16 +3739,21 @@ function submitObra() {
     
     container.innerHTML = html;
   }
-  function openRelacionModal() { 
-    if(!currentAssetId) return notificarError("No hay activo seleccionado"); 
-    if(!relacionModal) relacionModal=new bootstrap.Modal(document.getElementById('relacionModal')); 
-    // Resetear form
-    document.getElementById('relResultados').innerHTML=''; 
-    document.getElementById('relSearchInput').value=''; 
-    document.getElementById('relActivoSeleccionado').innerHTML='<div class="text-muted small fst-italic">Busca y selecciona un activo arriba</div>';
-    activoSelId = null;
-    relacionModal.show(); 
-  }
+
+ function openRelacionModal() { 
+  if(!currentAssetId) return notificarError("No hay activo seleccionado"); 
+  
+  // USAMOS LA APERTURA SEGURA
+  abrirModalSeguro('relacionModal'); 
+  
+  // Resetear el formulario
+  document.getElementById('relResultados').innerHTML=''; 
+  document.getElementById('relSearchInput').value=''; 
+  document.getElementById('relActivoSeleccionado').innerHTML='<div class="text-muted small fst-italic">Busca y selecciona un activo arriba</div>';
+  
+  activoSelId = null;
+}
+
   function buscarActivosRelacion() { 
     const t=document.getElementById('relSearchInput').value; 
     if(t.length<3) return; 
@@ -3486,21 +3774,104 @@ function submitObra() {
     document.getElementById('relResultados').innerHTML = ''; // Limpiar búsqueda para que quede limpio
   }
 
-  function submitRelacion() { 
-    if(!activoSelId) return notificarError("Selecciona un activo primero"); 
-    setBtnLoading('btnRelSubmit',true); 
-    google.script.run.withSuccessHandler(r=>{ 
-      setBtnLoading('btnRelSubmit',false); 
-      if(r.success){ relacionModal.hide(); loadRelacionesActivo(); notificarExito("Vinculación creada"); } 
-      else notificarError(r.error); 
-    }).crearRelacionActivo({
-      idActivoA:currentAssetId, 
-      idActivoB:activoSelId, 
-      tipoRelacion:document.getElementById('relTipoRelacion').value, 
-      descripcion:document.getElementById('relDescripcion').value, // Asegúrate de que este ID existe en el HTML del modal
-      bidireccional:document.getElementById('relBidireccional').checked
-    }); 
+function submitRelacion() { 
+  if(!activoSelId) return notificarError("Selecciona un activo primero"); 
+  
+  setBtnLoading('btnRelSubmit', true); 
+  
+  google.script.run.withSuccessHandler(r => { 
+    setBtnLoading('btnRelSubmit', false); 
+    
+    if(r.success) { 
+      // USAMOS EL CIERRE SEGURO
+      cerrarModalSeguro('relacionModal'); 
+      
+      loadRelacionesActivo(); 
+      notificarExito("Vinculación creada"); 
+    } 
+    else {
+      notificarError(r.error); 
+    }
+  }).crearRelacionActivo({
+    idActivoA: currentAssetId, 
+    idActivoB: activoSelId, 
+    tipoRelacion: document.getElementById('relTipoRelacion').value, 
+    descripcion: document.getElementById('relDescripcion').value, 
+    bidireccional: document.getElementById('relBidireccional').checked
+  }); 
+}
+
+  function crearRelacionActivo(d) {
+  try {
+    const firestore = getFirestore();
+    const idA = String(d.idActivoA).trim();
+    const idB = String(d.idActivoB).trim();
+
+    // --- FUNCIÓN AUXILIAR PARA AÑADIR (A -> B) ---
+    const agregarRelacion = (idOrigen, idDestino, tipo, desc) => {
+       // 1. Leemos el activo origen
+       const doc = firestore.getDocument('activos/' + idOrigen);
+       if (!doc) throw new Error("Activo no encontrado: " + idOrigen);
+       
+       // Detectar formato de datos (Librería vs Crudo)
+       const data = doc.fields ? doc.fields : doc;
+
+       // 2. Leer array actual de relaciones
+       // Buscamos el campo RELACIONES (o variantes)
+       const raw = data.RELACIONES || data.Relaciones || "[]";
+       
+       let actual = [];
+       try {
+          if (typeof raw === 'string') actual = JSON.parse(raw);
+          else if (Array.isArray(raw)) actual = raw;
+       } catch(e) { actual = []; }
+
+       // 3. Añadir la nueva relación a la lista
+       actual.push({
+          id: Utilities.getUuid(),
+          idActivoRelacionado: idDestino,
+          tipoRelacion: tipo,
+          descripcion: desc || ""
+       });
+
+       // 4. Guardar el activo actualizado (Como String JSON)
+       firestore.updateDocument('activos/' + idOrigen, {
+          RELACIONES: JSON.stringify(actual)
+       });
+    };
+
+    // EJECUTAR: A -> B
+    agregarRelacion(idA, idB, d.tipoRelacion, d.descripcion);
+
+    // EJECUTAR: B -> A (Si marcaste Bidireccional)
+    if (d.bidireccional) {
+      // Invertir la lógica de la relación
+      const inversos = { 
+          "ALIMENTA": "ES_ALIMENTADO_POR", 
+          "ES_ALIMENTADO_POR": "ALIMENTA", 
+          "DEPENDE_DE": "ES_REQUERIDO_POR",
+          "ES_REQUERIDO_POR": "DEPENDE_DE",
+          "PERTENECE_A": "CONTIENE",
+          "CONTIENE": "PERTENECE_A",
+          "RELACIONADO": "RELACIONADO"
+      };
+      // Si no tiene inverso conocido, usamos RELACIONADO
+      const tipoInv = inversos[d.tipoRelacion] || "RELACIONADO";
+      
+      // Intentamos añadir la inversa (si falla por algún motivo, no bloqueamos la principal)
+      try {
+        agregarRelacion(idB, idA, tipoInv, d.descripcion);
+      } catch(e) {
+        console.warn("No se pudo crear la relación inversa: " + e.message);
+      }
+    }
+
+    return { success: true };
+
+  } catch(e) { 
+    return { success: false, error: e.message }; 
   }
+}
 
   function eliminarRelacion(id) { 
     confirmarAccion("¿Romper vínculo?", "No se borrarán los activos, solo la relación.", () => 
@@ -3511,14 +3882,45 @@ function submitObra() {
     ); 
   }
 
+  function eliminarRelacionActivo(idActivo, idRelacion) {
+  try {
+    const firestore = getFirestore();
+    const idStr = String(idActivo).trim();
+    
+    // 1. Leer activo
+    const doc = firestore.getDocument('activos/' + idStr);
+    if (!doc) throw new Error("Activo no encontrado");
+    
+    const d = doc.fields ? doc.fields : doc;
+    const raw = d.RELACIONES || d.Relaciones || "[]";
+    
+    let lista = [];
+    try {
+        if (typeof raw === 'string') lista = JSON.parse(raw);
+        else if (Array.isArray(raw)) lista = raw;
+    } catch(e) {}
+
+    // 2. Filtrar para quitar la relación que coincide con el ID
+    const nuevaLista = lista.filter(r => r.id !== idRelacion);
+    
+    // 3. Guardar cambios
+    firestore.updateDocument('activos/' + idStr, {
+        RELACIONES: JSON.stringify(nuevaLista)
+    });
+
+    return { success: true };
+  } catch(e) { 
+    return { success: false, error: e.message }; 
+  }
+}
+
   // PLANNER
   function initPlannerCalendar() {
     const el = document.getElementById('plannerCalendar');
     
-    // Si ya existe, solo renderizamos y cargamos si está vacío
+    // Si ya existe, refrescamos y salimos
     if (plannerCalendar) {
       plannerCalendar.render();
-      // Forzamos actualización de tamaño por si estaba oculto
       plannerCalendar.updateSize(); 
       if (!allPlannerEvents.length) loadPlannerEvents();
       return;
@@ -3529,50 +3931,66 @@ function submitObra() {
       locale: 'es',
       height: 'auto',
       headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,listWeek' },
-      editable: true,       // Permite Drag & Drop
+      editable: true,       // Drag & Drop activado
       droppable: true,
-      eventResizableFromStart: false, // Simplificamos resize
+      selectable: true,     // Permite seleccionar días
+      eventResizableFromStart: false,
 
-      // CLIC EN EVENTO
+      // --- NUEVO: CLIC EN DÍA VACÍO ---
+      dateClick: function(info) {
+        // Preguntamos qué quiere programar
+        Swal.fire({
+          title: 'Nueva Tarea',
+          text: `¿Qué quieres programar para el ${info.dateStr}?`,
+          icon: 'question',
+          showDenyButton: true,
+          showCancelButton: true,
+          confirmButtonText: '🔧 Revisión',
+          denyButtonText: '🏗️ Obra',
+          cancelButtonText: 'Cancelar',
+          confirmButtonColor: '#CC0605', // Tu rojo corporativo
+          denyButtonColor: '#0d6efd'     // Azul
+        }).then((result) => {
+          if (result.isConfirmed) {
+            // Opción 1: Mantenimiento
+            mostrarModalRevision(info.dateStr);
+          } else if (result.isDenied) {
+            // Opción 2: Obra
+            showModalObra(info.dateStr);
+          }
+        });
+      },
+
+      // CLIC EN EVENTO EXISTENTE
       eventClick: i => {
         const p = i.event.extendedProps;
         if (p.tipo === 'MANTENIMIENTO') {
-          // Abrir modal de revisión
           editRevision(i.event.id, i.event.title.split('-')[0].trim(), i.event.startStr, null, false);
         } else if (p.tipo === 'CONTRATO') {
-          // Abrir modal de contrato
           editContractGlobal(i.event.id);
         } else if (p.tipo === 'INCIDENCIA') {
           editIncidencia(i.event.id);
         } else {
-          // Obra u otros
           Swal.fire({ title: i.event.title, text: p.descripcion, icon: 'info' });
         }
       },
 
-      // ARRASTRAR Y SOLTAR (Lógica mejorada)
+      // ARRASTRAR Y SOLTAR (Cambio de fecha)
       eventDrop: i => {
         const p = i.event.extendedProps;
         
-        // Si no es editable, revertimos
         if (!p.editable) { i.revert(); return; }
-
-        // Feedback visual inmediato
-        const originalTitle = i.event.title;
-        // i.event.setProp('title', '⏳ Guardando...'); // Opcional: cambiar título mientras guarda
 
         google.script.run
           .withSuccessHandler(res => {
             if (res.success) {
               notificarExito("Fecha actualizada");
-              // i.event.setProp('title', originalTitle); // Restaurar título
-              
-              // Si movimos un contrato, sería ideal recargar la lista de contratos en segundo plano
+              // Si movimos un contrato y estamos en su vista, recargar lista
               if (p.tipo === 'CONTRATO' && !document.getElementById('view-contratos').classList.contains('d-none')) {
                   loadGlobalContracts();
               }
             } else {
-              i.revert(); // Volver atrás si falla
+              i.revert(); // Deshacer si falla
               notificarError(res.error);
             }
           })
@@ -3631,7 +4049,42 @@ function submitObra() {
   }
 
   // AUDIT
-  function loadAuditYears() { const s=document.getElementById('auditYear'); s.innerHTML='Loading...'; google.script.run.withSuccessHandler(l=>{ let h=''; l.forEach(y=>h+=`<option value="${y}">${y}</option>`); s.innerHTML=h; }).getAniosAuditoria(); }
+// En GMAO/js.html
+
+function loadAuditYears() { 
+    const s = document.getElementById('auditYear'); 
+    if (!s) return; // Seguridad por si el elemento no existe
+
+    s.innerHTML = '<option value="">Cargando...</option>'; 
+    s.disabled = true; 
+    
+    console.log("Iniciando carga de años..."); // Log para depurar
+
+    google.script.run
+        .withSuccessHandler(l => { 
+            console.log("Años recibidos:", l); // Veremos qué llega en la consola
+            let h = ''; 
+            
+            // Si la lista llega vacía o nula, ponemos el año actual por defecto
+            if (!l || l.length === 0) {
+                 const y = new Date().getFullYear();
+                 h = `<option value="${y}">${y}</option>`;
+            } else {
+                 l.forEach(y => h += `<option value="${y}">${y}</option>`); 
+            }
+            
+            s.innerHTML = h;
+            s.disabled = false; // Habilitamos para TODOS
+        })
+        .withFailureHandler(err => {
+            // Esto nos dirá si el problema es de permisos o del servidor
+            console.error("Error en servidor:", err);
+            s.innerHTML = '<option>Error al cargar</option>';
+            alert("Error al cargar años: " + err.message);
+        })
+        .getAniosAuditoria(); 
+}
+
   function runAudit() { const y=document.getElementById('auditYear').value; if(!y) return; setBtnLoading('btnAuditRun',true); google.script.run.withSuccessHandler(r=>{ setBtnLoading('btnAuditRun',false); if(r.success){ document.getElementById('auditResult').classList.remove('d-none'); document.getElementById('auditMsg').innerText=r.total; document.getElementById('auditLink').href=r.url; } else notificarError(r.error); }).generarPaqueteAuditoria(y, document.getElementById('auditType').value); }
 
   // ==========================================
@@ -3822,7 +4275,7 @@ function submitObra() {
             loadAllAssets(true);
             if (currentAssetId) { loadContracts(); loadDocs(); } 
         } else if (!document.getElementById('view-mantenimiento').classList.contains('d-none')) {
-            loadGlobalMaint();
+            loadGlobalMaintenance();
         }
     }, 1000);
   }
@@ -4936,10 +5389,13 @@ function submitObra() {
       const cb = (res) => {
           setBtnLoading('btnContSubmit', false);
           if (res.success) {
-              cerrarModalSeguro('contractModalV2'); // <--- CIERRE SEGURO
-              notificarExito("Contrato guardado");
-              if (!document.getElementById('view-contratos').classList.contains('d-none')) loadGlobalContracts();
-              if (currentAssetId) loadContracts();
+            if (typeof plannerCalendar !== 'undefined' && plannerCalendar) {
+                loadPlannerEvents();
+            }
+            cerrarModalSeguro('contractModalV2'); // <--- CIERRE SEGURO
+            notificarExito("Contrato guardado");
+            if (!document.getElementById('view-contratos').classList.contains('d-none')) loadGlobalContracts();
+            if (currentAssetId) loadContracts();
           } else {
               notificarError(res.error);
           }
