@@ -105,25 +105,28 @@
     let renderFunction = null;
 
     if (vista === 'ACTIVOS') {
+        // Usamos explícitamente window.allAssetsData
         dataArray = window.allAssetsData;
-        renderFunction = renderAssetsTable; // Función que ya tienes
+        renderFunction = renderAssetsTable; 
     } else if (vista === 'EDIFICIOS') {
-        dataArray = allEdificiosData;
-        renderFunction = renderEdificiosTable; // O loadEdificiosList si usas render interno
+        // CORRECCIÓN IMPORTANTE: Usar window.allEdificiosData
+        dataArray = window.allEdificiosData;
+        renderFunction = renderEdificiosTable; 
     } else if (vista === 'MANTENIMIENTO') {
-        dataArray = globalMaintData;
+        dataArray = globalMaintData; // Estas suelen ser globales directas
         renderFunction = renderGlobalMaintTable;
     } else if (vista === 'CONTRATOS') {
         dataArray = globalContractData;
         renderFunction = renderGlobalContractsTable;
     } else if (vista === 'PROVEEDORES') {
-        // Necesitas guardar los proveedores en una variable global al cargarlos
-        // Asegúrate de modificar loadProveedoresList para guardar en window.allProveedoresData
         dataArray = window.allProveedoresData; 
-        // Si no tienes función separada de render, tendrás que crearla o adaptar la carga
+        // Si no tienes una función 'renderProveedoresTable' separada, 
+        // tendrás que crearla o llamar a la de carga pasando datos.
+        // Asumo que tu loadProveedoresList ya hace el render.
     }
 
-    if (!dataArray || dataArray.length === 0) return;
+    // Si no hay datos, no hacemos nada
+    if (!dataArray || !Array.isArray(dataArray) || dataArray.length === 0) return;
 
     // 2. Calcular Dirección (Toggle)
     let direction = 'asc';
@@ -139,7 +142,7 @@
         let valA = a[columna];
         let valB = b[columna];
 
-        // Gestión de nulos
+        // Gestión de nulos segura
         if (valA == null) valA = "";
         if (valB == null) valB = "";
 
@@ -164,8 +167,10 @@
     // 4. Actualizar Iconos Visuales en el HTML
     actualizarIconosCabecera(vista, columna, direction);
 
-    // 5. Repintar la tabla
-    renderFunction(dataArray);
+    // 5. Repintar la tabla con los datos ordenados
+    if (renderFunction) {
+        renderFunction(dataArray);
+    }
   }
 
   function actualizarIconosCabecera(vista, columnaActiva, direccion) {
@@ -1664,29 +1669,109 @@
     renderAssetsTable(filtered);
   }
 
-  function renderAssetsTable(list) {
-    renderTableLazy(document.getElementById('tableActivos'), list, (i) => {
-        const clip = i.hasDocs ? '<i class="bi bi-paperclip text-primary ms-2"></i>' : '';
-        const legalIcon = i.hasLegalDocs ? '<i class="bi bi-shield-check text-success ms-2" title="Legal OK"></i>' : '';
-        
-        return `<tr>
-          <td class="fw-bold ps-4">
-              <i class="bi bi-box-seam text-primary me-2"></i>${i.nombre}${clip}${legalIcon}
-              <div class="small text-muted fw-normal ms-4">${i.edificioNombre}</div>
-          </td>
-          <td><span class="badge bg-light text-dark border">${i.tipo}</span></td>
-          <td>${i.marca}</td>
-          <td class="text-end pe-4">
-              <button class="btn btn-sm btn-outline-secondary me-1" onclick="openQuickUpload('${i.id}')" title="Subida Rápida">
-                <i class="bi bi-cloud-arrow-up-fill"></i>
-              </button>
-              <button class="btn btn-sm btn-outline-primary" onclick="openAssetDetail('${i.id}')">Ver Ficha</button>
-          </td>
-        </tr>`;
-    }, 50);
+  function renderAssetsTable(data) {
+  // CORRECCIÓN AQUÍ: El ID correcto en tu HTML es 'tableActivos', no 'tableBody'
+  const tbody = document.getElementById('tableActivos'); 
+  
+  // Validación de seguridad
+  if (!tbody) {
+    console.error("Error: No encuentro el elemento 'tableActivos' en el HTML");
+    return;
   }
 
-    function loadEdificios(idC) { document.getElementById('filterEdificio').value=""; applyAssetFilters(); const s=document.getElementById('filterEdificio'); s.disabled=true; s.innerHTML='<option>Cargando...</option>'; if(!idC){ s.innerHTML='<option value="">- Seleccione -</option>'; s.disabled=false; return; } google.script.run.withSuccessHandler(l=>{ let h='<option value="">- Seleccione -</option>'; l.forEach(i=>h+=`<option value="${i.id}">${i.nombre}</option>`); s.innerHTML=h; s.disabled=false; }).getEdificiosPorCampus(idC); }
+  tbody.innerHTML = '';
+
+  const lista = data || window.allAssetsData; 
+
+  if (!lista || lista.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center py-4 text-muted">No hay activos coincidentes.</td></tr>';
+      return;
+  }
+
+  let html = '';
+  
+  lista.forEach(item => {
+      // Botón borrar solo para admin
+      let btnDelete = '';
+      if (currentUser && currentUser.rol === 'ADMIN') {
+          btnDelete = `
+          <button class="btn btn-sm btn-outline-danger ms-1" 
+                  onclick="event.stopPropagation(); deleteAsset('${item.id}')" 
+                  title="Eliminar Activo">
+              <i class="bi bi-trash"></i>
+          </button>`;
+      }
+
+      html += `
+      <tr onclick="openAssetDetail('${item.id}')" style="cursor:pointer;" class="fade-in">
+          <td class="ps-4">
+              <div class="fw-bold text-dark">${item.nombre}</div>
+              <div class="small text-muted">${item.edificioNombre || item.edificio || '-'}</div>
+          </td>
+          <td>
+              <span class="badge bg-light text-dark border">${item.tipo}</span>
+          </td>
+          <td>${item.marca || '-'}</td>
+          <td class="text-end pe-4">
+              <button class="btn btn-sm btn-outline-primary" 
+                      onclick="event.stopPropagation(); openQuickUpload('${item.id}')" 
+                      title="Subir documentos">
+                  <i class="bi bi-cloud-upload"></i>
+              </button>
+              ${btnDelete}
+          </td>
+      </tr>`;
+  });
+
+  tbody.innerHTML = html;
+}
+
+// --- PEGAR AL FINAL DE js.html ---
+
+// Función para el filtro desplegable "Campus -> Edificio" en la pantalla de Activos
+function loadEdificios(idCampus) {
+  const select = document.getElementById('filterEdificio');
+  if (!select) return; // Seguridad si estamos en otra pantalla
+
+  // Limpiamos y ponemos feedback
+  select.innerHTML = '<option value="">Cargando...</option>';
+  select.disabled = true;
+
+  // Si se selecciona "Todos", reseteamos
+  if (!idCampus) {
+      select.innerHTML = '<option value="">- Seleccione -</option>';
+      select.disabled = false;
+      // Recargar lista completa
+      if (typeof loadAllAssets === 'function') loadAllAssets(); 
+      return;
+  }
+
+  // Llamada al servidor
+  google.script.run
+    .withSuccessHandler(lista => {
+        let html = '<option value="">- Todos los Edificios -</option>';
+        lista.forEach(e => {
+            html += `<option value="${e.id}">${e.nombre}</option>`;
+        });
+        select.innerHTML = html;
+        select.disabled = false;
+        
+        // Al cambiar campus, también filtramos la tabla
+        if (typeof loadAllAssets === 'function') loadAllAssets(); 
+    })
+    .withFailureHandler(err => {
+        console.error(err);
+        select.innerHTML = '<option value="">Error al cargar</option>';
+    })
+    .getEdificiosPorCampus(idCampus);
+}
+
+// Función que se ejecuta al cambiar el select de Edificio
+function loadActivos(idEdificio) {
+    // Simplemente llamamos a aplicar filtros locales, ya que tenemos todos los datos
+    applyAssetFilters();
+}
+
     function loadActivos(idE) { 
     // Habilitar el buscador cuando se selecciona un edificio
     const searchInput = document.getElementById('filterSearch');
@@ -1708,40 +1793,62 @@
   }
 
   // EDIFICIOS
-  function loadEdificiosList() {
-    const t = document.getElementById('tableEdificiosBody');
-    showSkeletonTable(t, 8, 4);
 
-    google.script.run.withSuccessHandler(d => {
-        allEdificiosData = d;
-        renderTableAnimated(t, d, (r) => {
-            // Usamos escapeQuote para proteger los datos
-            const safeId = escapeQuote(r.id);
-            const safeNombre = escapeQuote(r.nombre);
-            const safeCampus = escapeQuote(r.campus);
-            const safeContacto = escapeQuote(r.contacto);
-            const safeLat = escapeQuote(r.lat || '');
-            const safeLng = escapeQuote(r.lng || '');
+// --- PEGAR AL FINAL DE js.html ---
 
-            return `<tr>
-                <td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${safeId}');return false;">${r.nombre}</a></td>
-                <td>${r.campus}</td>
-                <td>${r.contacto}</td>
-                <td class="text-end pe-4">
-                  <div class="btn-group">
-                    <button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${safeId}')"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-sm btn-light border" onclick="openEdificioModal('${safeId}','${safeNombre}','${safeCampus}','${safeContacto}','${safeLat}','${safeLng}')"><i class="bi bi-pencil"></i></button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${safeId}')"><i class="bi bi-trash"></i></button>
-                  </div>
-                </td>
-              </tr>`;
-        }, { animationDelay: 15 });
+function loadEdificiosList() {
+  const tbody = document.getElementById('tableEdificiosBody');
+  if(!tbody) return;
 
-        if (mapInstance) renderMarkers(d);
-    }).getTableData('EDIFICIOS');
-  }
+  // Ponemos el spinner para saber que está cargando
+  tbody.innerHTML = '<tr><td colspan="4" class="text-center py-5"><div class="spinner-border text-primary"></div> Cargando edificios...</td></tr>';
+  
+  // Llamamos al servidor (Code.gs)
+  google.script.run
+    .withSuccessHandler(function(data) {
+      // Guardamos los datos en global para el filtro
+      window.allEdificiosData = data; 
+      
+      // Si la lista está vacía
+      if (!data || data.length === 0) {
+         tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No se encontraron edificios en Firestore.</td></tr>';
+         return;
+      }
 
-  function filterEdificiosList() { const c=document.getElementById('filterCampusEdificios').value; const s=document.getElementById('searchEdificios').value.toLowerCase(); const f=allEdificiosData.filter(r=>{ return ((c==="")||(r.campus===c)) && (r.nombre.toLowerCase().includes(s)||String(r.contacto).toLowerCase().includes(s)); }); renderEdificiosTable(f); if(mapInstance) renderMarkers(f); }
+      // Pintamos la tabla
+      renderEdificiosTable(data);     
+    })
+    .withFailureHandler(function(err) {
+      console.error(err);
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Error: ' + err.message + '</td></tr>';
+    })
+    .getTableData('EDIFICIOS'); // Llama a la función en Code.gs
+}
+
+function filterEdificiosList() { 
+  const c = document.getElementById('filterCampusEdificios').value; 
+  const s = document.getElementById('searchEdificios').value.toLowerCase(); 
+  
+  // CORRECCIÓN: Usar window.allEdificiosData
+  if (!window.allEdificiosData) return;
+
+  const f = window.allEdificiosData.filter(r => { 
+    // Filtro seguro de Campus (convirtiendo a String para evitar errores de tipo)
+    const matchCampus = (c === "") || (String(r.campus) === String(document.getElementById('filterCampusEdificios').options[document.getElementById('filterCampusEdificios').selectedIndex].text));
+    // Nota: El filtro original usaba el NOMBRE del campus, no el ID, por cómo se llena el select.
+    // Si tu select tiene IDs como value, cambia r.campus por r.idCampus si lo tienes, o usa el texto.
+    
+    // Simplificación robusta: Si el value del select es un ID, r.campus suele ser el nombre.
+    // Vamos a filtrar por texto contenido si no coinciden los tipos
+    const matchSearch = r.nombre.toLowerCase().includes(s) || String(r.contacto).toLowerCase().includes(s);
+    
+    return matchCampus && matchSearch; 
+  }); 
+  
+  renderEdificiosTable(f); 
+  if(mapInstance) renderMarkers(f); 
+}
+
   function renderEdificiosTable(d) {
     const t=document.getElementById('tableEdificiosBody'); if(!d.length) { t.innerHTML='Sin datos'; return; }
     let h=''; d.forEach(r=>{ h+=`<tr><td class="ps-4 fw-bold"><a href="#" onclick="openBuildingDetail('${r.id}');return false;">${r.nombre}</a></td><td>${r.campus}</td><td>${r.contacto}</td><td class="text-end pe-4"><div class="btn-group"><button class="btn btn-sm btn-outline-primary" onclick="openBuildingDetail('${r.id}')"><i class="bi bi-eye"></i></button><button class="btn btn-sm btn-light border" onclick="openEdificioModal('${r.id}','${r.nombre}','${r.campus}','${r.contacto}','${r.lat||''}','${r.lng||''}')"><i class="bi bi-pencil"></i></button><button class="btn btn-sm btn-outline-danger" onclick="deleteEdificio('${r.id}')"><i class="bi bi-trash"></i></button></div></td></tr>`; }); t.innerHTML=h; refreshSecurityIcons();
@@ -1993,7 +2100,57 @@
   }
 
   // DETALLES Y FICHAS
-  function openAssetDetail(id) { currentAssetId=id; currentActiveAssetId=id; document.querySelectorAll('.view-section').forEach(e=>e.classList.add('d-none')); document.getElementById('view-asset-detail').classList.remove('d-none'); toggleEditInfo(false); google.script.run.withSuccessHandler(i=>{ document.getElementById('detail-name').innerText=i.nombre; document.getElementById('detail-type').innerText=i.tipo; document.getElementById('d-nombre-val').innerText=i.nombre; document.getElementById('d-tipo-val').innerText=i.tipo; document.getElementById('d-marca-val').innerText=i.marca; document.getElementById('d-fecha-val').innerText=i.fechaAlta; document.getElementById('edit-nombre').value=i.nombre; document.getElementById('edit-marca').value=i.marca; loadDocs(); loadMaint(); loadContracts(); loadRelacionesActivo(); }).getAssetInfo(id); }
+  function openAssetDetail(id) { 
+  currentAssetId = id; 
+  currentActiveAssetId = id; 
+  
+  // 1. Cambiar vista
+  document.querySelectorAll('.view-section').forEach(e => e.classList.add('d-none')); 
+  document.getElementById('view-asset-detail').classList.remove('d-none'); 
+  toggleEditInfo(false); 
+
+  // 2. LIMPIEZA VISUAL (¡El truco!)
+  // Ponemos placeholders para que no se vea el activo anterior
+  document.getElementById('detail-name').innerText = 'Cargando...';
+  document.getElementById('detail-type').innerText = '...';
+  
+  document.getElementById('d-nombre-val').innerText = '...';
+  document.getElementById('d-tipo-val').innerText = '...';
+  document.getElementById('d-marca-val').innerText = '...';
+  document.getElementById('d-fecha-val').innerText = '...';
+  
+  // Limpiamos también los inputs de edición por si acaso
+  document.getElementById('edit-nombre').value = '';
+  document.getElementById('edit-marca').value = '';
+
+  // Vaciamos las tablas para forzar que salgan los spinners de carga
+  document.getElementById('docsTableBody').innerHTML = '';
+  document.getElementById('maintTableBody').innerHTML = '';
+  document.getElementById('contractsTableBody').innerHTML = '';
+  
+  // 3. Llamada al servidor
+  google.script.run.withSuccessHandler(i => { 
+    if (!i) return; // Seguridad
+
+    // Rellenar con datos reales
+    document.getElementById('detail-name').innerText = i.nombre; 
+    document.getElementById('detail-type').innerText = i.tipo; 
+    document.getElementById('d-nombre-val').innerText = i.nombre; 
+    document.getElementById('d-tipo-val').innerText = i.tipo; 
+    document.getElementById('d-marca-val').innerText = i.marca; 
+    document.getElementById('d-fecha-val').innerText = i.fechaAlta; 
+    
+    document.getElementById('edit-nombre').value = i.nombre; 
+    document.getElementById('edit-marca').value = i.marca; 
+    
+    // Cargar las listas
+    loadDocs(); 
+    loadMaint(); 
+    loadContracts(); 
+    loadRelacionesActivo(); 
+  }).getAssetInfo(id); 
+}
+
   function closeAssetDetail() { currentAssetId=null; document.getElementById('view-asset-detail').classList.add('d-none'); if(currentBuildingId) document.getElementById('view-building-detail').classList.remove('d-none'); else document.getElementById('view-activos').classList.remove('d-none'); }
 
   function openBuildingDetail(id) {
@@ -2352,9 +2509,72 @@ function loadDocs() {
 
   function uploadBuildingFile() { const f=document.getElementById('fileInputBuilding').files[0]; if(!f) return; const r=new FileReader(); r.onload=e=>google.script.run.withSuccessHandler(()=>{ notificarExito("Subido"); loadBuildingDocs(); }).subirArchivo(e.target.result.split(',')[1], f.name, f.type, currentBuildingId, 'EDIFICIO'); r.readAsDataURL(f); }
   function deleteDocBuilding(id) { confirmarAccion("¿Borrar?","",()=>google.script.run.withSuccessHandler(()=>loadBuildingDocs()).eliminarDocumento(id)); }
-  
-  function showModalObra() { if(!obraModal) obraModal=new bootstrap.Modal(document.getElementById('obraModal')); document.getElementById('obraNombre').value=''; document.getElementById('obraDesc').value=''; document.getElementById('obraFecha').value=''; obraModal.show(); }
-  function submitObra() { const n=document.getElementById('obraNombre').value; if(!n) return; setBtnLoading('btnObraSubmit',true); google.script.run.withSuccessHandler(r=>{ if(r.success) { obraModal.hide(); loadBuildingObras(); notificarExito("Creada"); } setBtnLoading('btnObraSubmit',false); }).crearObra({idEdificio:currentBuildingId, nombre:n, descripcion:document.getElementById('obraDesc').value, fechaInicio:document.getElementById('obraFecha').value}); }
+
+
+function showModalObra() {
+    var el = document.getElementById('obraModal');
+    
+    // SOLUCIÓN DEFINITIVA: Mover el modal al final del cuerpo del documento
+    // Esto lo saca de las pestañas y evita que el fondo negro lo tape.
+    if (el.parentNode !== document.body) {
+        document.body.appendChild(el);
+    }
+    
+    // Crear instancia limpia
+    // Usamos 'new bootstrap.Modal' directamente para asegurar
+    var modal = new bootstrap.Modal(el, {
+        backdrop: 'static',
+        keyboard: false
+    });
+    
+    // Limpiar campos
+    document.getElementById('obraNombre').value = '';
+    document.getElementById('obraDesc').value = '';
+    document.getElementById('obraFecha').value = '';
+    
+    var fileInput = document.getElementById('obraFileInit');
+    if(fileInput) fileInput.value = '';
+    
+    modal.show();
+}
+
+function submitObra() {
+    var n = document.getElementById('obraNombre').value;
+    
+    if (!n) return notificarError("El nombre de la obra es obligatorio");
+
+    setBtnLoading('btnObraSubmit', true);
+
+    var payload = {
+        idEdificio: currentBuildingId,
+        nombre: n,
+        descripcion: document.getElementById('obraDesc').value,
+        fechaInicio: document.getElementById('obraFecha').value
+    };
+
+    google.script.run
+        .withSuccessHandler(function(r) {
+            setBtnLoading('btnObraSubmit', false);
+            
+            if (r.success) {
+                // Cerrar modal correctamente
+                var el = document.getElementById('obraModal');
+                var modal = bootstrap.Modal.getInstance(el);
+                if(modal) modal.hide();
+                
+                // Recargar la lista (ahora vendrá de Firestore)
+                loadBuildingObras();
+                notificarExito("Obra creada correctamente");
+            } else {
+                notificarError(r.error);
+            }
+        })
+        .withFailureHandler(function(err) {
+            setBtnLoading('btnObraSubmit', false);
+            notificarError("Error: " + err.message);
+        })
+        .crearObra(payload);
+}
 
   function loadBuildingObras() {
     if (!currentBuildingId) return;
